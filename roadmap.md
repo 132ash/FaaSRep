@@ -4,6 +4,7 @@
 * 每个节点一个cache引擎，提供函数容器访问的get接口，定期从远端接收key更新
     * 使用HTTP端口和容器交互
     * 接收更新时先暂时封存key-value，更新好后重新开放
+    * 使用Tkrzw缓存库。
 * 远程shadow table
   * 事务写数据时写入该shadow table，用于RYW以及最后的提交
 * 持久存储
