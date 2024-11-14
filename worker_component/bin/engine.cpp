@@ -6,6 +6,8 @@
 using namespace tkrzw;
 using namespace httplib;
 
+namespace faas {
+
 class CacheEngine {
 public:
     CacheEngine() {
@@ -31,6 +33,7 @@ public:
 private:
     std::unique_ptr<CacheDBM> dbm_;
 };
+}
 
 int main() {
     CacheEngine cache_engine;
