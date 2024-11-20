@@ -4,3 +4,9 @@
 [submodule "deps/tkrzw"]
 	path = deps/tkrzw
 	url = https://github.com/estraier/tkrzw.git
+[submodule "deps/json"]
+	path = deps/json
+	url = https://github.com/nlohmann/json.git
+[submodule "deps/abseil-cpp"]
+	path = deps/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git

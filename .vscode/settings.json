@@ -52,6 +52,8 @@
         "ratio": "cpp",
         "regex": "cpp",
         "variant": "cpp",
-        "ranges": "cpp"
+        "ranges": "cpp",
+        "sstream": "cpp",
+        "*.inc": "cpp"
     }
 }

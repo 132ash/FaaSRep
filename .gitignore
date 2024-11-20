@@ -1,4 +1,6 @@
 # Build related
 /bin/
+/test/build/
+/test/bin/
 /worker_component/build/
 /deps/out*

@@ -1,5 +1,6 @@
 #pragma once
-#include "engine/common.h"
+#include "base/common.h"
+#include "common/transaction.h"
 
 namespace tkrzw { class CacheDBM; }
 
@@ -11,11 +12,12 @@ public:
     ~ValueCache();
 
     std::optional<CacheLine> Get(const std::string& key);
-    void Put(const std::string& key, const TransactionID& version, std::span<const char> value);
+    void Put(const std::string& key, const TransactionID& version, std::string_view value);
+
+
 
 private:
     std::unique_ptr<tkrzw::CacheDBM> cache_;
-    DISALLOW_COPY_AND_ASSIGN(ValueCache);
 };
 
 }

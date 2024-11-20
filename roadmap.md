@@ -1,39 +1,42 @@
 # 目标
-* 初版FaaSnap，无其他优化，评价本地乐观控制的可用性
+* 初版FaaSnap，无其他优化，评价乐观控制的性能
 # 实现方案
-* 每个节点一个LocalEngine
-    * 使用HTTP代理和外界交互, 路由如下：
-      * get：[key，version] -> [value, status]  使用key和version获取缓存中的value
-      * write：[key, version,value] -> [status] 事务写
-      * update：使用一批[key，version.value]list更新缓存
-        * get和write先调用内部check函数。如果版本不匹配，返回abort信息。
-    * 一个key-value缓存，缓存数据项，使用update被coordinator更新
-    * 一个key-version表，执行版本检查。
-    * 一个shadow table，缓存事务写。
-* workflow engine
-  * 容器维护本地事务的运行上下文，包括ID、版本集[key, version]、写集[key, pos].
-  * 初始化时注册local engine端口，生成容器时将信息告诉容器。
-  * 容器写入本地的
-  * 本地容器全部结束运行之后
-* gateway
-  * 和coordinator配合出现。接收请求。
-* 事务运行时：
-  * carry读集合和写集合。在到达新节点/读写数据时check是否过期。
-  * 写数据写到shadow table。
-# 组件
-* Engine
-  * Cache
-    * 标准的LRU Cache，某一固定容量，存储key-version-value三元组
-    * 被访问时，携带key-version两元组。若版本不匹配则从远端获取新版本。
-    * 更新策略：LRU。
-  * KVTable
+## 组件
+* 事务工作流运行（FaaSFlow）
+  * gateway
+    * 接收运行信息，进行图划分。将子图发送给本地工作流引擎
+  * Workflow Engine
+    * 本地触发函数，运行工作流
+* local Cache
+  * 具备HTTP服务。
+  * 函数从缓存中读数据。缓存失效则从数据库拉取。
+* dataBank
+  * 函数向数据库中写的数据以及其返回值会存储在这里。
+* coordinator
+  * 进行加锁验证，触发函数提交。
+## 运行流程
+* 事务工作流开始运行
+  * gateway接收上传的工作流配置，划分子图，发送给workflow。
+  * 从起始函数开始运行整个工作流，类似FaaSFlow。
+* 本地读写
+  * 函数运行过程中，运行时库捕获该函数的读写集（读：key，version；写：key）
+  * 函数运行过程中的写和运行后的返回写入当前节点上的dataBank。运行结束后运行时库将当前函数的读写集返回给engine。
+  * engine使用dataBank中的返回值调用下一个函数。
+  * engine维护一个不断扩大的读写集，最后提交验证。
+* 验证和提交
+  * 单个coordinator实例，存储key-version的全局可信集，以及一个tuple锁管理器。
+  * 接收到commit后，对读写集中的元组上锁，检查读集是否过期。收集需要修复的元组，交给gateway，进行第二次运行。
+  * gateway根据coordinator传来的信息决定是否commit。
+    * 若commit，gateway触发每个workflow engine提交dataBank中的内容(2PC). coordinator收到提交/放弃信息后返回给gateway，gateway返回给客户。
+      * workflow engine提交时，根据标记位[]生成写数据库的格式。
+    * 若需要修复，workflow engine使用delta set更新缓存，每个函数重新运行。某节点上的函数重新运行结束后，再次触发提交，更新版本，放锁。
+
 # 对比方案
 * TCC：carry interval，更新promise由coordinator负责。
 * Beldi：远程拿锁的同步方案。这里由coordinator上锁。
 * AFT: 远程pod serve所有事务请求
 # 下一步改进
 * 基于RDMA的cache更新和数据写
-* shadow table的本地化
 * 缓存更新配置
 * 冲突查询优化
 * 通信优化：节点间/容器和engine

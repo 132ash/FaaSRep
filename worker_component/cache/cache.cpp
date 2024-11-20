@@ -1,4 +1,4 @@
-#include "engine/cache.h"
+#include "cache/cache.h"
 #include "tkrzw_dbm_cache.h"
 
 
@@ -14,9 +14,9 @@ namespace faas::engine {
 
     ValueCache::~ValueCache() {}
 
-
+namespace {
     // cacheline is composed of version and value, cache format is string
-    static inline std::string EncodeCacheLine(const TransactionID& version, std::span<const char> value){
+    static inline std::string EncodeCacheLine(const TransactionID& version, std::string_view value){
         size_t total_size = value.size() + sizeof(TransactionID);
         std::string encoded;
         encoded.resize(total_size);
@@ -28,14 +28,14 @@ namespace faas::engine {
     }
 
     static inline void DecodeCacheLine(std::string encoded, CacheLine* cache_line){
-        DCHECK_GE(encoded.size(), sizeof(TransactionID));
         const char* ptr = encoded.data();
-        memcpy(&cache_line->Version, ptr, sizeof(TransactionID));
+        memcpy(&cache_line->version, ptr, sizeof(TransactionID));
         ptr += sizeof(TransactionID);
         cache_line->value = std::string(ptr, encoded.size() - sizeof(TransactionID));
     }
+}
 
-    std::optional<CacheLine> Get(const std::string& key){
+    std::optional<CacheLine> ValueCache::Get(const std::string& key){
         std::string encoded;
         tkrzw::Status status = cache_->Get(key, &encoded);
         if (status.IsOK()){
@@ -47,9 +47,9 @@ namespace faas::engine {
         }
     }
 
-    void Put(const std::string& key, const TransactionID& version, std::span<const char> value){
-        std::string encoded = EncodeCacheLine(version, value);
-        cache_->Set(key, encoded);
+    void ValueCache::Put(const std::string& key, const TransactionID& version, std::string_view value) {
+        std::string encoded_value = EncodeCacheLine(version, value);
+        cache_->Set(key, encoded_value);
     }
 
 
