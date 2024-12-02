@@ -1,0 +1,8 @@
+gevent
+redis
+couchdb
+docker
+flask
+psutil
+pandas
+PyYAML
