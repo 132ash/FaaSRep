@@ -7,17 +7,20 @@ import config
 
 yaml_file_addr = config.WORKFLOW_YAML_ADDR
 
-def getYamlFileAddr(workflow_name, option):
+def getYamlFileAddr(option, workflow_name=""):
+    if option == "worker_info":
+        return f'../../config/worker_info.yaml'
     return f'../../config/workflow_info/{workflow_name}/{option}.yaml'
 
 
 def parse(workflow_name):
-    workflow_data = yaml.load(open(getYamlFileAddr(workflow_name, "workflow")), Loader=yaml.FullLoader)
+    workflow_data = yaml.load(open(getYamlFileAddr("workflow", workflow_name)), Loader=yaml.FullLoader)
     workflow_functions = workflow_data['functions']
     
 
     function_nodes = dict()
     start_functions = list()
+    end_function = {}
    
     parent_cnt = dict()
     parent_cnt[workflow_functions[0]['name']] = 0
@@ -45,7 +48,12 @@ def parse(workflow_name):
                 }
         if 'next' in function:
             if function['next']['type'] == 'FINISH':
+                if len(end_function) != 0:
+                    print("multiple endpoint")
+                    exit()
                 next.append('END')
+                end_function["name"] = name
+                end_function["output"] = output
             else:
                 for n in function['next']['nodes']:
                     next.append(n)
@@ -63,7 +71,7 @@ def parse(workflow_name):
             start_functions.append(name)
 
 
-    return component.workflow(workflow_name, start_functions, function_nodes, total, parent_cnt)
+    return component.workflow(workflow_name, start_functions, end_function, function_nodes, total, parent_cnt)
 
 if __name__ == '__main__':
 

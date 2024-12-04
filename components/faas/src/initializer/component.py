@@ -14,9 +14,10 @@ class function:
 
 
 class workflow:
-    def __init__(self, workflow_name, start_functions, nodes: Dict[str, function], total, parent_cnt):
+    def __init__(self, workflow_name, start_functions, end_function, nodes: Dict[str, function], total, parent_cnt):
         self.workflow_name = workflow_name
         self.start_functions = start_functions
+        self.end_function = end_function
         self.nodes = nodes  # dict: {name: function()}
         # self.global_input = global_input
         self.total = total
@@ -26,4 +27,4 @@ class workflow:
         nodes = {}
         for k, v in self.nodes.items():
             nodes[k] = str(v)
-        return f'workflow_name: {self.workflow_name}, start_functions: {self.start_functions}, total: {self.total}, parent_cnt: {self.parent_cnt}'
+        return f'workflow_name: {self.workflow_name}, start_functions: {self.start_functions}, end_function, {self.end_function}, total: {self.total}, parent_cnt: {self.parent_cnt}'

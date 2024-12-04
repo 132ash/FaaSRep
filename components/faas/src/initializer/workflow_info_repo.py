@@ -35,3 +35,9 @@ class Repository:
             self.couch.create(db_name)
         db = self.couch[db_name]
         db.save({'start_functions': start_functions})
+
+    def save_end_function(self, end_function, db_name):
+        if db_name not in self.couch:
+            self.couch.create(db_name)
+        db = self.couch[db_name]
+        db.save({'end_function': end_function})

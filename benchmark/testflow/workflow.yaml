@@ -20,7 +20,7 @@ functions:
             from: func1
             type: int
     output:
-        chained_num_2:
+        chained_num_2_1:
             type: int
     next: 
         type: pass
@@ -33,7 +33,7 @@ functions:
             from: func1
             type: int
     output:
-        chained_num_final:
+        chained_num_2_2:
             type: int
     next: 
         type: pass
@@ -42,11 +42,16 @@ functions:
   - name: func3
     source: func3
     input: 
-        chained_num_2:
+        chained_num_2_1:
             from: func2_1
+            type: int
+        chained_num_2_2:
+            from: func2_2
             type: int
     output:
         chained_num_final:
             type: int
     next: 
-        type: FINISH
+        type: pass
+        nodes:
+            - END

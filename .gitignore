@@ -5,3 +5,4 @@
 /worker_component/build/
 /deps/out*
 **/__pycache__
+**/.vscode

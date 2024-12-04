@@ -1,0 +1,171 @@
+import sys
+import logging
+import time
+import gevent
+import gevent.lock
+import workersp_repo
+from typing import Any, Dict, List
+import requests
+
+sys.path.append('../../config')
+import config
+
+sys.path.append('../function_manager')
+from function_manager import FunctionManager
+
+repo = workersp_repo.Repository()
+
+class TransactionState:
+    def __init__(self, transaction_id: str, all_func: List[str]):
+        self.transaction_id = transaction_id
+        self.read_set = {}
+        self.write_set = {}
+        self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
+        self.executed: Dict[str, bool] = {}
+        self.parent_executed: Dict[str, int] = {}
+        for f in all_func:
+            self.executed[f] = False
+            self.parent_executed[f] = 0
+
+min_port = 20000
+
+# mode: 'optimized' vs 'normal'
+class WorkerSPManager:
+    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str):
+        global min_port
+
+        self.lock = gevent.lock.BoundedSemaphore() # guard self.states
+        self.host_addr = host_addr
+        self.workflow_name = workflow_name
+        self.states: Dict[str, TransactionState] = {}
+        self.function_info: Dict[str, dict] = {}
+
+        self.info_db = workflow_name + '_function_info'
+        self.meta_db = workflow_name + '_workflow_metadata'
+
+        self.func = repo.get_current_node_functions(self.host_addr, self.info_db)
+        
+        self.function_manager = FunctionManager(function_info_addr, min_port)
+        min_port += 5000
+
+    # return the workflow state of the request
+    def get_state(self, transaction_id: str) -> TransactionState:
+        self.lock.acquire()
+        if transaction_id not in self.states:
+            self.states[transaction_id] = TransactionState(transaction_id, self.func)
+        state = self.states[transaction_id]
+        self.lock.release()
+        return state
+    
+    def del_state_remote(self, transaction_id: str, remote_addr: str):
+        url = 'http://{}/clear'.format(remote_addr)
+        requests.post(url, json={'transaction_id': transaction_id, 'workflow_name': self.workflow_name})
+
+    # delete state
+    def del_state(self, transaction_id: str, master: bool):
+        logging.info('delete state of: %s', transaction_id)
+        self.lock.acquire()
+        if transaction_id in self.states:
+            del self.states[transaction_id]
+        self.lock.release()
+        if master:
+            jobs = []
+            addrs = repo.get_all_addrs(self.meta_db)
+            for addr in addrs:
+                if addr != self.host_addr:
+                    jobs.append(gevent.spawn(self.del_state_remote, transaction_id, addr))
+            gevent.joinall(jobs)
+
+    # get function's info from database
+    # the result is cached
+    def get_function_info(self, function_name: str) -> Any:
+        if function_name not in self.function_info:
+            self.function_info[function_name] = repo.get_function_info(function_name, self.info_db)
+        return self.function_info[function_name]
+
+    # trigger the function when one of its parent is finished
+    # function may run or not, depending on if all its parents were finished
+    # function could be local or remote
+    def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
+        if function_name == 'END':
+            self.commit_tx(state.transaction_id)
+            return
+        func_info = self.get_function_info(function_name)
+        if func_info['ip'] == self.host_addr:
+            # function runs on local
+            self.trigger_function_local(state, function_name, no_parent_execution)
+        else:
+            # function runs on remote machine
+            self.trigger_function_remote(state, function_name, func_info['ip'], no_parent_execution)
+
+    # trigger a function that runs on local
+    def trigger_function_local(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
+        logging.info('trigger local function: %s of: %s', function_name, state.transaction_id)
+        state.lock.acquire()
+        if not no_parent_execution:
+            state.parent_executed[function_name] += 1
+        runnable = self.check_runnable(state, function_name)
+        # remember to release state.lock
+        if runnable:
+            state.executed[function_name] = True
+            state.lock.release()
+            self.run_function(state, function_name)
+        else:
+            state.lock.release()
+
+    # trigger a function that runs on remote machine
+    def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
+        logging.info('trigger remote function: %s on: %s of: %s', function_name, remote_addr, state.transaction_id)
+        remote_url = 'http://{}/request'.format(remote_addr)
+        data = {
+            'transaction_id': state.transaction_id,
+            'workflow_name': self.workflow_name,
+            'function_name': function_name,
+            'no_parent_execution': no_parent_execution,
+        }
+        response = requests.post(remote_url, json=data)
+        response.close()
+
+    # check if a function's parents are all finished
+    def check_runnable(self, state: TransactionState, function_name: str) -> bool:
+        info = self.get_function_info(function_name)
+        return state.parent_executed[function_name] == info['parent_cnt'] and not state.executed[function_name]
+
+    # run a function on local
+    def run_function(self, state: TransactionState, function_name: str) -> None:
+        logging.info('run function: %s of: %s', function_name, state.transaction_id)
+        # end functions
+        
+        info = self.get_function_info(function_name)
+        self.run_normal(state, info)
+        
+        # trigger next functions
+        jobs = [
+            gevent.spawn(self.trigger_function, state, func)
+            for func in info['next']
+        ]
+        gevent.joinall(jobs)
+
+# commit result, now write result to DB, need endfunc info
+    def commit_tx(self, transaction_id):
+        repo.save_tx_result(transaction_id, self.meta_db)
+        remote_url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
+        response = requests.post(remote_url, json={'transaction_id': transaction_id})
+        if response.status_code == 200:
+            print(f"Successfully notified gateway for transaction_id: {transaction_id}")
+        else:
+            print(f"Failed to notify gateway for transaction_id: {transaction_id}, status code: {response.status_code}")
+
+
+    def run_normal(self, state: TransactionState, info: Any) -> None:
+        start = time.time()
+        self.function_manager.run(info['function_name'], state.transaction_id,
+                             info['input'], info['output'])
+        end = time.time()
+        repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'all', 'time': end - start})
+
+    def clear_mem(self, transaction_id):
+        repo.clear_mem(transaction_id)
+    
+    def clear_db(self, transaction_id):
+        repo.clear_db(transaction_id)

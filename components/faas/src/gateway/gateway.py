@@ -5,7 +5,7 @@ import uuid
 monkey.patch_all()
 import sys
 from flask import Flask, request
-from repo import Repository
+from gateway_repo import Repository
 from running_info import RunningTXTable
 import requests
 import time
@@ -17,40 +17,38 @@ app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
 
-def trigger_function(workflow_name, request_id, function_name, parameter):
+def trigger_function(workflow_name, transaction_id, function_name):
     info = repo.get_function_info(function_name, workflow_name + '_function_info')
     ip = info['ip']
     url = 'http://{}/request'.format(ip)
+    print(f"sending req to {url}")
     data = {
-        'request_id': request_id,
+        'transaction_id': transaction_id,
         'workflow_name': workflow_name,
         'function_name': function_name,
-        'parameter': parameter,
         'no_parent_execution': True
     }
     requests.post(url, json=data)
 
-def run_workflow(workflow_name, request_id, parameters):
-    repo.create_request_doc(request_id)
+def run_workflow(workflow_name, transaction_id, parameters):
+    repo.create_request_doc(transaction_id)
 
     # allocate works
     start_functions = repo.get_start_functions(workflow_name + '_workflow_metadata')
+    print(f"start_functions: {start_functions}")
     start = time.time()
     jobs = []
     for n in start_functions:
-        jobs.append(gevent.spawn(trigger_function, workflow_name, request_id, parameters[n]))
+        repo.store_input(transaction_id, parameters[n])
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n))
     gevent.joinall(jobs)
     end = time.time()
 
     # clear memory and other stuff
     if config.CLEAR_DB_AND_MEM:
-        master_addr  = ''
-        if config.CONTROL_MODE == 'WorkerSP':
-            master_addr = repo.get_all_addrs(workflow_name + '_workflow_metadata')[0]
-        elif config.CONTROL_MODE == 'MasterSP':
-            master_addr = config.MASTER_HOST
+        master_addr = repo.get_all_addrs(workflow_name + '_workflow_metadata')[0]
         clear_url = 'http://{}/clear'.format(master_addr)
-        requests.post(clear_url, json={'request_id': request_id, 'master': True, 'workflow_name': workflow_name})
+        requests.post(clear_url, json={'transaction_id': transaction_id, 'master': True, 'workflow_name': workflow_name})
     
     return end - start
 
@@ -59,24 +57,23 @@ def run():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow']
     parameters = data['parameters']
-    request_id = str(uuid.uuid4())
-    txTable.registerTX(request_id, parameters)
-    logging.info('processing request ' + request_id + '...')
-    repo.log_status(workflow, request_id, 'EXECUTE')
-    latency = run_workflow(workflow, request_id, parameters)
-    with txTable[request_id]['finished']:
-        txTable[request_id]['finished'].wait()
-    res = repo.get_result(request_id)
-    repo.log_status(workflow, request_id, 'FINISH')
-    return json.dumps({'status': 'ok', 'latency': latency, 'TxID': request_id, "res": res})
+    transaction_id = str(uuid.uuid4())
+    txTable.registerTX(transaction_id, parameters)
+    print('processing request ' + transaction_id + '...')
+    latency = run_workflow(workflow, transaction_id, parameters)
+    txTable.waitTX(transaction_id)
+    print('request ' + transaction_id + ' done')
+    res = repo.get_result(transaction_id)
+    print(f"transaction_id: f{transaction_id}, res: {res}")
+    txTable.finishTX(transaction_id)
+    return json.dumps({'status': 'ok', 'latency': latency, 'TxID': transaction_id, "res": res})
 
 
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    request_id = data['request_id']
-    with txTable[request_id]['finished']:
-        txTable[request_id]['finished'].notify_all()
+    transaction_id = data['transaction_id']
+    txTable.notifyTX(transaction_id)
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])
@@ -85,6 +82,8 @@ def clear_container():
     workflow = data['workflow']
     addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
     jobs = []
+    print("clearing containers...")
+    print(addrs)
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
         jobs.append(gevent.spawn(requests.get, clear_url))

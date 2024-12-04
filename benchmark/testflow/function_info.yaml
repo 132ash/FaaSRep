@@ -1,0 +1,7 @@
+workflow: testflow
+functions:
+- {image: testflow_func1, name: func1}
+- {image: testflow_func2_1, name: func2_1}
+- {image: testflow_func2_2, name: func2_2}
+- {image: testflow_func3, name: func3}
+max_containers: 30
