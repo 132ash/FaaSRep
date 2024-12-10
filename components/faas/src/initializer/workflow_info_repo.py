@@ -9,13 +9,18 @@ import config
 couchdb_url = config.COUCHDB_URL
 
 class Repository:
-    def __init__(self, workflow_name, remove_old_db=True):
+    def __init__(self, workflow_name="", remove_old_db=True):
         self.couch = couchdb.Server(couchdb_url)
         if remove_old_db:
-            db_list = [workflow_name + '_function_info', workflow_name + '_function_info_raw', workflow_name + '_workflow_metadata']
-            for db_name in db_list:
-                if db_name in self.couch:
-                    self.couch.delete(db_name)
+            if workflow_name:
+                db_list = [workflow_name + '_function_info', workflow_name + '_function_info_raw', workflow_name + '_workflow_metadata']
+                for db_name in db_list:
+                    if db_name in self.couch:
+                        self.couch.delete(db_name)
+                        print(f"{db_name} deleted")
+            else:
+                if "common" in self.couch:
+                    self.couch.delete("common")
 
     def save_function_info(self, function_info, db_name):
         if db_name not in self.couch:
@@ -28,6 +33,7 @@ class Repository:
         if db_name not in self.couch:
             self.couch.create(db_name)
         db = self.couch[db_name]
+        print(f"{addrs} saved in {db_name}")
         db.save({'addrs': list(addrs)})
 
     def save_start_functions(self, start_functions, db_name):

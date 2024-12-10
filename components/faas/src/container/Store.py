@@ -14,7 +14,7 @@ class RedisClient:
 
 class Store:
     def __init__(self, workflow_name, function_name, transaction_id, input, output, function_pos, redis_server: RedisClient):
-        self.redis = redis_server
+        self.redis_server = redis_server
         self.fetch_dict = {}
         self.ret_dict = {}
         self.workflow_name = workflow_name
@@ -30,9 +30,16 @@ class Store:
 
     def param_wrapper(self, func , key):
         return f"{self.transaction_id}:{func}:{key}" 
+    
+    def get_redis_ip(self, upstream):
+        if upstream == "GLOBAL":
+            return self.function_pos[self.function_name]
+        else:
+            return self.function_pos[upstream]
+
 
     def fetch_from_mem(self, k, redis_key, ip, param_type):
-        redis_value = self.redis[ip][redis_key].decode('utf-8')
+        redis_value = self.redis_server.redis[ip][redis_key].decode('utf-8')
         if param_type == "int":
             redis_value = int(redis_value)
         self.fetch_dict[k] = redis_value
@@ -48,7 +55,7 @@ class Store:
             upstream = self.input[k]["from"]
             param_type =  self.input[k]["type"]
             redis_key = self.param_wrapper(upstream, k)
-            ip = self.function_pos[upstream]
+            ip = self.get_redis_ip(upstream)
             thread_ = threading.Thread(target=self.fetch_from_mem, args=(k, redis_key, ip, param_type))
             threads.append(thread_)
         for thread_ in threads:
@@ -60,7 +67,7 @@ class Store:
     # return to local redis.
     def put_to_mem(self, k, ip):
         redis_key = self.param_wrapper(self.function_name, k)
-        self.redis[ip][redis_key] = self.ret_dict[k]
+        self.redis_server.redis[ip][redis_key] = self.ret_dict[k]
 
     # output_result: {'k': 'value'}
     # output_content_type: default application/json, just specify one when you need to

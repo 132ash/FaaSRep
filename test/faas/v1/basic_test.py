@@ -1,7 +1,7 @@
 import requests
 
 def test_gateway_run():
-    url = "http://192.168.162.130:8000/run"  # 根据实际情况修改URL
+    url = "http://192.168.162.132:8000/run"  # 根据实际情况修改URL
     payload = {
         "workflow": "testflow",  # 根据实际情况修改请求数据
         "parameters": {"func1":{"chained_num_0":0}}

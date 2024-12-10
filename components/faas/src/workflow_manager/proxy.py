@@ -18,8 +18,8 @@ class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        self.managers = {name: WorkerSPManager(sys.argv[1] + ':' + sys.argv[2], name, addr) for name, addr in info_addrs.items()}
 
-    def get_state(self, workflow_name: str, transaction_id: str) -> WorkerSPManager:
-        return self.managers[workflow_name].get_state(transaction_id)
+    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}) -> WorkerSPManager:
+        return self.managers[workflow_name].get_state(transaction_id, function_pos)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -44,8 +44,9 @@ def req():
     workflow_name = data['workflow_name']
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
+    function_pos = data.get('function_pos', {})
     # get the corresponding workflow state and trigger the function
-    state = dispatcher.get_state(workflow_name, transaction_id)
+    state = dispatcher.get_state(workflow_name, transaction_id, function_pos)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
 

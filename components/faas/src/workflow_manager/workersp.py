@@ -6,6 +6,7 @@ import gevent.lock
 import workersp_repo
 from typing import Any, Dict, List
 import requests
+import re
 
 sys.path.append('../../config')
 import config
@@ -15,14 +16,22 @@ from function_manager import FunctionManager
 
 repo = workersp_repo.Repository()
 
+def extract_ip(address: str) -> str:
+    # 使用正则表达式匹配 IP 地址和可选的端口号
+    match = re.match(r'^(.*?)(:\d+)?$', address)
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError("Invalid address format")
+
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str]):
+    def __init__(self, transaction_id: str, all_func: List[str], function_pos: Dict[str, str]={}):
         self.transaction_id = transaction_id
         self.read_set = {}
         self.write_set = {}
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
-        self.function_pos: Dict[str, str] = {}
+        self.function_pos: Dict[str, str] = function_pos
         self.parent_executed: Dict[str, int] = {}
         for f in all_func:
             self.executed[f] = False
@@ -42,19 +51,20 @@ class WorkerSPManager:
         self.function_info: Dict[str, dict] = {}
 
         self.info_db = workflow_name + '_function_info'
+        self.common_db = 'common'
         self.meta_db = workflow_name + '_workflow_metadata'
 
         self.func = repo.get_current_node_functions(self.host_addr, self.info_db)
-        self.node_list = repo.get_all_addrs(self.info_db)
+        self.node_list = repo.get_all_addrs(self.common_db)
         
-        self.function_manager = FunctionManager(function_info_addr, min_port)
+        self.function_manager = FunctionManager(function_info_addr, min_port, self.node_list)
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos) -> TransactionState:
         self.lock.acquire()
         if transaction_id not in self.states:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos)
         state = self.states[transaction_id]
         self.lock.release()
         return state
@@ -110,7 +120,7 @@ class WorkerSPManager:
         # remember to release state.lock
         if runnable:
             state.executed[function_name] = True
-            state.function_pos[function_name] = ip
+            state.function_pos[function_name] = extract_ip(ip)
             state.lock.release()
             self.run_function(state, function_name)
         else:
@@ -125,6 +135,7 @@ class WorkerSPManager:
             'workflow_name': self.workflow_name,
             'function_name': function_name,
             'no_parent_execution': no_parent_execution,
+            'function_pos':state.function_pos
         }
         response = requests.post(remote_url, json=data)
         response.close()

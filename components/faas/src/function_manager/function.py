@@ -16,10 +16,11 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info, port_controller):
+    def __init__(self, client, function_info, port_controller, node_list):
         self.client = client
         self.info = function_info
         self.port_controller = port_controller
+        self.node_list = node_list
         
         self.num_processing = 0
         self.rq = []
@@ -119,7 +120,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container):
-        container.init(self.info.workflow_name, self.info.function_name)
+        container.init(self.info.workflow_name, self.info.function_name, self.node_list)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

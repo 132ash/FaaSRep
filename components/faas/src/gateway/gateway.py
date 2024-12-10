@@ -17,9 +17,7 @@ app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
 
-def trigger_function(workflow_name, transaction_id, function_name):
-    info = repo.get_function_info(function_name, workflow_name + '_function_info')
-    ip = info['ip']
+def trigger_function(workflow_name, transaction_id, function_name, ip):
     url = 'http://{}/request'.format(ip)
     print(f"sending req to {url}")
     data = {
@@ -39,8 +37,10 @@ def run_workflow(workflow_name, transaction_id, parameters):
     start = time.time()
     jobs = []
     for n in start_functions:
-        repo.store_input(transaction_id, parameters[n])
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n))
+        info = repo.get_function_info(n, workflow_name + '_function_info')
+        ip = info['ip']
+        repo.store_input(transaction_id, ip, parameters[n])
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
     gevent.joinall(jobs)
     end = time.time()
 

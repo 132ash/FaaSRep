@@ -14,9 +14,9 @@
 # install python packages
 # pip3 install -r requirements.txt
 # install redis
-# docker pull redis
-docker run -itd -p 6379:6379 --name redis redis
+# # docker pull redis
+# docker run -itd -p 6379:6379 --name redis redis
 # # build docker images
 
-# docker build --no-cache -t workflow_base ../components/faas/src/container
-# ../benchmark/testflow/create_image.sh
+docker build --no-cache -t workflow_base ../components/faas/src/container
+../benchmark/testflow/create_image.sh
