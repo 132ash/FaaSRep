@@ -65,6 +65,8 @@ class WorkerSPManager:
         self.lock.acquire()
         if transaction_id not in self.states:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos)
+        else:
+            self.states[transaction_id].function_pos.update(function_pos)
         state = self.states[transaction_id]
         self.lock.release()
         return state
