@@ -20,7 +20,7 @@ class Function:
         self.client = client
         self.info = function_info
         self.port_controller = port_controller
-
+        
         self.num_processing = 0
         self.rq = []
 
@@ -30,8 +30,8 @@ class Function:
         self.b = BoundedSemaphore()
     
     # put the request into request queue
-    def send_request(self, transaction_id, input, output):
-        data = {'transaction_id': transaction_id, 'input': input, 'output': output}
+    def send_request(self, transaction_id, function_pos, input, output):
+        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input, 'output': output}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()

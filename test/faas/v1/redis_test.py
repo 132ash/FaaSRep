@@ -15,7 +15,9 @@ def check_redis_data():
     for key in keys:
         value = redis_client.get(key)
         print(f"Key: {key.decode('utf-8')}, Value: {value.decode('utf-8')}")
-        redis_client.delete(key)
+        # redis_client.delete(key)
 
 if __name__ == "__main__":
+    check_redis_data()
+    redis_client["sds"] = 1
     check_redis_data()

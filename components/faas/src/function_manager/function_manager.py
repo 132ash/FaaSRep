@@ -41,8 +41,8 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_name, transaction_id, input, output):
+    def run(self, function_pos, function_name, transaction_id, input, output):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
-        return self.functions[function_name].send_request(transaction_id, input, output)
+        return self.functions[function_name].send_request(transaction_id, function_pos, input, output)

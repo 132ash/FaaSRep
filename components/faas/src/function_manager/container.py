@@ -52,8 +52,8 @@ class Container:
         return r.json()
 
     # initialize the container
-    def init(self, workflow_name, function_name):
-        data = {'workflow': workflow_name, 'function': function_name }
+    def init(self, workflow_name, function_name, node_list):
+        data = {'workflow': workflow_name, 'function': function_name , "node_list": node_list}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

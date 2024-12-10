@@ -22,6 +22,7 @@ class TransactionState:
         self.write_set = {}
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
+        self.function_pos: Dict[str, str] = {}
         self.parent_executed: Dict[str, int] = {}
         for f in all_func:
             self.executed[f] = False
@@ -44,6 +45,7 @@ class WorkerSPManager:
         self.meta_db = workflow_name + '_workflow_metadata'
 
         self.func = repo.get_current_node_functions(self.host_addr, self.info_db)
+        self.node_list = repo.get_all_addrs(self.info_db)
         
         self.function_manager = FunctionManager(function_info_addr, min_port)
         min_port += 5000
@@ -93,13 +95,13 @@ class WorkerSPManager:
         func_info = self.get_function_info(function_name)
         if func_info['ip'] == self.host_addr:
             # function runs on local
-            self.trigger_function_local(state, function_name, no_parent_execution)
+            self.trigger_function_local(state, function_name, func_info['ip'], no_parent_execution)
         else:
             # function runs on remote machine
             self.trigger_function_remote(state, function_name, func_info['ip'], no_parent_execution)
 
     # trigger a function that runs on local
-    def trigger_function_local(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
+    def trigger_function_local(self, state: TransactionState, function_name: str, ip:str, no_parent_execution = False) -> None:
         logging.info('trigger local function: %s of: %s', function_name, state.transaction_id)
         state.lock.acquire()
         if not no_parent_execution:
@@ -108,6 +110,7 @@ class WorkerSPManager:
         # remember to release state.lock
         if runnable:
             state.executed[function_name] = True
+            state.function_pos[function_name] = ip
             state.lock.release()
             self.run_function(state, function_name)
         else:
@@ -159,7 +162,7 @@ class WorkerSPManager:
 
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
-        self.function_manager.run(info['function_name'], state.transaction_id,
+        self.function_manager.run(state.function_pos, info['function_name'], state.transaction_id,
                              info['input'], info['output'])
         end = time.time()
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'all', 'time': end - start})

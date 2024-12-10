@@ -6,24 +6,28 @@ from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
 import redis
+from Store import RedisClient
 
 default_file = 'main.py'
 work_dir = '/proxy'
-redis_server = redis.StrictRedis(host=container_config.REDIS_HOST, port=container_config.REDIS_PORT, db=container_config.REDIS_DB)
 
 class Runner:
     def __init__(self):
         self.code = None
         self.workflow = None
         self.function = None
+        self.node_list = None
+        self.redis_client = None
         self.ctx = {}
 
-    def init(self, workflow, function):
+    def init(self, workflow, function, node_list):
         print('init...')
 
         # update function status
         self.workflow = workflow
         self.function = function
+        self.node_list = node_list
+        self.redis_client = RedisClient(node_list, container_config.REDIS_PORT, container_config.REDIS_DB)
 
         os.chdir(work_dir)
 
@@ -34,9 +38,9 @@ class Runner:
 
         print('init finished...')
 
-    def run(self, transaction_id, input, output):
+    def run(self, transaction_id, function_pos, input, output):
         # FaaSStore
-        store = Store(self.workflow, self.function, transaction_id, input, output, redis_server)
+        store = Store(self.workflow, self.function, transaction_id, input, output, function_pos, self.redis_client)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
         # pre-exec
@@ -71,7 +75,7 @@ def init():
     proxy.status = 'init'
 
     inp = request.get_json(force=True, silent=True)
-    runner.init(inp['workflow'], inp['function'])
+    runner.init(inp['workflow'], inp['function'],inp['node_list'])
 
     proxy.status = 'ok'
     return ('OK', 200)
@@ -85,10 +89,11 @@ def run():
     transaction_id = inp['transaction_id']
     input = inp['input']
     output = inp['output']
+    function_pos = inp['function_pos']
 
     # record the execution time
     start = time.time()
-    runner.run(transaction_id, input, output)
+    runner.run(transaction_id, function_pos, input, output)
     end = time.time()
 
     res = {
