@@ -4,7 +4,11 @@ import os
 from function_info import parse
 from port_controller import PortController
 from function import Function
-import random
+import sys
+
+sys.path.append('../../config')
+import config
+
 
 repack_clean_interval = 5.000 # repack and clean every 5 seconds
 dispatch_interval = 0.005 # 200 qps at most
@@ -16,18 +20,18 @@ class FunctionManager:
 
         self.port_controller = PortController(min_port, min_port + 4999)
         self.client = docker.from_env()
+        self.default_container_num = config.DEFAULT_CONTAINER_NUM
 
-        self.functions = {
-            x.function_name: Function(self.client, x, self.port_controller, node_list)
-            for x in self.function_info
-        }
-
-        self.init()
-       
-    def init(self):
         print("Clearing previous containers.")
         os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
 
+        self.functions = {
+            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num)
+            for x in self.function_info
+        }
+        self.init()
+       
+    def init(self):
         gevent.spawn_later(repack_clean_interval, self._clean_loop)
         gevent.spawn_later(dispatch_interval, self._dispatch_loop)
     

@@ -77,6 +77,6 @@ class Repository:
     
     def store_input(self, transaction_id, ip, input):
         for k, v in input.items():
-            redis_key =  f"{transaction_id}:GLOBAL:{k}"
+            redis_key =  f"{transaction_id}:RET:GLOBAL:{k}"
             self.redis[extract_ip(ip)][redis_key] = v
             print(self.redis[extract_ip(ip)][redis_key])

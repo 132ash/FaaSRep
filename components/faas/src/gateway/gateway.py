@@ -9,6 +9,7 @@ from gateway_repo import Repository
 from running_info import RunningTXTable
 import requests
 import time
+import logging
 
 sys.path.append('../../config')
 import config
@@ -73,7 +74,10 @@ def run():
 def notify():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
+    read_set = data['read_set']
+    write_set = data['write_set']
     txTable.notifyTX(transaction_id)
+    logging.info(f"Validated: transaction_id: {transaction_id}, read_set: {read_set}, write_set: {write_set}")
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

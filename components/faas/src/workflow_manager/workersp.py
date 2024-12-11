@@ -61,12 +61,14 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, function_pos) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos, read_set, write_set) -> TransactionState:
         self.lock.acquire()
         if transaction_id not in self.states:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos)
         else:
             self.states[transaction_id].function_pos.update(function_pos)
+            self.states[transaction_id].read_set.update(read_set)
+            self.states[transaction_id].write_set.update(write_set)
         state = self.states[transaction_id]
         self.lock.release()
         return state
@@ -102,9 +104,10 @@ class WorkerSPManager:
     # function could be local or remote
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
-            self.commit_tx(state.transaction_id)
+            self.commit_tx(state.transaction_id, state.read_set, state.write_set)
             return
         func_info = self.get_function_info(function_name)
+        print(f"trigger func {function_name} with ip {func_info['ip']}")
         if func_info['ip'] == self.host_addr:
             # function runs on local
             self.trigger_function_local(state, function_name, func_info['ip'], no_parent_execution)
@@ -137,7 +140,9 @@ class WorkerSPManager:
             'workflow_name': self.workflow_name,
             'function_name': function_name,
             'no_parent_execution': no_parent_execution,
-            'function_pos':state.function_pos
+            'function_pos':state.function_pos, 
+            'read_set': state.read_set,
+            'write_set': state.write_set
         }
         response = requests.post(remote_url, json=data)
         response.close()
@@ -163,10 +168,10 @@ class WorkerSPManager:
         gevent.joinall(jobs)
 
 # commit result, now write result to DB, need endfunc info
-    def commit_tx(self, transaction_id):
+    def commit_tx(self, transaction_id, read_set, write_set):
         repo.save_tx_result(transaction_id, self.meta_db)
         remote_url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        response = requests.post(remote_url, json={'transaction_id': transaction_id})
+        response = requests.post(remote_url, json={'transaction_id': transaction_id, 'read_set': read_set, 'write_set': write_set})
         if response.status_code == 200:
             print(f"Successfully notified gateway for transaction_id: {transaction_id}")
         else:
@@ -175,9 +180,15 @@ class WorkerSPManager:
 
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
-        self.function_manager.run(state.function_pos, info['function_name'], state.transaction_id,
+        res = self.function_manager.run(state.function_pos, info['function_name'], state.transaction_id,
                              info['input'], info['output'])
         end = time.time()
+
+        state.lock.acquire()
+        state.read_set[info["function_name"]] = res["read_set"]
+        state.write_set[info["function_name"]] = res["write_set"]
+        state.lock.release()
+
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'all', 'time': end - start})
 
     def clear_mem(self, transaction_id):

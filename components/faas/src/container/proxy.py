@@ -6,7 +6,11 @@ from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
 import redis
-from Store import RedisClient
+from Store import RedisShadowTable, RedisCache
+
+
+couchdb_url = container_config.COUCHDB_URL
+db_server = couchdb.Server(couchdb_url)
 
 default_file = 'main.py'
 work_dir = '/proxy'
@@ -17,7 +21,8 @@ class Runner:
         self.workflow = None
         self.function = None
         self.node_list = None
-        self.redis_client = None
+        self.shadow_table = None
+        self.cache = None
         self.ctx = {}
 
     def init(self, workflow, function, node_list):
@@ -27,7 +32,10 @@ class Runner:
         self.workflow = workflow
         self.function = function
         self.node_list = node_list
-        self.redis_client = RedisClient(node_list, container_config.REDIS_PORT, container_config.REDIS_DB)
+        # shadow table on each host
+        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
+        # local cache
+        self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
 
         os.chdir(work_dir)
 
@@ -40,7 +48,8 @@ class Runner:
 
     def run(self, transaction_id, function_pos, input, output):
         # FaaSStore
-        store = Store(self.workflow, self.function, transaction_id, input, output, function_pos, self.redis_client)
+        TxMetaData = {"ReadSet": {}, "WriteSet": set()}
+        store = Store(self.workflow, self.function, transaction_id, input, output, function_pos, self.shadow_table, self.cache, TxMetaData)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
         # pre-exec
@@ -52,6 +61,8 @@ class Runner:
         start = time.time()
         out = eval('main()', self.ctx)
         end = time.time()
+
+        return TxMetaData["ReadSet"], list(TxMetaData["WriteSet"])
 
 
 proxy = Flask(__name__)
@@ -93,7 +104,7 @@ def run():
 
     # record the execution time
     start = time.time()
-    runner.run(transaction_id, function_pos, input, output)
+    rs, ws = runner.run(transaction_id, function_pos, input, output)
     end = time.time()
 
     res = {
@@ -103,6 +114,8 @@ def run():
         "inp": inp, 
         "input": input,
         "output": output,
+        "read_set": rs,
+        "write_set": ws
     }
 
     proxy.status = 'ok'

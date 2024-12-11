@@ -49,12 +49,15 @@ class Repository:
         for item in db.find({'selector': {'function_name': function_name}}):
             return item
     
-    def clear_mem(self, transaction_id):
-        keys = self.redis.keys()
-        for key in keys:
-            key_str = key.decode()
-            if key_str.startswith(transaction_id):
-                self.redis.delete(key)
+    def clear_mem(self, transaction_id=""):
+        if transaction_id:
+            keys = self.redis.keys()
+            for key in keys:
+                key_str = key.decode()
+                if key_str.startswith(transaction_id):
+                    self.redis.delete(key)
+        else:
+            self.redis.flushall(True)
 
     def clear_db(self, transaction_id):
         db = self.couch['results']
@@ -87,7 +90,7 @@ class Repository:
             db.save(doc)
 
     def param_wrapper(self, transaction_id, func ,key):
-        return f"{transaction_id}:{func}:{key}" 
+        return f"{transaction_id}:RET:{func}:{key}" 
 
     # input_keys: specify the keys you want
     def fetch_result(self, transaction_id, func, output):

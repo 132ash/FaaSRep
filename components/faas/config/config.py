@@ -8,3 +8,4 @@ WORKFLOW_YAML_ADDR = {"testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow
 # get function image info for container initialization
 FUNCTION_INFO_ADDRS = {'testflow': '../../../../benchmark/testflow'}
 CLEAR_DB_AND_MEM = False
+DEFAULT_CONTAINER_NUM = 1

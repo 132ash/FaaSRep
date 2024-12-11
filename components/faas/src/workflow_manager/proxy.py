@@ -3,10 +3,12 @@ monkey.patch_all()
 import os
 import gevent
 import json
+import redis
 from typing import Dict
 import sys
 sys.path.append('../../config')
 import config
+import workersp_repo
 from workersp import WorkerSPManager
 import docker
 from flask import Flask, request
@@ -14,12 +16,17 @@ app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 
+def clearRedis():
+    repo = workersp_repo.Repository()
+    repo.clear_mem()
+
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
+       clearRedis()
        self.managers = {name: WorkerSPManager(sys.argv[1] + ':' + sys.argv[2], name, addr) for name, addr in info_addrs.items()}
 
-    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}) -> WorkerSPManager:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos)
+    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}, read_set={}, write_set={}) -> WorkerSPManager:
+        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -45,8 +52,10 @@ def req():
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
     function_pos = data.get('function_pos', {})
+    read_set = data.get('read_set', {})
+    write_set = data.get('write_set', {})
     # get the corresponding workflow state and trigger the function
-    state = dispatcher.get_state(workflow_name, transaction_id, function_pos)
+    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
 
@@ -80,6 +89,7 @@ def get_container_names():
     global container_names
     container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
 
+    
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 import logging
 import time
 import math
+import sys
 from gevent import event
 from gevent.lock import BoundedSemaphore
 from container import Container
@@ -16,11 +17,12 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info, port_controller, node_list):
+    def __init__(self, client, function_info, port_controller, node_list, default_container_num):
         self.client = client
         self.info = function_info
         self.port_controller = port_controller
         self.node_list = node_list
+        self.default_container_num = default_container_num
         
         self.num_processing = 0
         self.rq = []
@@ -29,6 +31,15 @@ class Function:
         self.num_exec = 0 # the number of containers in execution, not in container pool
         self.container_pool = []
         self.b = BoundedSemaphore()
+
+        while len(self.container_pool) < self.default_container_num:
+            container = self.create_container()
+            if container is None:
+                raise Exception("Container creation failed")
+            self.put_container(container)
+        print(f"function: {self.info.function_name} container pool created, len {len(self.container_pool)}")
+        
+
     
     # put the request into request queue
     def send_request(self, transaction_id, function_pos, input, output):
@@ -127,7 +138,7 @@ class Function:
         # find the old containers
         old_container = []
         self.b.acquire()
-        self.container_pool = clean_pool(self.container_pool, exec_lifetime, old_container)
+        self.container_pool = clean_pool(self.container_pool, exec_lifetime, old_container, self.default_container_num)
         self.b.release()
 
         # time consuming work is put here
@@ -143,9 +154,10 @@ exec_lifetime = 600
 # the pool list is in order:
 # - at the tail is the hottest containers (most recently used)
 # - at the head is the coldest containers (least recently used)
-def clean_pool(pool, lifetime, old_container):
+def clean_pool(pool, lifetime, old_container, default_container_num):
     cur_time = time.time()
     idx = -1
+
     for i, c in enumerate(pool):
         if cur_time - c.lasttime < lifetime:
             idx = i
@@ -153,6 +165,10 @@ def clean_pool(pool, lifetime, old_container):
     # all containers in pool are old, or the pool is empty
     if idx < 0:
         idx = len(pool)
+    
+    if len(pool) - idx <= default_container_num:
+        idx = max(0, len(pool) - default_container_num)
+
     old_container.extend(pool[:idx])
     return pool[idx:]
 
