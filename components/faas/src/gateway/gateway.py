@@ -6,7 +6,7 @@ monkey.patch_all()
 import sys
 from flask import Flask, request
 from gateway_repo import Repository
-from running_info import RunningTXTable
+from transaction_info import RunningTXTable
 import requests
 import time
 import logging
@@ -68,6 +68,7 @@ def run():
     print(f"transaction_id: f{transaction_id}, res: {res}")
     txTable.finishTX(transaction_id)
     return json.dumps({'status': 'ok', 'latency': latency, 'TxID': transaction_id, "res": res})
+
 
 
 @app.route('/notify', methods = ['POST'])
