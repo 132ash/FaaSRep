@@ -119,13 +119,24 @@ class Store:
             self.put_to_mem(k, ip, 'RET')
 
     def get(self, key):
-        value_version_pair =  self.redis_cache.cache_get(key)
-        version = value_version_pair["version"]
-        self.tx_metadata["ReadSet"][key] = version
-        return value_version_pair["value"]
+        value = None
+        func_ip_pair = self.tx_metadata["WriteSet"].get(key, None)
+        # upstream fucntion has written this key
+        if func_ip_pair and func_ip_pair['func'] != self.function_name:
+            key_pos = func_ip_pair['ip']
+            value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT'), key_pos)
+        else:
+            value_version_pair =  self.redis_cache.cache_get(key)
+            version = value_version_pair["version"]
+            self.tx_metadata["ReadSet"][key] = version
+            value = value_version_pair["value"]
+        return value
     
     def put(self, key, value):
-        self.tx_metadata["WriteSet"].add(key)
+        if key not in self.tx_metadata["WriteSet"]:
+            self.tx_metadata["WriteSet"][key] = {}
+        self.tx_metadata["WriteSet"][key]['ip'] = self.function_pos[self.function_name]
+        self.tx_metadata["WriteSet"][key]['func'] = self.function_name
         self.put_to_mem(key, self.function_pos[self.function_name], 'PUT', value)
             
       

@@ -15,18 +15,15 @@ from flask import Flask, request
 app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
-
-def clearRedis():
-    repo = workersp_repo.Repository()
-    repo.clear_mem()
+repo = workersp_repo.Repository()
 
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
-       clearRedis()
+       repo.clear_mem()
        self.managers = {name: WorkerSPManager(sys.argv[1] + ':' + sys.argv[2], name, addr) for name, addr in info_addrs.items()}
 
-    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}, read_set={}, write_set={}) -> WorkerSPManager:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set)
+    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}, read_set={}, write_set={}, repair=False, expired_keys={}) -> WorkerSPManager:
+        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set , repair, expired_keys)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -54,8 +51,10 @@ def req():
     function_pos = data.get('function_pos', {})
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
+    repair = data.get('repair', False)
+    expired_keys = data.get('expired_keys', {})
     # get the corresponding workflow state and trigger the function
-    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set)
+    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, repair, expired_keys)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
 
@@ -70,6 +69,14 @@ def clear():
         dispatcher.clear_db(workflow_name, transaction_id) # optional: clear results in center db
     dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     dispatcher.del_state(workflow_name, transaction_id, master) # and remove state for every node
+    return json.dumps({'status': 'ok'})
+
+@app.route('/commit', methods = ['GET'])
+def commit():
+    data = request.get_json(force=True, silent=True)
+    transaction_id = data['transaction_id']
+    version = data['version']
+    repo.commit_tx_writes(transaction_id, version)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

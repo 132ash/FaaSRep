@@ -46,10 +46,11 @@ class Runner:
 
         print('init finished...')
 
-    def run(self, transaction_id, function_pos, input, output):
+    def run(self, transaction_id, function_pos, input, output, write_set):
         # FaaSStore
-        TxMetaData = {"ReadSet": {}, "WriteSet": set()}
-        store = Store(self.workflow, self.function, transaction_id, input, output, function_pos, self.shadow_table, self.cache, TxMetaData)
+        
+        TxMetaData_thisFunc = {"ReadSet": {}, "WriteSet": write_set}
+        store = Store(self.workflow, self.function, transaction_id, input, output, function_pos, self.shadow_table, self.cache, TxMetaData_thisFunc)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
         # pre-exec
@@ -62,7 +63,7 @@ class Runner:
         out = eval('main()', self.ctx)
         end = time.time()
 
-        return TxMetaData["ReadSet"], list(TxMetaData["WriteSet"])
+        return TxMetaData_thisFunc["ReadSet"], TxMetaData_thisFunc["WriteSet"]
 
 
 proxy = Flask(__name__)
@@ -101,10 +102,11 @@ def run():
     input = inp['input']
     output = inp['output']
     function_pos = inp['function_pos']
+    write_set = inp['write_set']
 
     # record the execution time
     start = time.time()
-    rs, ws = runner.run(transaction_id, function_pos, input, output)
+    rs, ws = runner.run(transaction_id, function_pos, input, output, write_set)
     end = time.time()
 
     res = {

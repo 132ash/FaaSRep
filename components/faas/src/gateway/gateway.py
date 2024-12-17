@@ -25,7 +25,8 @@ def trigger_function(workflow_name, transaction_id, function_name, ip):
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
         'function_name': function_name,
-        'no_parent_execution': True
+        'no_parent_execution': True,
+        'repair': False
     }
     requests.post(url, json=data)
 

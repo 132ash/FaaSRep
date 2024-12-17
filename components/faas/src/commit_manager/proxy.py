@@ -5,7 +5,9 @@ monkey.patch_all()
 import datetime
 
 from validator import TxValidator, TxVersion
-from components.faas.src.commit_manager.TX_timestamp import TimeStampAllocator 
+from TX_timestamp import TimeStampAllocator, TxVersion
+from components.faas.src.commit_manager.repair_engine import RepairEngine
+import validator_repo 
 import json
 import sys
 
@@ -22,30 +24,18 @@ from flask import Flask, request
 app = Flask(__name__)
 
 
-Validator = TxValidator()
 Timestamp_allocator = TimeStampAllocator()
+Validator = TxValidator(Timestamp_allocator)
+repairer = RepairEngine()
+repo = validator_repo.Repository()
 GATEWAY_ADDR = config.GATEWAY_ADDR
 
-# TODO: trigger repair via send request to every workersp
-def trigger_repair(transaction_id, expired_keys):
-    url = 'http://{}/repair'.format(GATEWAY_ADDR)
-    print(f"sending repair req to {url}, with expired_keys: {expired_keys}")
-    data = {
-        'transaction_id': transaction_id,
-        'expired_keys': expired_keys
-    }
-    r = requests.post(url, json=data)
-    return r.json()
-
-# TODO： trigger commit via send request to every workersp
-def trigger_commit(transaction_id):
-    pass
-
-def notify_gateway(transaction_id):
+def notify_gateway(transaction_id, success:bool):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
     print(f"sending return req to {url}")
     data = {
-        'transaction_id': transaction_id
+        'transaction_id': transaction_id,
+        'success': success
     }
     r = requests.post(url, json=data)
     return r.json()
@@ -53,34 +43,32 @@ def notify_gateway(transaction_id):
 # receive a set of rw sets and validate them: lock, get delta set and send to gateway.
 # rerun or directly commit.
 # used in first or second phase.
+# read set: {func: {key: version}}  write set: {key: {ip:func_ip, func:func}}
 @app.route('/validate', methods = ['POST'])
 def validate_tx():
     data = request.get_json(force=True, silent=True)
-    commitTime = get_timestamp()
     read_set = data['read_set']
     write_set = data['write_set']
+    workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
+    function_pos = data.get('function_pos', {})
+    commitTime = Timestamp_allocator.allocate_timestamp(transaction_id)
     version = TxVersion(transaction_id, commitTime)
-    expired_keys, confilcted = Validator.validate(transaction_id, read_set, write_set)
-    repair_res = trigger_repair(transaction_id, expired_keys)
-    if repair_res['status'] == 'ok':
-        r = trigger_commit(transaction_id)
-        if r['status'] == 'ok':
-            notify_gateway(transaction_id)
-            Validator.update_global_table(write_set, version)
-            return json.dumps({'status': 'ok'})
-        else:
-            return json.dumps({'status': 'failed'})
+    # get expired keys.
+    expired_keys, confilcted = Validator.validate(transaction_id, read_set, write_set, function_pos)
+    start_functions = repo.get_start_functions(workflow_name + '_workflow_metadata')
+    repair_successful = repairer.trigger_repair(transaction_id, start_functions, workflow_name, expired_keys, confilcted, function_pos)
+    if repair_successful:
+        Validator.commit_tx(transaction_id, version)
+        notify_gateway(transaction_id, True)
     else:
         return json.dumps({'status': 'failed'})
-
-
-# final commit, release lock and notify the gateway. 
-@app.route('/commit', methods = ['POST'])
-def validate_tx():
-    pass
-
-
+    
+@app.route('/fin_repair', methods = ['POST'])
+def repair_finish():
+    data = request.get_json(force=True, silent=True)
+    transaction_id = data['transaction_id']
+    repairer.notify_Tx(transaction_id)
 
 
 from gevent.pywsgi import WSGIServer

@@ -27,8 +27,13 @@ def extract_ip(address: str) -> str:
 class TransactionState:
     def __init__(self, transaction_id: str, all_func: List[str], function_pos: Dict[str, str]={}):
         self.transaction_id = transaction_id
-        self.read_set = {}
-        self.write_set = {}
+        # {func: {key: version}}
+        self.read_set:Dict[str:Dict[str:str]] = {}
+        # {key: func_ip}
+        self.write_set:Dict[str:Dict[str:str]] = {}
+        # {func: []]}
+        self.expired_keys = {}
+        self.repair = False # if the transaction is in repair mode
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
         self.function_pos: Dict[str, str] = function_pos
@@ -61,14 +66,16 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, function_pos, read_set, write_set) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos, read_set, write_set,  repair, expired_keys) -> TransactionState:
         self.lock.acquire()
         if transaction_id not in self.states:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, repair, expired_keys)
         else:
-            self.states[transaction_id].function_pos.update(function_pos)
-            self.states[transaction_id].read_set.update(read_set)
-            self.states[transaction_id].write_set.update(write_set)
+            state = self.states[transaction_id]
+            state.lock.acquire()
+            state.repair = repair
+            state.expired_keys = expired_keys
+            state.lock.release()
         state = self.states[transaction_id]
         self.lock.release()
         return state
@@ -98,18 +105,37 @@ class WorkerSPManager:
         if function_name not in self.function_info:
             self.function_info[function_name] = repo.get_function_info(function_name, self.info_db)
         return self.function_info[function_name]
+    
+    def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos):
+        remote_url = 'http://{}/validate'.format(config.GATEWAY_ADDR)
+        requests.post(remote_url, json={'workflow_name': workflow_name, 'transaction_id': transaction_id, 'read_set': read_set, 'write_set': write_set, "function_pos": function_pos})
+      
+
+    def commit_tx(self, transaction_id):
+        repo.save_tx_result(transaction_id, self.meta_db)
+        remote_url = 'http://{}/fin_repair'.format(config.GATEWAY_ADDR)
+        requests.post(remote_url, json={'transaction_id': transaction_id})
+
 
     # trigger the function when one of its parent is finished
     # function may run or not, depending on if all its parents were finished
     # function could be local or remote
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
-            self.commit_tx(state.transaction_id, state.read_set, state.write_set)
+            if state.repair:
+                self.commit_tx(state.transaction_id)
+            else:
+                function_pos = state.function_pos
+                self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, function_pos)
             return
         func_info = self.get_function_info(function_name)
         print(f"trigger func {function_name} with ip {func_info['ip']}")
         if func_info['ip'] == self.host_addr:
             # function runs on local
+            # update cache if in repair mode and this node has expired_keys.
+            if state.repair and self.host_addr in state.expired_keys:
+                repo.update_cache(state.transaction_id, state.expired_keys[self.host_addr])
+                state.expired_keys.pop(self.host_addr)
             self.trigger_function_local(state, function_name, func_info['ip'], no_parent_execution)
         else:
             # function runs on remote machine
@@ -167,26 +193,15 @@ class WorkerSPManager:
         ]
         gevent.joinall(jobs)
 
-# commit result, now write result to DB, need endfunc info
-    def commit_tx(self, transaction_id, read_set, write_set):
-        repo.save_tx_result(transaction_id, self.meta_db)
-        remote_url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        response = requests.post(remote_url, json={'transaction_id': transaction_id, 'read_set': read_set, 'write_set': write_set})
-        if response.status_code == 200:
-            print(f"Successfully notified gateway for transaction_id: {transaction_id}")
-        else:
-            print(f"Failed to notify gateway for transaction_id: {transaction_id}, status code: {response.status_code}")
-
-
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         res = self.function_manager.run(state.function_pos, info['function_name'], state.transaction_id,
-                             info['input'], info['output'])
+                             info['input'], info['output'], state.write_set)
         end = time.time()
 
         state.lock.acquire()
         state.read_set[info["function_name"]] = res["read_set"]
-        state.write_set[info["function_name"]] = res["write_set"]
+        state.write_set = res["write_set"]
         state.lock.release()
 
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'all', 'time': end - start})

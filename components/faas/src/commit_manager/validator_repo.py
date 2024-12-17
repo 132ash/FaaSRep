@@ -1,7 +1,5 @@
 from typing import Any, List
 import couchdb
-import redis
-import threading
 import sys
 
 sys.path.append('../../config')
@@ -21,10 +19,24 @@ class Repository:
             functions.append(db[item]['function_name'])
         return functions
     
-    def get_initial_data(self):
-        db = self.couch['initial_data']
+    def get_initial_data_version(self):
+        db = self.couch['data']
+        initial_data = {}
+        for item in db:
+            initial_data[item] = db[item]['version']
+        return initial_data
+
+    def get_start_functions(self, db_name) -> List[str]:
+        db = self.couch[db_name]
         for item in db:
             doc = db[item]
-            return doc
+            if 'start_functions' in doc:
+                return doc['start_functions']
 
+    def get_all_addrs(self, db_name) -> List[str]:
+        db = self.couch[db_name]
+        for item in db:
+            doc = db[item]
+            if 'addrs' in doc:
+                return doc['addrs']
     

@@ -42,8 +42,8 @@ class Function:
 
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output):
-        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input, 'output': output}
+    def send_request(self, transaction_id, function_pos, input, output, write_set):
+        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input, 'output': output, 'write_set':write_set}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()
