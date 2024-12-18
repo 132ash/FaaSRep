@@ -18,5 +18,7 @@
 # docker run -itd -p 6379:6379 --name redis redis
 # # build docker images
 
+aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
+
 docker build --no-cache -t workflow_base ../components/faas/src/container
 ../benchmark/testflow/create_image.sh

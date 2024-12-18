@@ -2,7 +2,6 @@ import json
 import os
 import threading
 import container_config
-import couchdb
 import redis
 
 class RedisShadowTable:
@@ -23,7 +22,7 @@ class RedisShadowTable:
 class RedisCache:
     def __init__(self, port, db, db_server):
         self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db)
-        self.data_db = db_server["data"]
+        self.data_db = db_server.Table('data')
 
     def cache_get(self, key):
         value_tuple = self.redis.get(key)
@@ -34,11 +33,17 @@ class RedisCache:
         return value_tuple
     
     def db_get(self, key):
-        try:
-            doc = self.data_db[key]
-            return doc['version'], doc['value']
-        except couchdb.http.ResourceNotFound:
-            raise(f"Key {key} not found in data_db")
+        # 从dynamodb中获取数据
+        response = self.table.get_item(
+            Key={
+                'key': key
+            }
+        )
+        item = response.get('Item')
+        if item:
+            return item['version'], item['value']
+        else:
+            return None, None
     
     def update_and_fetch(self, key):
         version, value = self.db_get(key)

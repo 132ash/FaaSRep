@@ -1,4 +1,8 @@
 COUCHDB_URL = 'http://faasnap:faasnap@192.168.162.132:5984'
+DYNAMODB_URL = 'http://192.168.162.132:4567'
+DYNAMODB_KEY_ID = 'FAASNAPDYNAMODB'
+DYNAMODB_ACCESS_KEY = 'FAASNAPDYNAMODBKEY'
+DYNAMODB_AREA = 'us-west-2'
 REDIS_HOST = '127.0.0.1' # it serves to connect with the local redis, so it should be 127.0.0.1
 REDIS_PORT = 6379 # it follows the same configuration as created redis by docker (e.g., -p 6379:6379)
 REDIS_DB = 0

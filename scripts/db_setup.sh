@@ -12,14 +12,21 @@
 # apt-get update
 # apt-get install -y docker-ce docker-ce-cli containerd.io
 # apt-get install wondershaper
+
+# install and initialize DynamoDB
+# docker pull amazon/dynamodb-local:latest
+# aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
+# docker run -d -p 4567:8000 amazon/dynamodb-local:latest
+# Default region name: us-west-2
+
+
 # install and initialize couchdb
 # docker pull couchdb
 docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
 pip3 install -r requirements.txt
-python3 couchdb_starter.py
-# install redis
-docker pull redis
-docker run -itd -p 6379:6379 --name redis redis
-# # run grouping for all benchmarks/home/shao/FaaSnap/scripts/de_setup.sh
-# cd ../src/grouping
-# python3 grouping.py video illgal_recognizer fileprocessing wordcount cycles epigenomics genome soykb
+python3 db_starter.py
+
+# # install redis
+# docker pull redis
+# docker run -itd -p 6379:6379 --name redis redis
+

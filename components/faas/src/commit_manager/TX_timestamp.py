@@ -20,10 +20,10 @@ class TimeStampAllocator:
         return timestamp
     
     def wait_for_preceeding_txs(self, tx_id:str):
-        condition = self.wait_condition[tx_id]
-        with condition:       
-            # previous txs are trying to get into the waiting queue of keys.
-            if self.pending_txs[0] != tx_id:
+        condition = self.wait_condition[tx_id] 
+        # previous txs are trying to get into the waiting queue of keys.
+        while self.pending_txs[0] != tx_id:
+            with condition:
                 condition.wait()
 
    # tx finished waiting keys, pop itself, and notify the next tx in the queue.

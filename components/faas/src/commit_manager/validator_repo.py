@@ -1,30 +1,29 @@
 from typing import Any, List
 import couchdb
 import sys
+import boto3
 
 sys.path.append('../../config')
 import config
 
 couchdb_url = config.COUCHDB_URL
+dynamodb_url = config.DYNAMODB_URL
+dynamodb_key_id = config.DYNAMODB_KEY_ID
+dynamodb_access_key = config.DYNAMODB_ACCESS_KEY
+dynamodb_area = config.DYNAMODB_AREA
 
 class Repository:
     def __init__(self):
         self.couch = couchdb.Server(couchdb_url)
+        self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
 
-    # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
-    def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
-        db = self.couch[mode]
-        functions = []
-        for item in db:
-            functions.append(db[item]['function_name'])
-        return functions
-    
+
     def get_initial_data_version(self):
-        db = self.couch['data']
-        initial_data = {}
-        for item in db:
-            initial_data[item] = db[item]['version']
-        return initial_data
+        table = self.dynamo.Table('data')
+        response = table.scan()
+        items = response.get('Items', [])
+        key_version_dict = {item['key']: item['version'] for item in items}
+        return key_version_dict
 
     def get_start_functions(self, db_name) -> List[str]:
         db = self.couch[db_name]

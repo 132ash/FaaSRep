@@ -38,14 +38,13 @@ class TxValidator:
         
 
     def release_lock(self, tx_id, key):
-        try:
-            if self.locks[key]["waiter"][0] == tx_id:
-                self.locks[key]["waiters"].pop(0)
-                if len(self.locks[key]["waiters"]) > 0:
-                    next_tx_id = self.locks[key]["waiters"][0]
-                    with self.acquired_locks[next_tx_id]["cond"]:
-                        self.acquired_locks[next_tx_id]["cond"].notify_all()
-        except:
+        if self.locks[key]["waiter"][0] == tx_id:
+            self.locks[key]["waiters"].pop(0)
+            if len(self.locks[key]["waiters"]) > 0:
+                next_tx_id = self.locks[key]["waiters"][0]
+                with self.acquired_locks[next_tx_id]["cond"]:
+                    self.acquired_locks[next_tx_id]["cond"].notify_all()
+        else:
             raise Exception("release lock failed, tx_id not the owner of the lock")
     
     def validate(self, transaction_id, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos) -> tuple[dict, bool]:
@@ -59,20 +58,20 @@ class TxValidator:
         self.write_set_per_tx[transaction_id] = write_set
         for key in write_set.keys():
             lock_key_set.add(key)
-            self.ask_for_lock(transaction_id, key)
 
         # collect all keys in read set.
         for func, rs in read_set.items():
             expired_keys[func] = []
             for key, version in rs.items():
                 lock_key_set.add(key)
-                self.ask_for_lock(transaction_id, key)
+
+        self.acquired_locks[transaction_id]["target"] = len(lock_key_set)
+        for key in lock_key_set:
+            self.ask_for_lock(transaction_id, key)
 
         # FINISHED ask for locks, notify the next tx.
         self.timestamp_allocator.notify_next_tx(transaction_id)
         
-
-        self.acquired_locks[transaction_id]["target"] = len(lock_key_set)
         while self.acquired_locks[transaction_id]["acquired"] < self.acquired_locks[transaction_id]["target"]:
             with self.acquired_locks[transaction_id]["cond"]:
                 self.acquired_locks[transaction_id]["cond"].wait()
