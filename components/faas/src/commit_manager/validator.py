@@ -41,7 +41,7 @@ class TxValidator:
         
 
     def release_lock(self, tx_id, key):
-        if self.locks[key]["waiter"][0] == tx_id:
+        if self.locks[key]["waiters"][0] == tx_id:
             self.locks[key]["waiters"].pop(0)
             if len(self.locks[key]["waiters"]) > 0:
                 next_tx_id = self.locks[key]["waiters"][0]
@@ -95,16 +95,16 @@ class TxValidator:
         return expired_keys, len(expired_keys) != 0
     
     # modify global table, and release locks.
-    def commit_tx(self, transaction_id, version: TxVersion):
+    def commit_tx(self, transaction_id, workflow_name, version: str):
         write_set = self.write_set_per_tx[transaction_id]
         all_addr_ip = set()
 
         for key, func_ip_pair in write_set.items():
             all_addr_ip.add(func_ip_pair['ip'])
-            self.global_table[key] = version.to_string()
+            self.global_table[key] = version
 
         jobs = [
-            gevent.spawn(self.trigger_worker_commit, ip, transaction_id, version)
+            gevent.spawn(self.trigger_worker_commit, ip, transaction_id, workflow_name, version)
             for ip in all_addr_ip
         ]
         gevent.joinall(jobs)
@@ -115,11 +115,16 @@ class TxValidator:
         self.write_set_per_tx.pop(transaction_id)
         self.lock_key_set_per_tx.pop(transaction_id)
 
-    def trigger_worker_commit(self, ip, transaction_id, version):
-        url = f"http://{ip}/commit"
+    def trigger_worker_commit(self, ip, transaction_id, workflow_name, version):
+        if not ip.endswith(":7000"):
+            url = f"http://{ip}:7000/commit"
+        else:
+            url = f"http://{ip}/commit"
         
+        print(f"triggering worker commit, sending req to {url}")
         data = {
             'transaction_id': transaction_id,
-            "version": version
+            "version": version, 
+            "workflow_name": workflow_name
         }
         requests.post(url, json=data)

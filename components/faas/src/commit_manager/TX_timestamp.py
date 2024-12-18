@@ -3,8 +3,6 @@ from gevent import monkey
 monkey.patch_all()
 import gevent.lock
 from gevent import event
-from typing import Any, Dict, List
-import threading
 
 class TimeStampAllocator:
 

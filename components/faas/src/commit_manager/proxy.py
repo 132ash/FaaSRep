@@ -31,7 +31,6 @@ print(f"Validator and repairer started. initial key version: {Validator.global_t
 
 def notify_gateway(transaction_id, success:bool):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
-    print(f"sending return req to {url}")
     data = {
         'transaction_id': transaction_id,
         'success': success
@@ -60,8 +59,9 @@ def validate_tx():
     print(f"expired_keys: {expired_keys}")
     repair_successful = repairer.trigger_repair(transaction_id, workflow_name, expired_keys, confilcted, function_pos)
     if repair_successful:
-        Validator.commit_tx(transaction_id, version)
+        Validator.commit_tx(transaction_id, workflow_name, version.to_string())
         notify_gateway(transaction_id, True)
+        return json.dumps({'status': 'successed'})
     else:
         return json.dumps({'status': 'failed'})
     
@@ -70,6 +70,7 @@ def repair_finish():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
     repairer.notify_Tx(transaction_id)
+    return json.dumps({'status': 'successed'})
 
 
 from gevent.pywsgi import WSGIServer

@@ -71,11 +71,12 @@ def clear():
     dispatcher.del_state(workflow_name, transaction_id, master) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
-@app.route('/commit', methods = ['GET'])
+@app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
     version = data['version']
+    print(f"commit txid{transaction_id}, version{version}")
     repo.commit_tx_writes(transaction_id, version)
     return json.dumps({'status': 'ok'})
 
@@ -97,10 +98,11 @@ def get_container_names():
     container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
 
     
+# python components/faas/src/workflow_manager/workersp.py  192.168.162.130 7000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()
-    gevent.spawn_later(GET_NODE_INFO_INTERVAL)
+   

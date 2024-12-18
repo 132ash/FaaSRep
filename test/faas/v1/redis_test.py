@@ -8,7 +8,7 @@ print(redis_client1.get("sds"))
 
 def check_redis_data():
     # 获取所有键
-    keys = redis_client.keys('*')
+    keys = redis_client1.keys("*")
     
     if not keys:
         print("No keys found in Redis database.")
@@ -16,11 +16,9 @@ def check_redis_data():
     
     # 打印每个键及其对应的值
     for key in keys:
-        value = redis_client.get(key)
+        value = redis_client1.get(key)
         print(f"Key: {key.decode('utf-8')}, Value: {value.decode('utf-8')}")
         # redis_client.delete(key)
 
 if __name__ == "__main__":
-    check_redis_data()
-    redis_client["sds"] = 1
     check_redis_data()

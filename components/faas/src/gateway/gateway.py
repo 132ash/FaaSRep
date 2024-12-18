@@ -65,7 +65,7 @@ def run():
     latency = run_workflow(workflow, transaction_id, parameters)
     txTable.waitTX(transaction_id)
     print('request ' + transaction_id + ' done')
-    res = repo.get_result(transaction_id)
+    res = repo.get_result(transaction_id, workflow)
     print(f"transaction_id: f{transaction_id}, res: {res}")
     txTable.finishTX(transaction_id)
     return json.dumps({'status': 'ok', 'latency': latency, 'TxID': transaction_id, "res": res})
@@ -76,10 +76,9 @@ def run():
 def notify():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
-    read_set = data['read_set']
-    write_set = data['write_set']
+    success = data['success']
     txTable.notifyTX(transaction_id)
-    logging.info(f"Validated: transaction_id: {transaction_id}, read_set: {read_set}, write_set: {write_set}")
+    logging.info(f"Validated: transaction_id: {transaction_id}, commited: {success}")
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

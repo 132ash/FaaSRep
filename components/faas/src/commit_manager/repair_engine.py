@@ -7,7 +7,7 @@ import gevent.lock
 
 import sys
 from flask import Flask, request
-import requests
+from gevent import event
 import time
 import validator_repo
 
@@ -25,9 +25,10 @@ class RepairEngine:
         if not confilcted:
             return True
         start_functions = repo.get_start_functions(workflow_name + '_workflow_metadata')
-        self.repairing_txs[transaction_id] = {'cond': gevent.lock.BoundedSemaphore(), 'finished': False, "repaired":False}
+        self.repairing_txs[transaction_id] = {'cond': event.Event(), 'finished': False, "repaired":False}
+        self.repairing_txs[transaction_id]['cond'].clear()
         self.repair_workflow(transaction_id, start_functions, workflow_name, expired_keys, function_pos)
-        self.wait_Tx_repair_finish(transaction_id)
+        self.repairing_txs[transaction_id]['cond'].wait()
         if self.repairing_txs[transaction_id]['repaired']:
             return True
         else:
@@ -58,18 +59,8 @@ class RepairEngine:
         end = time.time()
         return end - start
 
-    def wait_Tx_repair_finish(self, tx_id):
-        condition = self.repairing_txs[tx_id]['cond']
-        while not self.repairing_txs[tx_id]['finished']:
-            with condition:
-                print(f"waiting for {tx_id} finish repair")
-                condition.wait()
-
     def notify_Tx(self, tx_id, success):
-        condition = self.repairing_txs[tx_id]['cond']
-        self.repairing_txs[tx_id]['finished'] = True
         self.repairing_txs[tx_id]['repaired'] = success
-        with condition:
-            condition.notify_all()
+        self.repairing_txs[tx_id]['cond'].set()
         print(f"notified {tx_id}, repaired: {success}")
 

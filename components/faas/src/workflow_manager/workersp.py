@@ -1,7 +1,6 @@
 import sys
 import logging
 import time
-import gevent
 import gevent.lock
 import workersp_repo
 from typing import Any, Dict, List
@@ -25,15 +24,15 @@ def extract_ip(address: str) -> str:
         raise ValueError("Invalid address format")
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], function_pos: Dict[str, str]={}):
+    def __init__(self, transaction_id: str, all_func: List[str], function_pos: Dict[str, str]={}, read_set={}, write_set={}, repair=False, expired_keys={}):
         self.transaction_id = transaction_id
         # {func: {key: version}}
-        self.read_set:Dict[str:Dict[str:str]] = {}
+        self.read_set:Dict[str:Dict[str:str]] = read_set
         # {key: func_ip}
-        self.write_set:Dict[str:Dict[str:str]] = {}
+        self.write_set:Dict[str:Dict[str:str]] = write_set
         # {func: []]}
-        self.expired_keys = {}
-        self.repair = False # if the transaction is in repair mode
+        self.expired_keys = expired_keys
+        self.repair = repair # if the transaction is in repair mode
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
         self.function_pos: Dict[str, str] = function_pos
@@ -107,13 +106,14 @@ class WorkerSPManager:
         return self.function_info[function_name]
     
     def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos):
-        remote_url = 'http://{}/validate'.format(config.GATEWAY_ADDR)
+        print(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, function_pos:{function_pos}")
+        remote_url = 'http://{}/validate'.format(config.VALIDATOR_ADDR)
         requests.post(remote_url, json={'workflow_name': workflow_name, 'transaction_id': transaction_id, 'read_set': read_set, 'write_set': write_set, "function_pos": function_pos})
       
 
-    def commit_tx(self, transaction_id):
-        repo.save_tx_result(transaction_id, self.meta_db)
-        remote_url = 'http://{}/fin_repair'.format(config.GATEWAY_ADDR)
+    def fin_repair_tx(self, transaction_id):
+        print(f"transaction_id{transaction_id} finished repairing")
+        remote_url = 'http://{}/fin_repair'.format(config.VALIDATOR_ADDR)
         requests.post(remote_url, json={'transaction_id': transaction_id})
 
 
@@ -123,7 +123,7 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             if state.repair:
-                self.commit_tx(state.transaction_id)
+                self.fin_repair_tx(state.transaction_id)
             else:
                 function_pos = state.function_pos
                 self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, function_pos)
@@ -201,7 +201,7 @@ class WorkerSPManager:
 
         state.lock.acquire()
         state.read_set[info["function_name"]] = res["read_set"]
-        state.write_set = res["write_set"]
+        state.write_set.update(res["write_set"])
         state.lock.release()
 
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'all', 'time': end - start})

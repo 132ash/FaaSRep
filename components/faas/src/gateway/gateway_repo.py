@@ -37,6 +37,13 @@ class Repository:
             doc = db[item]
             if 'start_functions' in doc:
                 return doc['start_functions']
+            
+    def get_end_function(self, db_name) -> List[str]:
+        db = self.couch[db_name]
+        for item in db:
+            doc = db[item]
+            if 'end_function' in doc:
+                return doc['end_function']   
 
     def get_all_addrs(self, db_name) -> List[str]:
         db = self.couch[db_name]
@@ -53,30 +60,42 @@ class Repository:
         except couchdb.http.ResourceNotFound:
             return None
 
-    def get_result(self, request_id: str) -> Any:
-        result = dict()
-        doc = self.couch['results'][request_id]
-        for k in doc:
-            result[k] = doc[k]
-        return result
-
     def get_function_info(self, function_name: str, mode: str) -> Any:
         db = self.couch[mode]
         for item in db.find({'selector': {'function_name': function_name}}):
             return item
-
 
     def create_request_doc(self, request_id: str) -> None:
         if request_id in self.couch['results']:
             doc = self.couch['results'][request_id]
             self.couch['results'].delete(doc)
         self.couch['results'][request_id] = {}
-    
-    def param_wrapper(self, transaction_id, func ,key):
-        return f"{transaction_id}:{func}:{key}" 
+
+    def param_wrapper(self, transaction_id, mode, func ,key):
+        return f"{transaction_id}:{mode}:{func}:{key}" 
     
     def store_input(self, transaction_id, ip, input):
         for k, v in input.items():
-            redis_key =  f"{transaction_id}:RET:GLOBAL:{k}"
+            redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k)
             self.redis[extract_ip(ip)][redis_key] = v
             print(self.redis[extract_ip(ip)][redis_key])
+
+    def get_result(self, request_id: str, workflow_name) -> Any:
+        end_func = self.get_end_function(workflow_name + '_workflow_metadata')
+        end_func_name = end_func['name']
+        info = self.get_function_info(end_func['name'], workflow_name + '_function_info')
+        ip = extract_ip(info['ip'])
+        output = end_func['output']
+        return self.fetch_result_from_mem(request_id, end_func_name, output, ip)
+
+    def fetch_result_from_mem(self, transaction_id, func, output, redis_ip):
+        keys = output.keys()
+        result = {}
+        for k in keys:
+            redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
+            if output[k]["type"] == "int":
+                result[k] = int(self.redis[redis_ip][redis_key])
+            else:
+                result[k] = self.redis[redis_ip][redis_key]
+        return result
+    

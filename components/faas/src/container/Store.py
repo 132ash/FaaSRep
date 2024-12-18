@@ -34,7 +34,7 @@ class RedisCache:
     
     def db_get(self, key):
         # 从dynamodb中获取数据
-        response = self.table.get_item(
+        response = self.data_db.get_item(
             Key={
                 'key': key
             }
