@@ -135,7 +135,9 @@ class WorkerSPManager:
             # update cache if in repair mode and this node has expired_keys.
             if state.repair and self.host_addr in state.expired_keys:
                 repo.update_cache(state.transaction_id, state.expired_keys[self.host_addr])
+                state.lock.acquire()
                 state.expired_keys.pop(self.host_addr)
+                state.lock.release()
             self.trigger_function_local(state, function_name, func_info['ip'], no_parent_execution)
         else:
             # function runs on remote machine
@@ -200,6 +202,7 @@ class WorkerSPManager:
         end = time.time()
 
         state.lock.acquire()
+        print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}")
         state.read_set[info["function_name"]] = res["read_set"]
         state.write_set.update(res["write_set"])
         state.lock.release()

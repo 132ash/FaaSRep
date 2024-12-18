@@ -26,7 +26,7 @@ class Repository:
         self.couch = couchdb.Server(couchdb_url)
         addrs = self.get_all_addrs('common')
         self.redis = {
-            host : redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.REDIS_DB)
+            host : redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB)
                 for host in addrs
             }
  
