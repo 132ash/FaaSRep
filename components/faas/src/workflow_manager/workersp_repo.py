@@ -1,31 +1,50 @@
 from typing import Any, List
 import couchdb
 import redis
-import threading
+import boto3
 import sys
+import json
 
 sys.path.append('../../config')
 import config
 
 couchdb_url = config.COUCHDB_URL
+dynamodb_url = config.DYNAMODB_URL
+dynamodb_key_id = config.DYNAMODB_KEY_ID
+dynamodb_access_key = config.DYNAMODB_ACCESS_KEY
+dynamodb_area = config.DYNAMODB_AREA
 
-#   TODO: FINISH THIS CLASS
 class DynamoDBClient:
-    def __init__(self):
-        pass
+    def __init__(self, endpoint_url, aws_secret_access_key, aws_access_key_id, region_name):
+        self.client = boto3.client('dynamodb', endpoint_url=endpoint_url, aws_secret_access_key=aws_secret_access_key, aws_access_key_id=aws_access_key_id, region_name=region_name)
+        self.table = self.client.Table('data')
 
-    def get_version_key_pair(self, key):
-        return "{'version': 'sds', 'value': '1'}"
-    
-    def store_key_to_db(self, key, version, value):
-        pass
-    
+    def get_data_from_db(self, key):
+        # 从dynamodb中获取数据
+        response = self.table.get_item(
+            Key={
+                'key': key
+            }
+        )
+        item = response.get('Item')
+        if item:
+            return item['version'], item['value']
+        else:
+            return None, None
+
+    def store_data_to_db(self, key, version, value):
+        self.table.put_item(
+            Item={
+                'key': key,
+                'version': version,
+                'value': value
+            }
+        )
 
 class Repository:
     def __init__(self):
         self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.CACHE_DB)
-        #  TODO: Fill in parameters for DynamoDBClient
-        self.data_db = DynamoDBClient()
+        self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)
         self.redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.REDIS_DB)
         self.couch = couchdb.Server(couchdb_url)
 
@@ -126,7 +145,9 @@ class Repository:
 
     def update_cache(self, keys):
         for key in keys:
-            self.cache_redis[key] = self.data_db.get_version_key_pair(key)
+            version, value = self.data_db.get_data_from_db(key)
+            data = {"value": value, "version": version}
+            self.redis[key] = json.dumps(data)
 
     def commit_tx_writes(self, transaction_id, version):
         keys = self.cache_redis.keys(f"{transaction_id}:PUT*")
@@ -134,4 +155,4 @@ class Repository:
             # 获取键对应的版本和值
             value = self.cache_redis.get(key).decode('utf-8')
             # 调用 store_key_to_db 存储到数据库中
-            self.data_db.store_key_to_db(key, version, value)
+            self.data_db.store_data_to_db(key, version, value)

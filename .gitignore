@@ -6,3 +6,4 @@
 /deps/out*
 **/__pycache__
 **/.vscode
+**/.VSCodeCounter

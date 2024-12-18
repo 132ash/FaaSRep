@@ -1,5 +1,8 @@
 from datetime import datetime
+from gevent import monkey
+monkey.patch_all()
 import gevent.lock
+from gevent import event
 from typing import Any, Dict, List
 import threading
 
@@ -8,14 +11,14 @@ class TimeStampAllocator:
     def __init__(self):
         self.pending_txs = []
         self.lock = gevent.lock.BoundedSemaphore()
-        self.wait_condition : Dict[str:threading.Condition] = {}
+        self.wait_condition = {}
 
     # ensure transactions are assigned timestamps in the order they arrive and validated sequencially.
     def allocate_timestamp(self, tx_id:str):
         self.lock.acquire()
         timestamp = self.get_timestamp()
         self.pending_txs.append(tx_id)
-        self.wait_condition[tx_id] = threading.Condition()
+        self.wait_condition[tx_id] = event.Event()
         self.lock.release()
         return timestamp
     
@@ -23,20 +26,19 @@ class TimeStampAllocator:
         condition = self.wait_condition[tx_id] 
         # previous txs are trying to get into the waiting queue of keys.
         while self.pending_txs[0] != tx_id:
-            with condition:
-                condition.wait()
+            condition.wait()
 
    # tx finished waiting keys, pop itself, and notify the next tx in the queue.
     def notify_next_tx(self, tx_id:str):
         self.wait_condition.pop(tx_id)
         self.pending_txs.pop(0)
         if len(self.pending_txs) > 0:
+            print(f"notifying tx {self.pending_txs[0]}")
             next_tx_id = self.pending_txs[0]
             condition = self.wait_condition[next_tx_id]
-            with condition:
-                condition.notify_all()
+            condition.set()
     
-    def get_timestamp():
+    def get_timestamp(self):
         # 获取当前时间，并格式化为字符串，精确到微秒
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         return timestamp

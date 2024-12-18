@@ -1,13 +1,12 @@
 import sys
-import requests
 from gevent import monkey
 monkey.patch_all()
+import requests
 import datetime
 
 from validator import TxValidator, TxVersion
 from TX_timestamp import TimeStampAllocator, TxVersion
-from components.faas.src.commit_manager.repair_engine import RepairEngine
-import validator_repo 
+from repair_engine import RepairEngine
 import json
 import sys
 
@@ -27,8 +26,8 @@ app = Flask(__name__)
 Timestamp_allocator = TimeStampAllocator()
 Validator = TxValidator(Timestamp_allocator)
 repairer = RepairEngine()
-repo = validator_repo.Repository()
 GATEWAY_ADDR = config.GATEWAY_ADDR
+print(f"Validator and repairer started. initial key version: {Validator.global_table}")
 
 def notify_gateway(transaction_id, success:bool):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
@@ -56,8 +55,10 @@ def validate_tx():
     version = TxVersion(transaction_id, commitTime)
     # get expired keys.
     expired_keys, confilcted = Validator.validate(transaction_id, read_set, write_set, function_pos)
-    start_functions = repo.get_start_functions(workflow_name + '_workflow_metadata')
-    repair_successful = repairer.trigger_repair(transaction_id, start_functions, workflow_name, expired_keys, confilcted, function_pos)
+    for k, v in expired_keys.items():
+        expired_keys[k] = list(v)
+    print(f"expired_keys: {expired_keys}")
+    repair_successful = repairer.trigger_repair(transaction_id, workflow_name, expired_keys, confilcted, function_pos)
     if repair_successful:
         Validator.commit_tx(transaction_id, version)
         notify_gateway(transaction_id, True)

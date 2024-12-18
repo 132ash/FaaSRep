@@ -39,3 +39,6 @@ class Repository:
             if 'addrs' in doc:
                 return doc['addrs']
     
+if __name__ == '__main__':
+    repo = Repository()
+    print(repo.get_initial_data_version())

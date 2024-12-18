@@ -1,11 +1,13 @@
 import sys
+from gevent import monkey
+monkey.patch_all()
 from TX_timestamp import TimeStampAllocator
 import gevent
 import gevent.lock
-import threading
+import logging
 from typing import Any, Dict, List
 from TX_timestamp import TxVersion
-import components.faas.src.commit_manager.TX_timestamp as TX_timestamp
+from gevent import event
 import requests
 import validator_repo
 
@@ -25,7 +27,7 @@ class TxValidator:
 
     def get_lock(self, key):
         if key not in self.locks:
-            self.locks[key] = {'waiters': [], 'waiter_lock': threading.Lock()}
+            self.locks[key] = {'waiters': []}
         return self.locks[key]
     
     # append tx_id to waiters list and wait for the lock.
@@ -35,6 +37,7 @@ class TxValidator:
         lock['waiters'].append(tx_id)
         if lock['waiters'][0] == tx_id:
             self.acquired_locks[tx_id]["acquired"] += 1
+
         
 
     def release_lock(self, tx_id, key):
@@ -42,16 +45,15 @@ class TxValidator:
             self.locks[key]["waiters"].pop(0)
             if len(self.locks[key]["waiters"]) > 0:
                 next_tx_id = self.locks[key]["waiters"][0]
-                with self.acquired_locks[next_tx_id]["cond"]:
-                    self.acquired_locks[next_tx_id]["cond"].notify_all()
+                self.acquired_locks[next_tx_id]["acquired"] += 1
+                self.acquired_locks[next_tx_id]["cond"].set()
         else:
             raise Exception("release lock failed, tx_id not the owner of the lock")
     
-    def validate(self, transaction_id, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos) -> tuple[dict, bool]:
-        expired_keys:Dict[str:List] = {}
+    def validate(self, transaction_id, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos):
         lock_key_set = set()
-        self.acquired_locks[transaction_id] = {"target":0, "acquired":0, "cond":threading.Condition()}
-
+        self.acquired_locks[transaction_id] = {"target":0, "acquired":0, "cond":event.Event()}
+        self.acquired_locks[transaction_id]["cond"].clear()
         self.timestamp_allocator.wait_for_preceeding_txs(transaction_id)
 
         # collect all keys in write set.
@@ -61,7 +63,6 @@ class TxValidator:
 
         # collect all keys in read set.
         for func, rs in read_set.items():
-            expired_keys[func] = []
             for key, version in rs.items():
                 lock_key_set.add(key)
 
@@ -69,21 +70,25 @@ class TxValidator:
         for key in lock_key_set:
             self.ask_for_lock(transaction_id, key)
 
+        logging.info(f"transaction {transaction_id} finished asking for locks.")
+
         # FINISHED ask for locks, notify the next tx.
         self.timestamp_allocator.notify_next_tx(transaction_id)
         
+        # waiting for all locks to be acquired.
         while self.acquired_locks[transaction_id]["acquired"] < self.acquired_locks[transaction_id]["target"]:
-            with self.acquired_locks[transaction_id]["cond"]:
-                self.acquired_locks[transaction_id]["cond"].wait()
+            self.acquired_locks[transaction_id]["cond"].wait()
+            self.acquired_locks[transaction_id]["cond"].clear()
+            
 
+        expired_keys:Dict[str:List] = {}
         for func, rs in read_set.items():
-            expired_keys[func] = {}
             for key, version in rs.items():
                 if version < self.global_table.get(key):
                     ip = function_pos[func]
                     if ip not in expired_keys:
-                        expired_keys[ip] = []
-                    expired_keys[ip].append(key)
+                        expired_keys[ip] = set()
+                    expired_keys[ip].add(key)
 
         self.lock_key_set_per_tx[transaction_id] = lock_key_set
 
