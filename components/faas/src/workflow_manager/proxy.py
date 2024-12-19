@@ -34,8 +34,8 @@ class Dispatcher:
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
     
-    def del_state(self, workflow_name, transaction_id, master):
-        self.managers[workflow_name].del_state(transaction_id, master)
+    def del_state(self, workflow_name, transaction_id):
+        self.managers[workflow_name].del_state(transaction_id)
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 

@@ -80,7 +80,7 @@ class WorkerSPManager:
         return state
 
     # delete state
-    def del_state(self, transaction_id: str, master: bool):
+    def del_state(self, transaction_id: str):
         self.lock.acquire()
         if transaction_id in self.states:
             logging.info('delete state of: %s', transaction_id)

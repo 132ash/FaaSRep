@@ -54,16 +54,6 @@ def run_workflow(workflow_name, transaction_id, parameters):
         jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
     gevent.joinall(jobs)
     end = time.time()
-
-    # clear memory and other stuff
-    if config.CLEAR_MEM:
-        worker_addrs = repo.get_all_addrs(workflow_name + '_workflow_metadata')
-        jobs = []
-        print(f"clearing shadow table and transaction state on {worker_addrs}")
-        for ip in worker_addrs:
-            jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow_name))
-        gevent.joinall(jobs)
-    
     return end - start
 
 @app.route('/run', methods = ['POST'])
@@ -80,6 +70,15 @@ def run():
     res = repo.get_result(transaction_id, workflow)
     print(f"transaction_id: f{transaction_id}, res: {res}")
     txTable.finishTX(transaction_id)
+        # clear memory and other stuff
+    if config.CLEAR_MEM:
+        worker_addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
+        jobs = []
+        print(f"clearing shadow table and transaction state on {worker_addrs}")
+        for ip in worker_addrs:
+            jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
+        gevent.joinall(jobs)
+    
     return json.dumps({'status': 'ok', 'latency': latency, 'TxID': transaction_id, "res": res})
 
 
