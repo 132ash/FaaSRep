@@ -79,12 +79,14 @@ class Repository:
     
     def clear_mem(self, transaction_id=""):
         if transaction_id:
+            print(f"clearing shadow table for {transaction_id}")
             keys = self.shadowtable_redis.keys()
             for key in keys:
                 key_str = key.decode()
                 if key_str.startswith(transaction_id):
                     self.shadowtable_redis.delete(key)
         else:
+            print("clearing all shadow tables")
             self.shadowtable_redis.flushall(True)
 
     def clear_db(self, transaction_id):

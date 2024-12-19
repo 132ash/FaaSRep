@@ -30,6 +30,15 @@ def trigger_function(workflow_name, transaction_id, function_name, ip):
     }
     requests.post(url, json=data)
 
+def clear_mem(ip, transaction_id, workflow_name):
+    if not ip.endswith(':7000'):
+        ip += ':7000'
+    clear_url = 'http://{}/clear'.format(ip)
+    try:
+        requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name})
+    except:
+        print(f"node {clear_url} not started or performs well.")
+
 def run_workflow(workflow_name, transaction_id, parameters):
     repo.create_request_doc(transaction_id)
 
@@ -47,10 +56,13 @@ def run_workflow(workflow_name, transaction_id, parameters):
     end = time.time()
 
     # clear memory and other stuff
-    if config.CLEAR_DB_AND_MEM:
-        master_addr = repo.get_all_addrs(workflow_name + '_workflow_metadata')[0]
-        clear_url = 'http://{}/clear'.format(master_addr)
-        requests.post(clear_url, json={'transaction_id': transaction_id, 'master': True, 'workflow_name': workflow_name})
+    if config.CLEAR_MEM:
+        worker_addrs = repo.get_all_addrs(workflow_name + '_workflow_metadata')
+        jobs = []
+        print(f"clearing shadow table and transaction state on {worker_addrs}")
+        for ip in worker_addrs:
+            jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow_name))
+        gevent.joinall(jobs)
     
     return end - start
 

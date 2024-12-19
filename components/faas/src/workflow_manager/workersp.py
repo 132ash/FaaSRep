@@ -78,25 +78,14 @@ class WorkerSPManager:
         state = self.states[transaction_id]
         self.lock.release()
         return state
-    
-    def del_state_remote(self, transaction_id: str, remote_addr: str):
-        url = 'http://{}/clear'.format(remote_addr)
-        requests.post(url, json={'transaction_id': transaction_id, 'workflow_name': self.workflow_name})
 
     # delete state
     def del_state(self, transaction_id: str, master: bool):
-        logging.info('delete state of: %s', transaction_id)
         self.lock.acquire()
         if transaction_id in self.states:
+            logging.info('delete state of: %s', transaction_id)
             del self.states[transaction_id]
         self.lock.release()
-        if master:
-            jobs = []
-            addrs = repo.get_all_addrs(self.meta_db)
-            for addr in addrs:
-                if addr != self.host_addr:
-                    jobs.append(gevent.spawn(self.del_state_remote, transaction_id, addr))
-            gevent.joinall(jobs)
 
     # get function's info from database
     # the result is cached

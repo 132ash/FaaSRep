@@ -63,12 +63,8 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    master = False
-    if 'master' in data:
-        master = True
-        dispatcher.clear_db(workflow_name, transaction_id) # optional: clear results in center db
     dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
-    dispatcher.del_state(workflow_name, transaction_id, master) # and remove state for every node
+    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
 @app.route('/commit', methods = ['POST'])
