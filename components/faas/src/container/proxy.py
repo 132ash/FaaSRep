@@ -62,11 +62,10 @@ class Runner:
         input_dict = store.input
 
         # run function
-        start = time.time()
         out = eval('main()', self.ctx)
-        end = time.time()
+      
 
-        return TxMetaData_thisFunc["ReadSet"], TxMetaData_thisFunc["WriteSet"]
+        return TxMetaData_thisFunc["ReadSet"], TxMetaData_thisFunc["WriteSet"], store.io_latency
 
 
 proxy = Flask(__name__)
@@ -108,19 +107,13 @@ def run():
     write_set = inp['write_set']
 
     # record the execution time
-    start = time.time()
-    rs, ws = runner.run(transaction_id, function_pos, input, output, write_set)
-    end = time.time()
+    rs, ws, io_latency = runner.run(transaction_id, function_pos, input, output, write_set)
 
     res = {
-        "start_time": start,
-        "end_time": end,
-        "duration": end - start,
-        "inp": inp, 
-        "input": input,
-        "output": output,
+        
         "read_set": rs,
-        "write_set": ws
+        "write_set": ws,
+        "io_latency": io_latency
     }
 
     proxy.status = 'ok'

@@ -159,7 +159,9 @@ class WorkerSPManager:
             'no_parent_execution': no_parent_execution,
             'function_pos':state.function_pos, 
             'read_set': state.read_set,
-            'write_set': state.write_set
+            'write_set': state.write_set,
+            'repair': state.repair,
+            'expired_keys': state.expired_keys
         }
         response = requests.post(remote_url, json=data)
         response.close()
@@ -196,7 +198,8 @@ class WorkerSPManager:
         state.write_set.update(res["write_set"])
         state.lock.release()
 
-        repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'all', 'time': end - start})
+        repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+        repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
 
     def clear_mem(self, transaction_id):
         repo.clear_mem(transaction_id)

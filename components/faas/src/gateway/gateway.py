@@ -64,11 +64,13 @@ def run():
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(transaction_id, parameters)
     print('processing request ' + transaction_id + '...')
-    latency = run_workflow(workflow, transaction_id, parameters)
+    exec_latency = run_workflow(workflow, transaction_id, parameters)
+
+    start = time.time()
     txTable.waitTX(transaction_id)
-    print('request ' + transaction_id + ' done')
     res = repo.get_result(transaction_id, workflow)
-    print(f"transaction_id: f{transaction_id}, res: {res}")
+    end = time.time()
+    print(f"transaction_id: {transaction_id}, res: {res}, exec_latency: {exec_latency}, validate_latency: {end - start}")
     txTable.finishTX(transaction_id)
         # clear memory and other stuff
     if config.CLEAR_MEM:
@@ -79,7 +81,7 @@ def run():
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
     
-    return json.dumps({'status': 'ok', 'latency': latency, 'TxID': transaction_id, "res": res})
+    return json.dumps({'status': 'ok', 'exec_latency': exec_latency, 'validate_latency': exec_latency,'TxID': transaction_id, "res": res})
 
 
 

@@ -3,6 +3,7 @@ import os
 import threading
 import container_config
 import redis
+import time
 
 class RedisShadowTable:
     def __init__(self, host_list, port, db):
@@ -64,6 +65,7 @@ class Store:
         self.function_pos = function_pos
         self.input = input
         self.output = output
+        self.io_latency = 0
         self.tx_metadata = TxMetaData
 
         if os.path.exists('work'):
@@ -125,6 +127,7 @@ class Store:
 
     def get(self, key):
         value = None
+        start = time.time()
         func_ip_pair = self.tx_metadata["WriteSet"].get(key, None)
         # upstream fucntion has written this key
         if func_ip_pair and func_ip_pair['func'] != self.function_name:
@@ -135,13 +138,17 @@ class Store:
             version = value_version_pair["version"]
             self.tx_metadata["ReadSet"][key] = version
             value = value_version_pair["value"]
+        self.io_latency += time.time() - start
         return value
     
     def put(self, key, value):
+        start = time.time()
         if key not in self.tx_metadata["WriteSet"]:
             self.tx_metadata["WriteSet"][key] = {}
         self.tx_metadata["WriteSet"][key]['ip'] = self.function_pos[self.function_name]
         self.tx_metadata["WriteSet"][key]['func'] = self.function_name
         self.put_to_mem(key, self.function_pos[self.function_name], 'PUT', value)
+        self.io_latency += time.time() - start
+
             
       
