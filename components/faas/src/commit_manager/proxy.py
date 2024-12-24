@@ -1,9 +1,10 @@
-import sys
 from gevent import monkey
 monkey.patch_all()
+import sys
 import requests
+import time 
 import datetime
-
+import validator_repo
 from validator import TxValidator, TxVersion
 from TX_timestamp import TimeStampAllocator, TxVersion
 from repair_engine import RepairEngine
@@ -29,11 +30,12 @@ repairer = RepairEngine()
 GATEWAY_ADDR = config.GATEWAY_ADDR
 print(f"Validator and repairer started. initial key version: {Validator.global_table}")
 
-def notify_gateway(transaction_id, success:bool):
+def notify_gateway(transaction_id, success:bool, start_time):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
     data = {
         'transaction_id': transaction_id,
-        'success': success
+        'success': success,
+        "start_time": start_time
     }
     r = requests.post(url, json=data)
     return r.json()
@@ -45,22 +47,27 @@ def notify_gateway(transaction_id, success:bool):
 @app.route('/validate', methods = ['POST'])
 def validate_tx():
     data = request.get_json(force=True, silent=True)
+    transaction_id = data['transaction_id']
+    start_time = time.time()
+    logging.info(f"start validate_tx {transaction_id}")
     read_set = data['read_set']
     write_set = data['write_set']
     workflow_name = data['workflow_name']
-    transaction_id = data['transaction_id']
     function_pos = data.get('function_pos', {})
     commitTime = Timestamp_allocator.allocate_timestamp(transaction_id)
+    print(f"acquired timestamp: {time.time() - start_time}")
     version = TxVersion(transaction_id, commitTime)
     # get expired keys.
     expired_keys, confilcted = Validator.validate(transaction_id, read_set, write_set, function_pos)
     for k, v in expired_keys.items():
         expired_keys[k] = list(v)
-    print(f"expired_keys: {expired_keys}")
+    print(f"expired_keys: {expired_keys}, time:{time.time() - start_time}")
     repair_successful = repairer.trigger_repair(transaction_id, workflow_name, expired_keys, confilcted, function_pos)
+    print(f"repair_successful: {repair_successful}, time:{time.time() - start_time}")
+
     if repair_successful:
         Validator.commit_tx(transaction_id, workflow_name, version.to_string())
-        notify_gateway(transaction_id, True)
+        notify_gateway(transaction_id, True,  start_time)
         return json.dumps({'status': 'successed'})
     else:
         return json.dumps({'status': 'failed'})
@@ -69,10 +76,12 @@ def validate_tx():
 def repair_finish():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
-    repairer.notify_Tx(transaction_id)
+    repairer.notify_Tx(transaction_id, True)
     return json.dumps({'status': 'successed'})
 
 
+
+# python3 proxy.py 192.168.162.132 9000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

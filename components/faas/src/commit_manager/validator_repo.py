@@ -38,6 +38,11 @@ class Repository:
             doc = db[item]
             if 'addrs' in doc:
                 return doc['addrs']
+            
+    def save_latency(self, log):
+        latency_db = self.couch['workflow_latency']
+        latency_db.save(log)
+
     
 if __name__ == '__main__':
     repo = Repository()

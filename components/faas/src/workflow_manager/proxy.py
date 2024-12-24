@@ -3,7 +3,6 @@ monkey.patch_all()
 import os
 import gevent
 import json
-import redis
 from typing import Dict
 import sys
 sys.path.append('../../config')
@@ -40,7 +39,6 @@ class Dispatcher:
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 if config.FILLUP_CACHE:
     repo.fillup_cache()
-    print("CACHE FILLED UP")
 
 # a new request from outside
 # the previous function was done
@@ -56,6 +54,7 @@ def req():
     write_set = data.get('write_set', {})
     repair = data.get('repair', False)
     expired_keys = data.get('expired_keys', {})
+    print(f"--------request {workflow_name} {transaction_id} {function_name}, repair:{repair}")
     # get the corresponding workflow state and trigger the function
     state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, repair, expired_keys)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)

@@ -1,3 +1,5 @@
+from gevent import monkey
+monkey.patch_all()
 import sys
 import logging
 import time
@@ -67,13 +69,15 @@ class WorkerSPManager:
     # return the workflow state of the request
     def get_state(self, transaction_id: str, function_pos, read_set, write_set,  repair, expired_keys) -> TransactionState:
         self.lock.acquire()
-        if transaction_id not in self.states:
+        if transaction_id not in self.states or repair:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, repair, expired_keys)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
             state.repair = repair
             state.expired_keys = expired_keys
+            state.read_set.update(read_set)
+            state.write_set.update(write_set)
             state.lock.release()
         state = self.states[transaction_id]
         self.lock.release()
@@ -118,7 +122,6 @@ class WorkerSPManager:
                 self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, function_pos)
             return
         func_info = self.get_function_info(function_name)
-        print(f"{function_name} ip: {func_info['ip']}")
         if func_info['ip'] == self.host_addr:
             # function runs on local
             # update cache if in repair mode and this node has expired_keys.
@@ -134,7 +137,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str, ip:str, no_parent_execution = False) -> None:
-        logging.info('trigger local function: %s of: %s', function_name, state.transaction_id)
+        print(f'trigger local function: {function_name} of: {state.transaction_id}')
         state.lock.acquire()
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
@@ -150,7 +153,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        logging.info('trigger remote function: %s on: %s of: %s', function_name, remote_addr, state.transaction_id)
+        print(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             'transaction_id': state.transaction_id,

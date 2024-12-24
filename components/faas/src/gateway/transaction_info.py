@@ -8,7 +8,9 @@ class RunningTXTable:
         self.running_txs[tx_id] = {"params":tx_params,"finished":False, "cond":event.Event()}
 
     def finishTX(self, tx_id):
+        validate_latency = self.running_txs[tx_id]["validate_latency"]
         self.running_txs.pop(tx_id)
+        return validate_latency
 
     def waitTX(self, tx_id):
         condition = self.running_txs[tx_id]['cond']
@@ -16,8 +18,9 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
 
-    def notifyTX(self, tx_id):
+    def notifyTX(self, tx_id, validate_latency):
         condition = self.running_txs[tx_id]['cond']
         self.running_txs[tx_id]['finished'] = True
+        self.running_txs[tx_id]["validate_latency"] = validate_latency
         condition.set()
         print(f"notified {tx_id}")

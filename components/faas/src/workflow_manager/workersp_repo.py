@@ -1,7 +1,10 @@
+from gevent import monkey
+monkey.patch_all()
 from typing import Any, List
 import couchdb
 import redis
 import boto3
+from datetime import datetime
 import sys
 import json
 
@@ -92,8 +95,9 @@ class Repository:
         else:
             print("clearing all shadow tables")
             self.shadowtable_redis.flushall(True)
-        print("clearing caches")
         self.cache_redis.flushall(True)
+        remain_keys_len = len(self.cache_redis.keys("*")) 
+        print(f"clearing caches, remaining:{remain_keys_len}")
 
     def clear_db(self, transaction_id):
         db = self.couch['results']
@@ -145,6 +149,13 @@ class Repository:
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()
+        expired_version = datetime(1970, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
         for item in data:
             key = item['key']
-            self.cache_redis[key] = json.dumps({"value": item['value'], "version": item['version']})
+            if config.EXPIRED_CACHE:
+                # eariler than default timestamp in database
+                version = expired_version
+            else:
+                version = item['version']
+            self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
+        print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}")

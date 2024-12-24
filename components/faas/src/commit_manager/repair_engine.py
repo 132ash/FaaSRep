@@ -1,5 +1,5 @@
 import logging
-import json
+import requests
 from gevent import monkey
 monkey.patch_all()
 import gevent.lock
@@ -35,7 +35,10 @@ class RepairEngine:
             return False
 
     def trigger_function(self, workflow_name, transaction_id, function_name, ip, expired_keys):
-        url = 'http://{}/request'.format(ip)
+        if not ip.endswith(":7000"):
+            url = 'http://{}:7000/request'.format(ip)
+        else:
+            url = 'http://{}/request'.format(ip)
         data = {
             'transaction_id': transaction_id,
             'workflow_name': workflow_name,
@@ -45,7 +48,7 @@ class RepairEngine:
             'repair': True
         }
         print(f"triggering {function_name}, sending req to {url}")
-        # requests.post(url, json=data)
+        requests.post(url, json=data)
 
     def repair_workflow(self, transaction_id, start_functions, workflow_name, expired_keys, function_pos):
         # allocate works

@@ -1,6 +1,7 @@
 import os
 import boto3
 import time
+from datetime import datetime
 
 time.sleep(2)
 dynamo_db  = boto3.resource('dynamodb', endpoint_url='http://192.168.162.132:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
@@ -31,10 +32,13 @@ with open(doc2_path, 'r') as f:
     doc2_content = f.read()
 
 # 将文件内容存储到 DynamoDB
+
+default_timestamp = datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
+
 table.put_item(
     Item={
         'key': 'doc1',
-        'version': '0:0',
+        'version': default_timestamp,
         'value': doc1_content
     }
 )
@@ -42,7 +46,7 @@ table.put_item(
 table.put_item(
     Item={
         'key': 'doc2',
-        'version': '0:0',
+        'version': default_timestamp,
         'value': doc2_content
     }
 )

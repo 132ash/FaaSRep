@@ -52,6 +52,4 @@ functions:
         chained_num_final:
             type: int
     next: 
-        type: pass
-        nodes:
-            - END
+        type: FINISH

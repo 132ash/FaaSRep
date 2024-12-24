@@ -1,14 +1,14 @@
 import redis
 
 # 设置 Redis 客户端
-redis_client = redis.StrictRedis(host="127.0.0.1", port=6379, db=0)
-redis_client1 = redis.StrictRedis(host="127.0.0.1", port=6379, db=1)
+redis_client_shadow = redis.StrictRedis(host="127.0.0.1", port=6379, db=0)
+redis_client_cache = redis.StrictRedis(host="127.0.0.1", port=6379, db=1)
 
-print(redis_client1.get("sds"))
+print(redis_client_shadow.get("sds"))
 
 def check_redis_data():
     # 获取所有键
-    keys = redis_client1.keys("*")
+    keys = redis_client_shadow.keys("*")
     
     if not keys:
         print("No keys found in Redis database.")
@@ -16,7 +16,7 @@ def check_redis_data():
     
     # 打印每个键及其对应的值
     for key in keys:
-        value = redis_client1.get(key)
+        value = redis_client_shadow.get(key)
         print(f"Key: {key.decode('utf-8')}, Value: {value.decode('utf-8')}")
         # redis_client.delete(key)
 

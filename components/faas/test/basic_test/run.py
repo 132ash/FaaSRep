@@ -40,7 +40,7 @@ def analyze_workflow(workflow_name):
 
     tested = 0
     validate_latency = 0
-    exec_latency = 0
+    e2e_latency = 0
     func_io_time = 0
     func_exec_time = 0
     while tested < TEST_TIME:
@@ -48,28 +48,28 @@ def analyze_workflow(workflow_name):
         rep = run_workflow(workflow_name)
         txid = rep['transaction_id']
         validate_latency += rep['validate_latency']
-        exec_latency += rep['exec_latency']
+        e2e_latency += rep['e2e_latency']
         func_exec_time_test, func_io_time_test = get_function_latency(txid)
         func_io_time += func_io_time_test
         func_exec_time += func_exec_time_test
         tested += 1
     
-    return validate_latency / TEST_TIME, exec_latency / TEST_TIME, func_io_time / TEST_TIME, func_exec_time / TEST_TIME
+    return validate_latency / TEST_TIME, e2e_latency / TEST_TIME, func_io_time / TEST_TIME, func_exec_time / TEST_TIME
     
 
 def analyze(mode):
     validate_overall = []
-    exec_overall = []
+    e2e_overall = []
     func_io_overall = []
     func_exec_overall = []
     for workflow in workflow_pool:
-        validate_latency, exec_latency, func_io_time, func_exec_time = analyze_workflow(workflow)
+        validate_latency, e2e_latency, func_io_time, func_exec_time = analyze_workflow(workflow)
         validate_overall.append(validate_latency)
-        exec_overall.append(exec_latency)
+        e2e_overall.append(e2e_latency)
         func_io_overall.append(func_io_time)
         func_exec_overall.append(func_exec_time)
-        print(f"workflow {workflow} finished with validate_latency {validate_latency}, exec_latency {exec_latency}, func_io_time {func_io_time}, func_exec_time {func_exec_time}")
-    df = pd.DataFrame({'workflow': workflow_pool, 'validate_latency': validate_overall, 'exec_latency': exec_overall, 'func_io_time': func_io_overall, 'func_exec_time': func_exec_overall})
+        print(f"workflow {workflow} finished with validate_latency {validate_latency}, e2e_latency {e2e_latency}, func_io_time {func_io_time}, func_exec_time {func_exec_time}")
+    df = pd.DataFrame({'workflow': workflow_pool, 'validate_latency': validate_overall, 'e2e_latency': e2e_overall, 'func_io_time': func_io_overall, 'func_exec_time': func_exec_overall})
     df.to_csv(mode + '.csv')
    
 
