@@ -18,11 +18,11 @@ os.makedirs(test_input_dir, exist_ok=True)
 # 生成4KB和3KB的文本文件
 if not os.path.exists(doc1_path):
     with open(doc1_path, 'w') as f:
-        f.write('A' * 4096)  # 4KB
+        f.write('A' * 4096 * 1024)  # 4KB
 
 if not os.path.exists(doc2_path):
     with open(doc2_path, 'w') as f:
-        f.write('B' * 3072)  # 3KB
+        f.write('B' * 3072 * 1024)  # 3KB
 
 # 读取文件内容
 with open(doc1_path, 'r') as f:

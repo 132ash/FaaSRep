@@ -11,6 +11,13 @@ for d in ["workflow_latency", "common", "results", "log"]:
     if d not in couch_db:
         couch_db.create(d)
 
+try:
+    table = dynamo_db.Table('data')
+    table.delete()
+    table.meta.client.get_waiter('table_not_exists').wait(TableName='data')
+except:
+    pass
+
 table = dynamo_db.create_table(
     TableName='data',
     KeySchema=[

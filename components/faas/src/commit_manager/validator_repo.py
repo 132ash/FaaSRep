@@ -22,7 +22,12 @@ class Repository:
         table = self.dynamo.Table('data')
         response = table.scan()
         items = response.get('Items', [])
-        key_version_dict = {item['key']: item['version'] for item in items}
+        try:
+            key_version_dict = {item['key']: item['version'] for item in items}
+        except KeyError:
+            for i in items:
+                print(i['key'])
+                print(i.keys())
         return key_version_dict
 
     def get_start_functions(self, db_name) -> List[str]:

@@ -18,7 +18,6 @@ FUNCTION_INFO_ADDRS = {# 'testflow': '../../../../benchmark/testflow',
                        'simpleseq': '../../../../benchmark/simpleseq'
                        }
 CLEAR_MEM = True
-FILLUP_CACHE = False
-EXPIRED_CACHE = False
-REMOTE_LOCK = True
+FILLUP_CACHE = True
+EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 3
