@@ -10,8 +10,13 @@ CACHE_DB = 1
 GATEWAY_ADDR = '192.168.162.132:8000' # need to update as your private_ip
 VALIDATOR_ADDR = '192.168.162.132:9000'
 
-WORKFLOW_YAML_ADDR = {"testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"}
+WORKFLOW_YAML_ADDR = {# "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml",
+                      'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'
+                      }
 # get function image info for container initialization
-FUNCTION_INFO_ADDRS = {'testflow': '../../../../benchmark/testflow'}
+FUNCTION_INFO_ADDRS = {# 'testflow': '../../../../benchmark/testflow',
+                       'simpleseq': '../../../../benchmark/simpleseq'
+                       }
 CLEAR_MEM = True
+FILLUP_CACHE = True
 DEFAULT_CONTAINER_NUM = 1

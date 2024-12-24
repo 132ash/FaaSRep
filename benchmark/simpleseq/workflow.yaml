@@ -7,25 +7,17 @@ functions:
             - func2
   - name: func2
     source: func2
-    input: 
-    output:
     next: 
         type: pass
         nodes:
             - func3
   - name: func3
     source: func3
-    input: 
-    output:
     next: 
         type: pass
         nodes:
             - func4
   - name: func4
     source: func4
-    input: 
-    output:
     next: 
-        type: pass
-        nodes:
-            - END
+        type: FINISH

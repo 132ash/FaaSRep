@@ -20,5 +20,6 @@
 
 # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
 
-# docker build --no-cache -t workflow_base ../components/faas/src/container
-../benchmark/testflow/create_image.sh
+docker build --no-cache -t workflow_base ../components/faas/src/container
+# ../benchmark/testflow/create_image.sh
+../benchmark/simpleseq/create_image.sh

@@ -19,6 +19,10 @@ class DynamoDBClient:
         self.client = boto3.resource('dynamodb', endpoint_url=endpoint_url, aws_secret_access_key=aws_secret_access_key, aws_access_key_id=aws_access_key_id, region_name=region_name)
         self.table = self.client.Table('data')
 
+    def get_all_data_from_db(self):
+        response = self.table.scan()
+        return response['Items']
+
     def get_data_from_db(self, key):
         # 从dynamodb中获取数据
         response = self.table.get_item(
@@ -33,7 +37,7 @@ class DynamoDBClient:
             return None, None
 
     def store_data_to_db(self, key, version, value):
-        print(f"commit key:{key}, version:{version}, value:{value}")
+        print(f"commit key:{key}, version:{version}")
         self.table.put_item(
             Item={
                 'key': key,
@@ -88,6 +92,8 @@ class Repository:
         else:
             print("clearing all shadow tables")
             self.shadowtable_redis.flushall(True)
+        print("clearing caches")
+        self.cache_redis.flushall(True)
 
     def clear_db(self, transaction_id):
         db = self.couch['results']
@@ -112,6 +118,7 @@ class Repository:
     # input_keys: specify the keys you want
     def fetch_result(self, transaction_id, func, output):
         keys = output.keys()
+        print(f"fetching result. Keys: {keys}")
         result = {}
         for k in keys:
             redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
@@ -135,3 +142,9 @@ class Repository:
             value = self.shadowtable_redis.get(redis_key).decode('utf-8')
             # 调用 store_key_to_db 存储到数据库中
             self.data_db.store_data_to_db(key, version, value)
+
+    def fillup_cache(self):
+        data = self.data_db.get_all_data_from_db()
+        for item in data:
+            key = item['key']
+            self.cache_redis[key] = json.dumps({"value": item['value'], "version": item['version']})

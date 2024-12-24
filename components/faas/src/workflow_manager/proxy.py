@@ -38,6 +38,9 @@ class Dispatcher:
         self.managers[workflow_name].del_state(transaction_id)
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
+if config.FILLUP_CACHE:
+    repo.fillup_cache()
+    print("CACHE FILLED UP")
 
 # a new request from outside
 # the previous function was done
@@ -94,7 +97,7 @@ def get_container_names():
     container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
 
     
-# python components/faas/src/workflow_manager/workersp.py  192.168.162.130 7000
+# python proxy.py  192.168.162.130 7000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

@@ -138,7 +138,8 @@ class Store:
             version = value_version_pair["version"]
             self.tx_metadata["ReadSet"][key] = version
             value = value_version_pair["value"]
-        self.io_latency += time.time() - start
+        end = time.time()
+        self.io_latency += (end - start)
         return value
     
     def put(self, key, value):
@@ -148,7 +149,8 @@ class Store:
         self.tx_metadata["WriteSet"][key]['ip'] = self.function_pos[self.function_name]
         self.tx_metadata["WriteSet"][key]['func'] = self.function_name
         self.put_to_mem(key, self.function_pos[self.function_name], 'PUT', value)
-        self.io_latency += time.time() - start
+        end = time.time()
+        self.io_latency += (end - start)
 
             
       

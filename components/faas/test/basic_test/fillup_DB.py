@@ -24,24 +24,26 @@ if not os.path.exists(doc2_path):
         f.write('B' * 3072)  # 3KB
 
 # 读取文件内容
-with open('doc1.txt', 'r') as f:
+with open(doc1_path, 'r') as f:
     doc1_content = f.read()
 
-with open('doc2.txt', 'r') as f:
+with open(doc2_path, 'r') as f:
     doc2_content = f.read()
 
 # 将文件内容存储到 DynamoDB
 table.put_item(
     Item={
         'key': 'doc1',
-        'content': doc1_content
+        'version': '0:0',
+        'value': doc1_content
     }
 )
 
 table.put_item(
     Item={
         'key': 'doc2',
-        'content': doc2_content
+        'version': '0:0',
+        'value': doc2_content
     }
 )
 
@@ -49,12 +51,12 @@ response_doc1 = table.get_item(Key={'key': 'doc1'})
 response_doc2 = table.get_item(Key={'key': 'doc2'})
 
 
-if 'Item' in response_doc1 and response_doc1['Item']['content'] == doc1_content:
+if 'Item' in response_doc1 and response_doc1['Item']['value'] == doc1_content:
     print("doc1.txt stored successfully")
 else:
     print("doc1.txt stored failed")
 
-if 'Item' in response_doc2 and response_doc2['Item']['content'] == doc2_content:
+if 'Item' in response_doc2 and response_doc2['Item']['value'] == doc2_content:
     print("doc2.txt stored successfully")
 else:
     print("doc2.txt stored failed")

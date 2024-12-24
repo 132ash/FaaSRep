@@ -50,7 +50,8 @@ def run_workflow(workflow_name, transaction_id, parameters):
     for n in start_functions:
         info = repo.get_function_info(n, workflow_name + '_function_info')
         ip = info['ip']
-        repo.store_input(transaction_id, ip, parameters[n])
+        func_param = parameters.get(n, {})
+        repo.store_input(transaction_id, ip, func_param)
         jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
     gevent.joinall(jobs)
     end = time.time()
@@ -81,7 +82,7 @@ def run():
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
     
-    return json.dumps({'status': 'ok', 'exec_latency': exec_latency, 'validate_latency': exec_latency,'TxID': transaction_id, "res": res})
+    return json.dumps({'status': 'ok', 'exec_latency': exec_latency, 'validate_latency': exec_latency,'transaction_id': transaction_id, "res": res})
 
 
 
@@ -110,6 +111,8 @@ def clear_container():
 
 from gevent.pywsgi import WSGIServer
 import logging
+
+# python3 gateway.py 192.168.162.132 7000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

@@ -1,11 +1,16 @@
+from gevent import monkey
+monkey.patch_all()
+
 import sys
 import pandas as pd
 import requests
+
+sys.path.append('..')
+sys.path.append('../../config')
+from repository import Repository
 import time
 
 
-sys.path.append('../config')
-sys.path.append('..')
 import config
 repo = Repository()
 
@@ -21,16 +26,17 @@ def run_workflow(workflow_name, parameters = {}):
     return rep.json()
 
 def get_function_latency(txid):
-    func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_function_latency(txid, 'io')
-    exec_time = sum([i['time'] for i in func_exec_latency]) 
-    io_time = sum([i['time'] for i in func_io_latency]) 
+    func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
+    exec_time = sum(func_exec_latency) 
+    io_time = sum(func_io_latency) 
+    print(f"func_exec_latency: {func_exec_latency}")
+    print(f"func_io_latency: {func_io_latency}")
     return exec_time, io_time
 
 
 def analyze_workflow(workflow_name):
     print(f'----analyzing {workflow_name}----')
-    repo.clear_couchdb_results()
-    repo.clear_couchdb_workflow_latency()
+    repo.flush_couchdb_workflow_latency()
 
     tested = 0
     validate_latency = 0
@@ -40,10 +46,10 @@ def analyze_workflow(workflow_name):
     while tested < TEST_TIME:
         print(f"testing {workflow_name} {tested + 1} time")
         rep = run_workflow(workflow_name)
-        txid = rep['txid']
+        txid = rep['transaction_id']
         validate_latency += rep['validate_latency']
         exec_latency += rep['exec_latency']
-        func_io_time_test, func_exec_time_test = get_function_latency(txid)
+        func_exec_time_test, func_io_time_test = get_function_latency(txid)
         func_io_time += func_io_time_test
         func_exec_time += func_exec_time_test
         tested += 1

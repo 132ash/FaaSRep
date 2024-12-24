@@ -118,7 +118,7 @@ class WorkerSPManager:
                 self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, function_pos)
             return
         func_info = self.get_function_info(function_name)
-        print(f"trigger func {function_name} with ip {func_info['ip']}")
+        print(f"{function_name} ip: {func_info['ip']}")
         if func_info['ip'] == self.host_addr:
             # function runs on local
             # update cache if in repair mode and this node has expired_keys.
@@ -193,11 +193,10 @@ class WorkerSPManager:
         end = time.time()
 
         state.lock.acquire()
-        print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}")
         state.read_set[info["function_name"]] = res["read_set"]
         state.write_set.update(res["write_set"])
         state.lock.release()
-
+        print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
 

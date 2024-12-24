@@ -1,6 +1,6 @@
 import couchdb
 import sys
-sys.path.append('../../config')
+sys.path.append('../config')
 import config
 
 class Repository:
@@ -12,9 +12,10 @@ class Repository:
         self.couch.create('workflow_latency')
 
     def get_latencies(self, txid, phase):
-        docs = []
+        latencies = []
         for _id in self.couch['workflow_latency']:
             doc = self.couch['workflow_latency'][_id]
             if doc['transaction_id'] == txid and doc['phase'] == phase:
-                docs.append(doc)
-        return docs
+                latencies.append(doc['time'])
+        return latencies
+
