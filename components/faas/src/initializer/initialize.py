@@ -15,8 +15,8 @@ def makeWorkflowConfig(workflow: component.workflow, node_assign: list):
                       'ip': node_assign[func_name],
                       'parent_cnt': workflow.parent_cnt[func_name],
                       'input': func.input,
-                        'output': func.output,
-                        'next': func.next
+                      'output': func.output,
+                      'next': func.next
                     }
         all_function_info[func_name] = func_info
     return all_function_info

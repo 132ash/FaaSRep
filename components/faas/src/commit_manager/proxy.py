@@ -5,8 +5,8 @@ import requests
 import time 
 import datetime
 import validator_repo
-from validator import TxValidator, TxVersion
-from TX_timestamp import TimeStampAllocator, TxVersion
+from validator import BatchValidator
+from TX_timestamp import TimeStampAllocator, BatchVersion
 from repair_engine import RepairEngine
 import json
 import sys
@@ -25,15 +25,15 @@ app = Flask(__name__)
 
 
 Timestamp_allocator = TimeStampAllocator()
-Validator = TxValidator(Timestamp_allocator)
+Validator = BatchValidator(Timestamp_allocator)
 repairer = RepairEngine()
 GATEWAY_ADDR = config.GATEWAY_ADDR
 print(f"Validator and repairer started. initial key version: {Validator.global_table}")
 
-def notify_gateway(transaction_id, success:bool, start_time):
+def notify_gateway(transaction_id_list, success:bool, start_time):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
     data = {
-        'transaction_id': transaction_id,
+        'transaction_id': transaction_id_list,
         'success': success,
         "start_time": start_time
     }
@@ -47,27 +47,32 @@ def notify_gateway(transaction_id, success:bool, start_time):
 @app.route('/validate', methods = ['POST'])
 def validate_tx():
     data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
     start_time = time.time()
-    logging.info(f"start validate_tx {transaction_id}")
-    read_set = data['read_set']
-    write_set = data['write_set']
-    workflow_name = data['workflow_name']
-    function_pos = data.get('function_pos', {})
-    commitTime = Timestamp_allocator.allocate_timestamp(transaction_id)
+    batch = data['batch']
+    # using the first txid as the batch id.
+    batch_id = batch['batch_id']
+    workflow_name_per_tx = batch['workflow_name'] # {txid: workflow_name}
+    function_pos_per_tx = batch['function_pos'] # {txid: {func: IP}}
+    transaction_list = batch['transaction_list'] # [txid1, txid2,...]
+    read_set = batch['read_set'] #[{txid:xx, read_set:{}},...]
+    write_set = batch['write_set'] #[{txid:xx, write_set:{}},...]
+    logging.info(f"start validating batch whose first tx is {batch_id}")
+    commitTime = Timestamp_allocator.allocate_timestamp(batch_id)
     print(f"acquired timestamp: {time.time() - start_time}")
-    version = TxVersion(transaction_id, commitTime)
-    # get expired keys.
-    expired_keys, confilcted = Validator.validate(transaction_id, read_set, write_set, function_pos)
-    for k, v in expired_keys.items():
-        expired_keys[k] = list(v)
+    version = BatchVersion(commitTime)
+    # start validating.
+    expired_keys, confilcted, dirty_set, downstream_func_table, upstream_func_table = Validator.validate(batch_id, workflow_name_per_tx, read_set, write_set, transaction_list, function_pos_per_tx)
+ 
+    # start repairing.
     print(f"expired_keys: {expired_keys}, time:{time.time() - start_time}")
-    repair_successful = repairer.trigger_repair(transaction_id, workflow_name, expired_keys, confilcted, function_pos)
+    repair_successful = True
+    if confilcted:
+        repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, dirty_set, downstream_func_table, upstream_func_table)
     print(f"repair_successful: {repair_successful}, time:{time.time() - start_time}")
 
     if repair_successful:
-        Validator.commit_tx(transaction_id, workflow_name, version.to_string())
-        notify_gateway(transaction_id, True,  start_time)
+        TXid_list = Validator.commit_batch(batch_id, batch, version.to_string())
+        notify_gateway(TXid_list, True,  start_time)
         return json.dumps({'status': 'successed'})
     else:
         return json.dumps({'status': 'failed'})
@@ -75,8 +80,8 @@ def validate_tx():
 @app.route('/fin_repair', methods = ['POST'])
 def repair_finish():
     data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    repairer.notify_Tx(transaction_id, True)
+    batch_id = data['batch_id']
+    repairer.notify_batch(batch_id, True)
     return json.dumps({'status': 'successed'})
 
 

@@ -1,3 +1,4 @@
+# basic settings
 COUCHDB_URL = 'http://faasnap:faasnap@192.168.162.132:5984'
 DYNAMODB_URL = 'http://192.168.162.132:4567'
 DYNAMODB_KEY_ID = 'FAASNAPDYNAMODB'
@@ -10,14 +11,20 @@ CACHE_DB = 1
 GATEWAY_ADDR = '192.168.162.132:8000' # need to update as your private_ip
 VALIDATOR_ADDR = '192.168.162.132:9000'
 
+
+# workflow setting
 WORKFLOW_YAML_ADDR = {# "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml",
                       'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'
                       }
-# get function image info for container initialization
 FUNCTION_INFO_ADDRS = {# 'testflow': '../../../../benchmark/testflow',
                        'simpleseq': '../../../../benchmark/simpleseq'
                        }
+# cache setting
 CLEAR_MEM = True
 FILLUP_CACHE = True
 EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 3
+
+# batch setting
+BATCH_SIZE = 1
+BATCH_INTERVAL = 0.05

@@ -54,7 +54,9 @@ class RedisCache:
 
 
 class Store:
-    def __init__(self, workflow_name, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict):
+    def __init__(self, workflow_name, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False):
+        self.is_repair = is_repair
+        self.downstream_func_table = TxMetaData["DownstreamFuncTable"]
         self.redis_shadow_table = redis_shadow_table
         self.redis_cache = cache
         self.fetch_dict = {}
@@ -67,6 +69,8 @@ class Store:
         self.output = output
         self.io_latency = 0
         self.tx_metadata = TxMetaData
+        self.tx_metadata["RYW_upstreams"] = {}
+
 
         if os.path.exists('work'):
             os.system('rm -rf work')
@@ -129,14 +133,20 @@ class Store:
         value = None
         start = time.time()
         func_ip_pair = self.tx_metadata["WriteSet"].get(key, None)
-        # upstream fucntion has written this key
-        if func_ip_pair and func_ip_pair['func'] != self.function_name:
+        RYW_sign = False
+        # upstream fucntion has written this key(maybe itself)， RYW inside tx.
+        if func_ip_pair:
+            RYW_sign = True
             key_pos = func_ip_pair['ip']
+            upstream_func = func_ip_pair['func']
             value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT'), key_pos)
+            # first run, update RYW subjection table.
+            if not self.is_repair and upstream_func != self.function_name:
+                self.tx_metadata["RYW_upstreams"][upstream_func] = True
         else:
             value_version_pair =  self.redis_cache.cache_get(key)
             version = value_version_pair["version"]
-            self.tx_metadata["ReadSet"][key] = version
+            self.tx_metadata["ReadSet"][key] = {"version":version, "RYW":RYW_sign}
             value = value_version_pair["value"]
         end = time.time()
         self.io_latency += (end - start)

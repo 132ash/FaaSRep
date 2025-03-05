@@ -138,14 +138,15 @@ class Repository:
             data = {"value": value, "version": version}
             self.redis[key] = json.dumps(data)
 
-    def commit_tx_writes(self, transaction_id, version):
-        keys = self.shadowtable_redis.keys(f"{transaction_id}:PUT*")
-        for redis_key in keys:
-            # 获取键对应的版本和值
-            key = self.param_decode(redis_key.decode('utf-8'))
-            value = self.shadowtable_redis.get(redis_key).decode('utf-8')
-            # 调用 store_key_to_db 存储到数据库中
-            self.data_db.store_data_to_db(key, version, value)
+    def commit_tx_writes(self, transaction_id_list, version):
+        for transaction_id in transaction_id_list:
+            keys = self.shadowtable_redis.keys(f"{transaction_id}:PUT*")
+            for redis_key in keys:
+                # 获取键对应的版本和值
+                key = self.param_decode(redis_key.decode('utf-8'))
+                value = self.shadowtable_redis.get(redis_key).decode('utf-8')
+                # 调用 store_key_to_db 存储到数据库中
+                self.data_db.store_data_to_db(key, version, value)
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()
