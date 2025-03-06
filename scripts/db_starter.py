@@ -1,6 +1,7 @@
 import couchdb
 import boto3
 import time
+from datetime import datetime
 
 time.sleep(2)
 couch_db = couchdb.Server('http://faasnap:faasnap@127.0.0.1:5984')
@@ -39,11 +40,11 @@ table = dynamo_db.create_table(
 )
 
 table.meta.client.get_waiter('table_exists').wait(TableName='data')
-
+startup_version = datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
 table.put_item(
     Item={
         'key': 'test_value',
-        'version': '0:0',
+        'version': startup_version,
         'value': '1'
     }
 )

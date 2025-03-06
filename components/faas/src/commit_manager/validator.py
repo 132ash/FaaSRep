@@ -114,17 +114,15 @@ class BatchValidator:
 
             # keys in read set: 
             # check if the same key is written before by a previous tx in the same batch. then fillup subjection table.
-            for func, read_key_info in read_set.items():
-                for key, version_RYW_pair in read_key_info.items():
-                    version = version_RYW_pair['version']
-                    RYW_sign = version_RYW_pair['RYW']
+            for func, kv_pairs in read_set.items():
+                for key in kv_pairs.keys():
                     already_waiting, prev_batch_id, upstream_tx_id, upstream_writer = self.ask_for_lock(batch_id, tx_id , func, key, "read")
                     # calculate total number of locks to be acquired.
                     if not already_waiting:
                         self.acquired_locks[batch_id]["target"] += 1
                         self.lock_key_set_per_batch[batch_id].append(key)
                     #subjection across txs: read a key that is written by a previous tx in the same batch.
-                    if not RYW_sign and batch_id == prev_batch_id and upstream_tx_id != tx_id:
+                    if batch_id == prev_batch_id and upstream_tx_id != tx_id:
                         # the last writer is not commited yet, damaged for sure.
                         self.target_damaged_funcs_per_tx(batch_id, txid, func)
                         self.subjection_table.update_subjection_table(batch_id, workflow_name, upstream_tx_id, tx_id, upstream_writer, func, function_pos_per_tx[upstream_tx_id][upstream_writer], ip, key)
@@ -156,13 +154,12 @@ class BatchValidator:
         expired_keys:Dict[str:set] = {}
         damaged_funcs:Dict[str:set] = {}
         for txid, rs in read_set_per_batch.items():
-            for func, kvpairs in rs.items():
-                for key, version_RYW in kvpairs.items():
-                    version = version_RYW['version']         
-                    if version < self.global_table.get(key):
-                        ip = function_pos_per_tx[txid][func]
-                        self.target_damaged_funcs_per_tx(batch_id, txid, func)
-                        self.target_expired_keys_per_node(batch_id, ip, key)
+            for func, kv_pair in rs.items():
+                    for key, version in kv_pair.items():       
+                        if version < self.global_table.get(key):
+                            ip = function_pos_per_tx[txid][func]
+                            self.target_damaged_funcs_per_tx(batch_id, txid, func)
+                            self.target_expired_keys_per_node(batch_id, ip, key)
             damaged_funcs[txid] = self.damaged_functions_per_batch[batch_id][txid]
             expired_keys[txid] = self.expired_keys_per_batch[batch_id][txid]
 

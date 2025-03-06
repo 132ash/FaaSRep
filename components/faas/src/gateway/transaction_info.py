@@ -18,9 +18,10 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
 
-    def notifyTX(self, tx_id, validate_latency):
-        condition = self.running_txs[tx_id]['cond']
-        self.running_txs[tx_id]['finished'] = True
-        self.running_txs[tx_id]["validate_latency"] = validate_latency
-        condition.set()
-        print(f"notified {tx_id}")
+    def notifyTX(self, transaction_id_list, validate_latency):
+        for tx_id in transaction_id_list:
+            condition = self.running_txs[tx_id]['cond']
+            self.running_txs[tx_id]['finished'] = True
+            self.running_txs[tx_id]["validate_latency"] = validate_latency
+            condition.set()
+            print(f"notified {tx_id}")

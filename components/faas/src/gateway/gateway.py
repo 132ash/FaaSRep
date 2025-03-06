@@ -89,12 +89,12 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
+    transaction_id_list = data['transaction_id_list']
     success = data['success']
     start_time = data['start_time']
     end_time = time.time()
-    txTable.notifyTX(transaction_id, end_time - start_time)
-    logging.info(f"Validated: transaction_id: {transaction_id}, commited: {success}")
+    txTable.notifyTX(transaction_id_list, end_time - start_time)
+    logging.info(f"Validated: transaction_ids: {transaction_id_list}, commited: {success}")
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

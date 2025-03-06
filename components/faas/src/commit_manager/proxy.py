@@ -33,7 +33,7 @@ print(f"Validator and repairer started. initial key version: {Validator.global_t
 def notify_gateway(transaction_id_list, success:bool, start_time):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
     data = {
-        'transaction_id': transaction_id_list,
+        'transaction_id_list': transaction_id_list,
         'success': success,
         "start_time": start_time
     }
@@ -56,7 +56,7 @@ def validate_tx():
     transaction_list = batch['transaction_list'] # [txid1, txid2,...]
     read_set = batch['read_set'] #[{txid:xx, read_set:{}},...]
     write_set = batch['write_set'] #[{txid:xx, write_set:{}},...]
-    logging.info(f"start validating batch whose first tx is {batch_id}")
+    logging.info(f"received batch: {batch_id}, workflow_name_per_tx: {workflow_name_per_tx}, function_pos_per_tx: {function_pos_per_tx}, transaction_list: {transaction_list}, read_set: {read_set}, write_set: {write_set}")
     commitTime = Timestamp_allocator.allocate_timestamp(batch_id)
     print(f"acquired timestamp: {time.time() - start_time}")
     version = BatchVersion(commitTime)
@@ -67,6 +67,7 @@ def validate_tx():
     print(f"expired_keys: {expired_keys}, time:{time.time() - start_time}")
     repair_successful = True
     if confilcted:
+        logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}, dirty_set: {dirty_set}, downstream_func_table: {downstream_func_table}, upstream_func_table: {upstream_func_table}")
         repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, dirty_set, downstream_func_table, upstream_func_table)
     print(f"repair_successful: {repair_successful}, time:{time.time() - start_time}")
 

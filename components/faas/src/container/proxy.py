@@ -52,7 +52,7 @@ class Runner:
     def run(self, transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table):
         # FaaSStore
         
-        TxMetaData_thisFunc = {"ReadSet": {}, "WriteSet": write_set, "DownstreamFuncTable":downstream_func_table, "IntroSubjection": {"return":{}, "write":{}}, "DamagedOutputs": {"return":{}, "write":{}}}
+        TxMetaData_thisFunc = {"ReadSet": {}, "WriteSet": write_set, "DownstreamFuncTable":downstream_func_table, "RYW_subjection": {}}
         store = Store(self.workflow, self.function, transaction_id, input, output, function_pos, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
@@ -104,7 +104,7 @@ def run():
     input = inp['input']
     output = inp['output']
     function_pos = inp['function_pos']
-    write_set = inp['write_set']
+    write_set = inp['write_set'] 
     is_repair = inp['is_repair']
     downstream_func_table = inp['downstream_func_table']
 

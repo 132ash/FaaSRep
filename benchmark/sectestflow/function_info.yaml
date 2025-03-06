@@ -1,0 +1,6 @@
+workflow: sectestflow
+functions:
+- {image: sectestflow_f1, name: f1}
+- {image: sectestflow_f2, name: f2}
+- {image: sectestflow_f3, name: f3}
+max_containers: 30

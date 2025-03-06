@@ -69,7 +69,6 @@ class Store:
         self.output = output
         self.io_latency = 0
         self.tx_metadata = TxMetaData
-        self.tx_metadata["RYW_upstreams"] = {}
 
 
         if os.path.exists('work'):
@@ -77,8 +76,11 @@ class Store:
         os.mkdir('work')
 
     # mode: 'RET', 'PUT'
-    def param_wrapper(self, func , key, mode):
-        return f"{self.transaction_id}:{mode}:{func}:{key}" 
+    def param_wrapper(self, func , key, mode, txid=None):
+        if txid:
+            return f"{txid}:{mode}:{func}:{key}" 
+        else:
+            return f"{self.transaction_id}:{mode}:{func}:{key}" 
     
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
@@ -132,21 +134,25 @@ class Store:
     def get(self, key):
         value = None
         start = time.time()
+        RYW_sign=False
         func_ip_pair = self.tx_metadata["WriteSet"].get(key, None)
-        RYW_sign = False
-        # upstream fucntion has written this key(maybe itself)， RYW inside tx.
+        upstream_txid = None
         if func_ip_pair:
             RYW_sign = True
+        else:
+            func_ip_pair = self.tx_metadata["DownstreamFuncTable"].get(key, None)
+            upstream_txid = func_ip_pair.get("transaction_id", None)
+        # upstream fucntion has written this key(maybe itself)，fetch from shadow table. 
+        if func_ip_pair:
             key_pos = func_ip_pair['ip']
             upstream_func = func_ip_pair['func']
-            value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT'), key_pos)
+            value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT', upstream_txid), key_pos)
             # first run, update RYW subjection table.
-            if not self.is_repair and upstream_func != self.function_name:
+            if not self.is_repair and RYW_sign and upstream_func != self.function_name:
                 self.tx_metadata["RYW_upstreams"][upstream_func] = True
         else:
             value_version_pair =  self.redis_cache.cache_get(key)
-            version = value_version_pair["version"]
-            self.tx_metadata["ReadSet"][key] = {"version":version, "RYW":RYW_sign}
+            self.tx_metadata["ReadSet"][key] = value_version_pair["version"]
             value = value_version_pair["value"]
         end = time.time()
         self.io_latency += (end - start)

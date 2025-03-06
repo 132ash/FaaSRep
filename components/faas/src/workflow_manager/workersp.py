@@ -35,11 +35,11 @@ class TransactionState:
         # {key: func_ip}
         self.write_set:Dict[str:Dict[str:str]] = write_set
         # {func: []]}
-        self.expired_keys = repair_states['expired_keys']
-        self.downstream_func_table = repair_states['downstream_func_table']
-        self.upstream_func_table = repair_states['upstream_func_table']
-        self.RYW_subjection = repair_states['introtx_write_table']
-        self.dirty_set = repair_states['dirty_set']
+        self.expired_keys = repair_states['expired_keys'] # {ip：list（keys)}
+        self.downstream_func_table = repair_states['downstream_func_table'] #{func:{up_cnt:xxx,upstream_keys:{key:{upstream_func:xx, upstream_ip:xx}}}}
+        self.upstream_func_table = repair_states['upstream_func_table'] # {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
+        self.RYW_subjection = repair_states['introtx_write_table'] #{func:{"down_funcs":[], "up_cnt":xx}
+        self.dirty_set = repair_states['dirty_set'] # [funcs]
         
         self.repair = repair # if the transaction is in repair mode
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
@@ -95,7 +95,7 @@ class WorkerSPManager:
                 state.downstream_func_table.update(repair_states['downstream_func_table'])
                 state.upstream_func_table.update(repair_states['upstream_func_table'])
                 # in repair, don't modify read_set and write_set
-            if not repair:
+            else:
                 state.read_set.update(read_set)
                 state.write_set.update(write_set)
                 state.RYW_subjection.update(repair_states['RYW_subjection'])
@@ -244,7 +244,7 @@ class WorkerSPManager:
         name = info['function_name']
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, state.repair, 
-                             state.downstream_func_table.get(name, {}))
+                             state.downstream_func_table.get(name, {}).get('upstream_keys', {}))
         end = time.time()
         state.lock.acquire()
         # in first run, modify read/write set, and update RYW relation.

@@ -18,9 +18,11 @@ class SubjectionTable:
     def add_downstream_func_key(self, batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, upstream_ip, key):
         downstream_func_table = self.downstream_func_table[batch_id].get(downstream_tx_id, {})
         downstream_func_info = downstream_func_table.get(downstream_func, {})
-        cnt = downstream_func_info.get("cnt", 0)
-        downstream_func_info["cnt"] = cnt + 1
-        downstream_func_info[key] = {"upstream_tx_id":upstream_tx_id, "upstream_func":upstream_func, "upstream_ip":upstream_ip}
+        cnt = downstream_func_info.get("up_cnt", 0)
+        downstream_func_info["up_cnt"] = cnt + 1
+        upstream_keys = downstream_func_info.get("upstream_keys", {})
+        upstream_keys[key] = {"transaction_id":upstream_tx_id, "func":upstream_func, "ip":upstream_ip}
+        downstream_func_info["upstream_keys"] = upstream_keys
         downstream_func_table[downstream_func] = downstream_func_info
         self.downstream_func_table[batch_id][downstream_tx_id] = downstream_func_table
          
