@@ -64,17 +64,17 @@ def analyze_batch(batch):
         for workflow in batch:
             rep = result[workflow]
             txid = rep['transaction_id']
-            validate_latency["workflow"] += (rep['validate_latency'] / TEST_TIME)
-            e2e_latency["workflow"] += (rep['e2e_latency']  / TEST_TIME)
+            validate_latency[workflow] += (rep['validate_latency'] / TEST_TIME)
+            e2e_latency[workflow] += (rep['e2e_latency']  / TEST_TIME)
             func_exec_time_test, func_io_time_test = get_function_latency(txid)
-            func_io_time["workflow"] += (func_io_time_test / TEST_TIME)
-            func_exec_time["workflow"] += (func_exec_time_test / TEST_TIME)
+            func_io_time[workflow] += (func_io_time_test / TEST_TIME)
+            func_exec_time[workflow] += (func_exec_time_test / TEST_TIME)
         tested += 1
     
     return validate_latency, e2e_latency, func_io_time, func_exec_time
     
 
-def analyze(mode):
+def analyze(mode='batch'):
     validate_overall = []
     e2e_overall = []
     func_io_overall = []

@@ -1,7 +1,6 @@
 import logging
 import time
 import math
-import sys
 from gevent import event
 from gevent.lock import BoundedSemaphore
 from container import Container
@@ -42,10 +41,10 @@ class Function:
 
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table, dirty_set):
+    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table):
         data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,
                 'is_repair': is_repair, 'downstream_func_table': downstream_func_table,
-                 'output': output, 'write_set':write_set, "dirty_set":dirty_set}
+                 'output': output, 'write_set':write_set}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()

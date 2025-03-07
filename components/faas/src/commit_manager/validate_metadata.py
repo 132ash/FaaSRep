@@ -10,7 +10,7 @@ class SubjectionTable:
 
     def init(self, batch_id):
         self.downstream_func_table[batch_id] = {}
-        self.upstream_func_table[batch_id] = {}
+        self.upstream_func_table[batch_id] = {"next_func":{}, "next_dict":{}}
 
     # downstream function needs:
     # 1. cnt of upstream functions to know when to run
@@ -41,13 +41,14 @@ class SubjectionTable:
             next_dict[downstream_tx_id] = {}
         if downstream_func not in next_dict[downstream_tx_id]:
             next_dict[downstream_tx_id][downstream_func] = True  
-            next_func.append({"downstream_tx_id":downstream_tx_id,"downstream_workflow_name":downstream_workflow_name, "downstream_func":downstream_func, "downstream_ip":downstream_ip})
+            next_func.append({"transaction_id":downstream_tx_id,"workflow_name":downstream_workflow_name, "function_name":downstream_func, "ip":downstream_ip})
         next_funcs_in_tx[upstream_func] = next_func
         next_dicts_in_tx[upstream_func] = next_dict
-        self.upstream_func_table[batch_id]["next_func"] = next_funcs_in_tx
-        self.upstream_func_table[batch_id]["next_dict"] = next_dicts_in_tx
+        self.upstream_func_table[batch_id]["next_func"][upstream_tx_id] = next_funcs_in_tx
+        self.upstream_func_table[batch_id]["next_dict"][upstream_tx_id] = next_dicts_in_tx
 
     def update_subjection_table(self,batch_id, downstream_workflow_name, upstream_tx_id,  downstream_tx_id, upstream_func, downstream_func, upstream_ip, downstream_ip, key):
+        print(f"update subjection table: batch_id:{batch_id}, downstream_workflow_name:{downstream_workflow_name}, upstream_tx_id:{upstream_tx_id}, downstream_tx_id:{downstream_tx_id}, upstream_func:{upstream_func}, downstream_func:{downstream_func}, upstream_ip:{upstream_ip}, downstream_ip:{downstream_ip}, key:{key}")
         self.add_downstream_func_key(batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, upstream_ip, key)
         self.add_upstream_func_key(batch_id, downstream_workflow_name, upstream_tx_id, downstream_tx_id, upstream_func,downstream_func, downstream_ip)
     

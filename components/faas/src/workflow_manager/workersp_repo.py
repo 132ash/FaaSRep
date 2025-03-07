@@ -138,10 +138,12 @@ class Repository:
             data = {"value": value, "version": version}
             self.redis[key] = json.dumps(data)
 
-    def commit_tx_writes(self, transaction_id_list, version):
-        for transaction_id in transaction_id_list:
-            keys = self.shadowtable_redis.keys(f"{transaction_id}:PUT*")
-            for redis_key in keys:
+    # commit_table: {tx_id:{key:True}}
+    def commit_tx_writes(self, commit_table, version):
+        for transaction_id, keys_dict in commit_table.items():  
+            redis_keys_all = self.shadowtable_redis.keys(f"{transaction_id}:PUT*")   
+            redis_keys_target = [key for key in redis_keys_all if self.param_decode(key.decode('utf-8')) in keys_dict]
+            for redis_key in redis_keys_target:
                 # 获取键对应的版本和值
                 key = self.param_decode(redis_key.decode('utf-8'))
                 value = self.shadowtable_redis.get(redis_key).decode('utf-8')

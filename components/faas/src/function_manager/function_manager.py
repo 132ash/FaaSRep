@@ -22,9 +22,6 @@ class FunctionManager:
         self.client = docker.from_env()
         self.default_container_num = config.DEFAULT_CONTAINER_NUM
 
-        print("Clearing previous containers.")
-        os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
-
         self.functions = {
             x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num)
             for x in self.function_info
@@ -45,8 +42,10 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, downstream_func_table, dirty_set):
+    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, downstream_func_table):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
-        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table, dirty_set)
+        if is_repair:
+            print(f"FUNCMANAGER: repairing {function_name}, downstream_func_table:{downstream_func_table}")
+        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table)

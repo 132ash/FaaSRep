@@ -135,12 +135,12 @@ class Store:
         value = None
         start = time.time()
         RYW_sign=False
-        func_ip_pair = self.tx_metadata["WriteSet"].get(key, None)
+        func_ip_pair = self.tx_metadata["WriteSet"].get(key, {})
         upstream_txid = None
         if func_ip_pair:
             RYW_sign = True
         else:
-            func_ip_pair = self.tx_metadata["DownstreamFuncTable"].get(key, None)
+            func_ip_pair = self.tx_metadata["DownstreamFuncTable"].get(key, {})
             upstream_txid = func_ip_pair.get("transaction_id", None)
         # upstream fucntion has written this key(maybe itself)，fetch from shadow table. 
         if func_ip_pair:
@@ -149,7 +149,7 @@ class Store:
             value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT', upstream_txid), key_pos)
             # first run, update RYW subjection table.
             if not self.is_repair and RYW_sign and upstream_func != self.function_name:
-                self.tx_metadata["RYW_upstreams"][upstream_func] = True
+                self.tx_metadata["RYW_subjection"][upstream_func] = True
         else:
             value_version_pair =  self.redis_cache.cache_get(key)
             self.tx_metadata["ReadSet"][key] = value_version_pair["version"]
