@@ -16,7 +16,7 @@ class Repository:
     def __init__(self):
         self.couch = couchdb.Server(couchdb_url)
         self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
-
+        
 
     def get_initial_data_version(self):
         table = self.dynamo.Table('data')

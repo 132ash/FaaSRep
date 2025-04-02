@@ -4,7 +4,7 @@ import sys
 import requests
 import time 
 import datetime
-import validator_repo
+from repair_info import RepairInfo
 from validator import BatchValidator
 from TX_timestamp import TimeStampAllocator, BatchVersion
 from repair_engine import RepairEngine
@@ -25,8 +25,9 @@ app = Flask(__name__)
 
 
 Timestamp_allocator = TimeStampAllocator()
-Validator = BatchValidator(Timestamp_allocator)
-repairer = RepairEngine()
+repair_info = RepairInfo()
+Validator = BatchValidator(Timestamp_allocator, repair_info)
+repairer = RepairEngine(repair_info)
 GATEWAY_ADDR = config.GATEWAY_ADDR
 print(f"Validator and repairer started. initial key version: {Validator.global_table}")
 
@@ -53,6 +54,7 @@ def validate_tx():
     batch_id = batch['batch_id']
     workflow_name_per_tx = batch['workflow_name'] # {txid: workflow_name}
     function_pos_per_tx = batch['function_pos'] # {txid: {func: IP}}
+    worker_ip_set = batch['worker_set'].keys() # [IP1, IP2,...]
     transaction_list = batch['transaction_list'] # [txid1, txid2,...]
     read_set = batch['read_set'] #[{txid:xx, read_set:{}},...]
     write_set = batch['write_set'] #[{txid:xx, write_set:{}},...]
@@ -62,18 +64,19 @@ def validate_tx():
     print(f"acquired timestamp: {time.time() - start_time}")
     version = BatchVersion(commitTime)
     # start validating.
-    expired_keys, confilcted, dirty_set, downstream_func_table, upstream_func_table = Validator.validate(batch_id, workflow_name_per_tx, read_set, write_set, transaction_list, function_pos_per_tx)
+    repair_info.batch_init(batch_id)
+    expired_keys, confilcted = Validator.validate(batch_id, workflow_name_per_tx, read_set, write_set, transaction_list, function_pos_per_tx, RYW_subjection)
  
     # start repairing.
     print(f"expired_keys: {expired_keys}, time:{time.time() - start_time}")
     repair_successful = True
     if confilcted:
-        logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}, dirty_set: {dirty_set}, downstream_func_table: {downstream_func_table}, upstream_func_table: {upstream_func_table}")
-        repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, dirty_set, downstream_func_table, upstream_func_table, RYW_subjection)
+        logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}")
+        repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set)
     print(f"repair_successful: {repair_successful}, time:{time.time() - start_time}")
 
     if repair_successful:
-        TXid_list = Validator.commit_batch(batch_id, version.to_string())
+        TXid_list = Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx)
         notify_gateway(TXid_list, True,  start_time)
         return json.dumps({'status': 'successed'})
     else:

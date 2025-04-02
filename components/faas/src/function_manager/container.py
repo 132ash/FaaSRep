@@ -1,22 +1,82 @@
 import requests
 import docker
 import time
+import logging
 import gevent
 import redis
 import os
 from docker.types import Mount
+from gevent.lock import BoundedSemaphore
+
 
 base_url = 'http://127.0.0.1:{}/{}'
 
+class ContainerPool:
+
+    def __init__(self, max_containers, function_name):
+        self.pool = []
+        self.lock = BoundedSemaphore()
+        self.num_exec = 0 # the number of containers in execution, not in container pool
+        self.max_containers = max_containers
+        self.function_name = function_name
+        self.repair_reserve_pool = {} # reserve container for repair. {txid: container}
+
+    # the pool list is in order:
+    # - at the tail is the hottest containers (most recently used)
+    # - at the head is the coldest containers (least recently used)
+    def clean_pool(self, lifetime, old_container, default_container_num):
+        self.lock.acquire()
+        cur_time = time.time()
+        idx = -1
+        for i, c in enumerate(self.pool):
+            if cur_time - c.lasttime < lifetime:
+                idx = i
+                break
+        # all containers in pool are old, or the pool is empty
+        if idx < 0:
+            idx = len(self.pool)
+        
+        if len(self.pool) - idx <= default_container_num:
+            idx = max(0, len(self.pool) - default_container_num)
+
+        old_container.extend(self.pool[:idx])
+        self.pool = self.pool[idx:]
+        self.lock.release()
+    
+    def check_pool_full_and_occupy(self):
+        self.lock.acquire()
+        if self.num_exec + len(self.pool) > self.max_containers:
+            logging.info('hit container limit, function: %s', self.function_name)
+            return None
+        self.num_exec += 1
+        self.lock.release()
+
+    def len(self):
+        return len(self.pool)
+
+    def pop(self):  
+        res = None
+        self.lock.acquire()
+        if len(self.pool) != 0:
+            res = self.pool.pop(-1)
+            self.num_exec += 1
+        self.lock.release()  
+        return res
+    
+    def put(self, container):
+        self.lock.acquire()
+        self.pool.append(container)
+        self.num_exec -= 1
+        self.lock.release()
+
 class Container:
-    # create a new container and return the wrapper
     @classmethod
-    def create(cls, client, image_name, port, attr):
+    def create(cls, client, image_name, port, attr, container_pool: ContainerPool):
         container = client.containers.run(image_name,
                                           detach=True,
                                           ports={'5000/tcp': str(port)},
                                           labels=['workflow'])
-        res = cls(container, port, attr)
+        res = cls(container, port, attr, container_pool)
         res.wait_start()
         return res
 
@@ -27,11 +87,12 @@ class Container:
         container = client.containers.get(container_id)
         return cls(container, port, attr)
 
-    def __init__(self, container, port, attr):
+    def __init__(self, container, port, attr, container_pool):
         self.container = container
         self.port = port
         self.attr = attr
         self.lasttime = time.time()
+        self.container_pool = container_pool
 
     # wait for the container cold start
     def wait_start(self):
@@ -56,10 +117,16 @@ class Container:
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200
+    
+    def return_to_pool(self):
+        self.lasttime = time.time()
+        self.container_pool.put(self)
 
     # kill and remove the container
     def destroy(self):
         self.container.remove(force=True)
+
+
 
 if __name__ == '__main__':
 

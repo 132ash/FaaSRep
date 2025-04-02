@@ -2,8 +2,7 @@ import logging
 import time
 import math
 from gevent import event
-from gevent.lock import BoundedSemaphore
-from container import Container
+from container import Container, ContainerPool
 from function_info import FunctionInfo
 
 # data structure for request info
@@ -14,37 +13,36 @@ class RequestInfo:
         self.result = event.AsyncResult()
         self.arrival = time.time()
 
+
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info, port_controller, node_list, default_container_num):
+    def __init__(self, client, function_info, port_controller, node_list, default_container_num, reserve_pool):
         self.client = client
         self.info = function_info
         self.port_controller = port_controller
         self.node_list = node_list
         self.default_container_num = default_container_num
+        self.reserve_pool = reserve_pool
         
         self.num_processing = 0
         self.rq = []
 
         # container pool
-        self.num_exec = 0 # the number of containers in execution, not in container pool
-        self.container_pool = []
-        self.b = BoundedSemaphore()
+        self.container_pool = ContainerPool()
 
         while len(self.container_pool) < self.default_container_num:
             container = self.create_container()
             if container is None:
                 raise Exception("Container creation failed")
-            self.put_container(container)
+            self.container_pool.put(container)
         print(f"function: {self.info.function_name} container pool created, len {len(self.container_pool)}")
         
 
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table):
-        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,
-                'is_repair': is_repair, 'downstream_func_table': downstream_func_table,
-                 'output': output, 'write_set':write_set}
+    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt, no_parent_execution):
+        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'is_repair': is_repair,
+                 'output': output, 'write_set':write_set, "next_functions":next_funcs, "parent_cnt":parent_cnt,'no_parent_execution':no_parent_execution}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()
@@ -58,7 +56,7 @@ class Function:
         self.num_processing += 1
         
         # 1. try to get a workable container from pool
-        container = self.self_container()
+        container = self.container_pool.pop()
         
         # create a new container
         while container is None:
@@ -75,39 +73,24 @@ class Function:
         # 2. send request to the container
         logging.info('send request to: %s of: %s, rq len: %d, data: %s', self.info.function_name, req.transaction_id, len(self.rq), str(req.data))
         res = container.send_request(req.data)
+        res['port'] = container.port
         req.result.set(res)
         
-        # 3. put the container back into pool
-        self.put_container(container)
+        # 3. reserve the container into reserve pool
+        self.reserve_pool.reserve(req.transaction_id, container)
 
-    # get a container from container pool
-    # if there's no container in pool, return None
-    def self_container(self):
-        res = None
-
-        self.b.acquire()
-        if len(self.container_pool) != 0:
-            logging.info('get container from pool of function: %s, pool size: %d', self.info.function_name, len(self.container_pool))
-            res = self.container_pool.pop(-1)
-            self.num_exec += 1
-        self.b.release()
-        
-        return res
+        # self.container_pool.put(container)
 
     # create a new container
     def create_container(self):
         # do not create new exec container
         # when the number of execs hits the limit
-        self.b.acquire() # critical: missing lock may cause infinite container creation under high concurrency scenario
-        if self.num_exec + len(self.container_pool) > self.info.max_containers:
-            logging.info('hit container limit, function: %s', self.info.function_name)
+        if self.container_pool.check_pool_full_and_occupy() is None:
             return None
-        self.num_exec += 1
-        self.b.release()
 
         logging.info('create container of function: %s', self.info.function_name)
         try:
-            container = Container.create(self.client, self.info.img_name, self.port_controller.get(), 'exec')
+            container = Container.create(self.client, self.info.img_name, self.port_controller.get(), 'exec', self.container_pool)
         except Exception as e:
             print(e)
             self.num_exec -= 1
@@ -115,13 +98,6 @@ class Function:
         logging.info('function: %s container created', self.info.function_name)
         self.init_container(container)
         return container
-
-    # put the container into one of the three pool, according to its attribute
-    def put_container(self, container):
-        self.b.acquire()
-        self.container_pool.append(container)
-        self.num_exec -= 1
-        self.b.release()
 
     # after the destruction of container
     # its port should be give back to port manager
@@ -138,9 +114,7 @@ class Function:
     def repack_and_clean(self):
         # find the old containers
         old_container = []
-        self.b.acquire()
-        self.container_pool = clean_pool(self.container_pool, exec_lifetime, old_container, self.default_container_num)
-        self.b.release()
+        self.container_pool.clean_pool(exec_lifetime, old_container, self.default_container_num)
 
         # time consuming work is put here
         for c in old_container:
@@ -152,25 +126,5 @@ def favg(a):
 # life time of three different kinds of containers
 exec_lifetime = 600
 
-# the pool list is in order:
-# - at the tail is the hottest containers (most recently used)
-# - at the head is the coldest containers (least recently used)
-def clean_pool(pool, lifetime, old_container, default_container_num):
-    cur_time = time.time()
-    idx = -1
-
-    for i, c in enumerate(pool):
-        if cur_time - c.lasttime < lifetime:
-            idx = i
-            break
-    # all containers in pool are old, or the pool is empty
-    if idx < 0:
-        idx = len(pool)
-    
-    if len(pool) - idx <= default_container_num:
-        idx = max(0, len(pool) - default_container_num)
-
-    old_container.extend(pool[:idx])
-    return pool[idx:]
 
 

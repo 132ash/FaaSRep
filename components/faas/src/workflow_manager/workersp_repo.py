@@ -111,7 +111,7 @@ class Repository:
         latency_db = self.couch['workflow_latency']
         latency_db.save(log)
 
-    def param_wrapper(self, transaction_id, mode, func ,key):
+    def param_wrapper(self, transaction_id, mode, func="" ,key=""):
         return f"{transaction_id}:{mode}:{func}:{key}" 
     
     def param_decode(self, redis_key):
@@ -137,6 +137,15 @@ class Repository:
             version, value = self.data_db.get_data_from_db(key)
             data = {"value": value, "version": version}
             self.redis[key] = json.dumps(data)
+
+    def fillup_repair_matadata(self, batch_id, repair_metadata, function_pos):
+        func_pos_key =  self.param_wrapper(batch_id, 'POS')
+        self.shadowtable_redis[func_pos_key] = json.dumps(function_pos)
+        for txid in repair_metadata:
+            for func in repair_metadata[txid]:
+                # fill up the repair metadata to redis
+                redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
+                self.shadowtable_redis[redis_key] = json.dumps(repair_metadata[txid][func])
 
     # commit_table: {tx_id:{key:True}}
     def commit_tx_writes(self, commit_table, version):

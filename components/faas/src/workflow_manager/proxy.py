@@ -17,7 +17,7 @@ app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
-from validation_queue import ValidationQueue
+from repair_struct import ValidationQueue, ReservePool
 
 validate_interval = 0.005 # 200 qps at most
 
@@ -28,15 +28,22 @@ class Dispatcher:
        repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.cache_updated_table = {}
+       self.reserve_pool = ReservePool()
        self.validation_queue = ValidationQueue(config.BATCH_SIZE)
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.validation_queue) for name, addr in info_addrs.items()}
+       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.validation_queue, self.reserve_pool) for name, addr in info_addrs.items()}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
-    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}, read_set={}, write_set={}, repair=False, repair_states={}) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set , repair,repair_states)
+    def fin_repair_within_batch(self, batch_id):
+        self.validation_queue.send_fin_repair_request(batch_id)
+
+    def get_state(self, workflow_name: str, transaction_id: str, function_pos={}, read_set={}, write_set={}) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
+
+    def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port):
+        self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port)
     
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
@@ -51,19 +58,31 @@ class Dispatcher:
         gevent.spawn_later(validate_interval, self._validate_loop)
         gevent.spawn(self.validation_queue.send_validate_request)
 
-    def update_cache(self, batch_id, expired_keys):
-        # not updated yet, and have expired keys
-        if self.cache_updated_table.get(batch_id, False):
-            repo.update_cache(expired_keys.get(self.host_addr, []))
-            self.cache_updated_table[batch_id] = True
-            expired_keys.pop(self.host_addr, None)
-
 
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 if config.FILLUP_CACHE:
     repo.fillup_cache()
 
+
+# trigger a reserved container. If fail, run another container.
+@app.route('/repair', methods = ['POST'])
+def repair():
+    data = request.get_json(force=True, silent=True)
+    batch_id = data['batch_id']
+    transaction_id = data['transaction_id']
+    workflow_name = data['workflow_name']
+    function_name = data['function_name']
+    no_parent_execution = data['no_parent_execution']
+    port = data['port']
+    dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port)
+    return json.dumps({'status': 'ok'})
+
+@app.route('/fin_repair', methods = ['POST'])
+def fin_repair():
+    data = request.get_json(force=True, silent=True)
+    batch_id = data['batch_id']
+    dispatcher.fin_repair_within_batch(batch_id)
 
 # a new request from outside
 # the previous function was done
@@ -79,25 +98,9 @@ def req():
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
     # data for repair
-    repair = data.get('repair', False)
-    repair_states = {}
-    repair_states['expired_keys'] = data.get('expired_keys', {})
-    repair_states['dirty_set'] = data.get('dirty_set', {})
-    repair_states['downstream_func_table'] = data.get('downstream_func_table', {})
-    repair_states['upstream_func_table'] = data.get('upstream_func_table', {})
-    repair_states['batch_id'] = data.get('batch_id', 0)
-    repair_states['RYW_subjection'] = data.get('RYW_subjection',{})
     print(f"--------request {workflow_name} {transaction_id} {function_name}, repair:{repair}")
     # get the corresponding workflow state and trigger the function
-
-    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, repair, repair_states)
-    if repair:
-        dispatcher.update_cache(repair_states['batch_id'], repair_states['expired_keys'])
-        # a cross tx trigger, this function must re-run.
-        # and add executed_parent cnt(for start functions).
-        if data.get('crosstx', False):
-            state.crosstx_trigger_modify(function_name, no_parent_execution)
-
+    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
 
@@ -110,12 +113,30 @@ def clear():
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
+@app.route('/prepare', methods = ['POST'])
+def prepare():
+    data = request.get_json(force=True, silent=True)
+    batch_id = data['batch_id'] # {txid:{func:{ up_cnt:xxx, upstream_keys:{key: {txid:xx, func:xx, ip:xx}}}}}
+    repair_metadata = data['repair_metadata'] # {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
+    function_pos = data['function_pos'] # {tx_id:{func: {ip:xx, port:xx}}}
+    
+    # update cache on this node.
+    repo.update_cache(data['expired_keys'])
+    repo.fillup_repair_matadata(batch_id, repair_metadata, function_pos)
+
+    return json.dumps({'status': 'ok'})
+
+# commit data on this node, and return the containers to the pool
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id']
     commit_table = data['commit_table']
     version = data['version']
+    tx_list = data['tx_list']
+    # release the containers reserved into container pool.
+    for txid in tx_list:
+        dispatcher.reserve_pool.release(txid)
     print(f"commit_table: {commit_table}, version {version}")
     repo.commit_tx_writes(commit_table, version)
     dispatcher.cache_updated_table.pop(batch_id, None)

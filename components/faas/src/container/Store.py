@@ -17,13 +17,16 @@ class RedisShadowTable:
 
     def fetch(self, redis_key, ip):
         return self.redis[ip][redis_key].decode('utf-8')
+    
+   
         
 
 # data in cache: value and version 
 class RedisCache:
-    def __init__(self, port, db, db_server):
+    def __init__(self, port, db, db_server, func_name):
         self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db)
         self.data_db = db_server.Table('data')
+        self.func_name = func_name
 
     def cache_get(self, key):
         value_tuple = self.redis.get(key)
@@ -55,8 +58,6 @@ class RedisCache:
 
 class Store:
     def __init__(self, workflow_name, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False):
-        self.is_repair = is_repair
-        self.downstream_func_table = TxMetaData["DownstreamFuncTable"]
         self.redis_shadow_table = redis_shadow_table
         self.redis_cache = cache
         self.fetch_dict = {}
@@ -68,7 +69,14 @@ class Store:
         self.input = input
         self.output = output
         self.io_latency = 0
-        self.tx_metadata = TxMetaData
+        # collect message in first run
+        self.read_set = TxMetaData['read_set']
+        self.write_set = TxMetaData['write_set']
+        self.RYW_subjection = TxMetaData['RYW_subjection']
+        # metadata used in repair mode
+        self.is_repair = is_repair
+        self.downstream_func_table = TxMetaData['downstream_func_table']
+        self.dirty = TxMetaData['dirty']
 
 
         if os.path.exists('work'):
@@ -84,9 +92,9 @@ class Store:
     
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
-            return self.function_pos[self.function_name]
+            return self.function_pos[self.function_name]['ip']
         else:
-            return self.function_pos[upstream]
+            return self.function_pos[upstream]['ip']
 
 
     def fetch_from_mem(self, k, redis_key, ip, param_type):
@@ -126,7 +134,7 @@ class Store:
     # output_result: {'k': 'value'}
     # output_content_type: default application/json, just specify one when you need to
     def ret(self, output_result):
-        ip = self.function_pos[self.function_name]
+        ip = self.function_pos[self.function_name]['ip']
         for k, v in output_result.items():
             self.ret_dict[k] = v
             self.put_to_mem(k, ip, 'RET')
@@ -135,12 +143,12 @@ class Store:
         value = None
         start = time.time()
         RYW_sign=False
-        func_ip_pair = self.tx_metadata["WriteSet"].get(key, {})
+        func_ip_pair = self.write_set.get(key, {})
         upstream_txid = None
         if func_ip_pair:
             RYW_sign = True
         else:
-            func_ip_pair = self.tx_metadata["DownstreamFuncTable"].get(key, {})
+            func_ip_pair = self.downstream_func_table.get(key, {})
             upstream_txid = func_ip_pair.get("transaction_id", None)
         # upstream fucntion has written this key(maybe itself)，fetch from shadow table. 
         if func_ip_pair:
@@ -149,10 +157,10 @@ class Store:
             value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT', upstream_txid), key_pos)
             # first run, update RYW subjection table.
             if not self.is_repair and RYW_sign and upstream_func != self.function_name:
-                self.tx_metadata["RYW_subjection"][upstream_func] = True
+                self.RYW_subjection[upstream_func] = True
         else:
             value_version_pair =  self.redis_cache.cache_get(key)
-            self.tx_metadata["ReadSet"][key] = value_version_pair["version"]
+            self.read_set[key] = value_version_pair["version"]
             value = value_version_pair["value"]
         end = time.time()
         self.io_latency += (end - start)
@@ -160,11 +168,11 @@ class Store:
     
     def put(self, key, value):
         start = time.time()
-        if key not in self.tx_metadata["WriteSet"]:
-            self.tx_metadata["WriteSet"][key] = {}
-        self.tx_metadata["WriteSet"][key]['ip'] = self.function_pos[self.function_name]
-        self.tx_metadata["WriteSet"][key]['func'] = self.function_name
-        self.put_to_mem(key, self.function_pos[self.function_name], 'PUT', value)
+        if key not in self.write_set:
+            self.write_set[key] = {}
+        self.write_set[key]['ip'] = self.function_pos[self.function_name]['ip']
+        self.write_set[key]['func'] = self.function_name
+        self.put_to_mem(key, self.function_pos[self.function_name]['ip'], 'PUT', value)
         end = time.time()
         self.io_latency += (end - start)
 

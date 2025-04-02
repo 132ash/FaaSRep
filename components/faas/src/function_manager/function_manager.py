@@ -15,7 +15,7 @@ dispatch_interval = 0.005 # 200 qps at most
 
 # the class for scheduling functions' inter-operations
 class FunctionManager:
-    def __init__(self, config_path, min_port, node_list):
+    def __init__(self, config_path, min_port, node_list, reserve_pool):
         self.function_info = parse(config_path)
 
         self.port_controller = PortController(min_port, min_port + 4999)
@@ -23,7 +23,7 @@ class FunctionManager:
         self.default_container_num = config.DEFAULT_CONTAINER_NUM
 
         self.functions = {
-            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num)
+            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool)
             for x in self.function_info
         }
         self.init()
@@ -42,10 +42,10 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, downstream_func_table):
+    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, next_funcs, parent_cnt, no_parent_execution=False):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
         if is_repair:
-            print(f"FUNCMANAGER: repairing {function_name}, downstream_func_table:{downstream_func_table}")
-        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, downstream_func_table)
+            print(f"FUNCMANAGER: repairing {function_name}")
+        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt, no_parent_execution)

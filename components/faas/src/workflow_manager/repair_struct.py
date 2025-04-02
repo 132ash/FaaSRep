@@ -8,6 +8,28 @@ import gevent.lock
 sys.path.append('../../config')
 import config
 
+
+# reserve the containers after the first run, and return to the container pool after repairing.
+class ReservePool:
+    def __init__(self):
+        self.pool = {}  # {transaction_id: {lock: xx, containers:[container1, container2, ...]}}
+        self.queue_lock = gevent.lock.BoundedSemaphore()
+        
+    def reserve(self, transaction_id, container):
+        self.queue_lock.acquire()
+        if transaction_id not in self.pool:
+            self.pool[transaction_id] = {"lock": gevent.lock.BoundedSemaphore(), "containers": []}
+        self.queue_lock.release()
+        self.pool[transaction_id]["lock"].acquire()
+        self.pool[transaction_id]["containers"].append(container)
+        self.pool[transaction_id]["lock"].release()
+
+    def release(self, transaction_id):
+        containers = self.pool.get(transaction_id, {}).get("containers", [])
+        for container in containers:
+            container.return_to_pool()
+        self.pool.pop(transaction_id, None)
+
 class ValidationQueue:
     def __init__(self, batch_size):
         self.queue = []
@@ -31,6 +53,7 @@ class ValidationQueue:
             "write_set": {},
             "RYW_subjection": {},
             "function_pos": {},
+            'worker_set':{},
             "transaction_list":[]
         }
         for tx in batch:
@@ -38,8 +61,9 @@ class ValidationQueue:
             transformed_batch["workflow_name"][tx_id] = tx["workflow_name"]
             transformed_batch["read_set"][tx_id]=tx["read_set"]
             transformed_batch["write_set"][tx_id]=tx["write_set"]
-            transformed_batch["RYW_subjection"][tx_id]=tx["RYW_subjection"]
+            transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
             transformed_batch["function_pos"][tx_id] = tx["function_pos"]
+            transformed_batch["worker_set"].update(tx["worker_set"])
             transformed_batch["transaction_list"].append(tx_id)
         return transformed_batch
 

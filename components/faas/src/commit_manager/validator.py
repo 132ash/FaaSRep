@@ -10,7 +10,7 @@ from TX_timestamp import BatchVersion
 from gevent import event
 import requests
 import validator_repo
-import validate_metadata
+from repair_info import RepairInfo
 
 sys.path.append('../../config')
 import config
@@ -18,17 +18,17 @@ repo = validator_repo.Repository()
 
 class BatchValidator:
 
-    def __init__(self, timestamp_allocator:TimeStampAllocator):
+    def __init__(self, timestamp_allocator:TimeStampAllocator, repair_info:RepairInfo):
         self.global_table = repo.get_initial_data_version() # key:version table
         self.locks = {}  # wait infomation and lock for each key 
         self.acquired_locks = {} # acquired locks for each batch
         self.lock_key_set_per_batch = {} # lock key set for each batch: {batch_id: [keys]}, used for releasing
         self.write_set_per_batch = {} # write set for each transaction in a batch: {batch_id: {key:set(), ip:set()}}, used for updating versions
         self.tx_list_per_batch = {} # [tx1, tx2, ... ]
-        self.damaged_functions_per_batch = {} # dirty functions
+
 
         self.expired_keys_per_batch = {} # for updating caches
-        self.subjection_table = validate_metadata.SubjectionTable()
+        self.repair_info = repair_info
         self.timestamp_allocator = timestamp_allocator
 
     def get_lock(self, key):
@@ -76,29 +76,18 @@ class BatchValidator:
                 self.locks[key]["informed"] = True
         else:
             raise Exception("release lock failed, tx_id not the owner of the lock")
-
-    def get_subjection_table_for_batch(self, batch_id):
-        return self.subjection_table.get_table_for_batch(batch_id)
     
     def target_expired_keys_per_node(self, batch_id, ip, key):
-        expired_keys_for_ip = self.expired_keys_per_batch[batch_id].get(ip, set())
+        expired_keys_for_ip = self.expired_keys_per_batch[batch_id].setdefault(ip, set()) 
         expired_keys_for_ip.add(key)
-        self.expired_keys_per_batch[batch_id][ip] = expired_keys_for_ip
 
-    def target_damaged_funcs_per_tx(self, batch_id, tx_id, func):
-        damaged_functions_for_tx = self.damaged_functions_per_batch[batch_id].get(tx_id, {})
-        damaged_functions_for_tx[func]=True
-        self.damaged_functions_per_batch[batch_id][tx_id] = damaged_functions_for_tx    
-
-
-    def validate(self, batch_id, workflow_name_per_tx, read_set_per_batch, write_set_per_batch, transaction_list, function_pos_per_tx):
+    def validate(self, batch_id, workflow_name_per_tx, read_set_per_batch, write_set_per_batch, transaction_list, function_pos_per_tx, RYW_subjection):
         self.acquired_locks[batch_id] = {"target":0, "acquired":0, "cond":event.Event()}
         self.acquired_locks[batch_id]["cond"].clear()
         self.lock_key_set_per_batch[batch_id] = []
         self.write_set_per_batch[batch_id] = write_set_per_batch
         self.tx_list_per_batch[batch_id] = transaction_list
         self.expired_keys_per_batch[batch_id] = {}
-        self.damaged_functions_per_batch[batch_id] = {}
 
         expired_keys:Dict[str:set] = {}
 
@@ -109,7 +98,6 @@ class BatchValidator:
             write_set = write_set_per_batch[tx_id]
             read_set = read_set_per_batch[tx_id]
             workflow_name = workflow_name_per_tx[tx_id]
-            self.subjection_table.init(batch_id)
 
             # keys in read set: 
             # check if the same key is written before by a previous tx in the same batch. then fillup subjection table.
@@ -120,18 +108,19 @@ class BatchValidator:
                     if not already_waiting:
                         self.acquired_locks[batch_id]["target"] += 1
                         self.lock_key_set_per_batch[batch_id].append(key)
-                    #subjection across txs: read a key that is written by a previous tx in the same batch.
+                    # subjection across txs: read a key that is written by a previous tx in the same batch.
                     if batch_id == prev_batch_id and upstream_tx_id != tx_id:
                         # the last writer is not commited yet, damaged for sure.
-                        self.target_damaged_funcs_per_tx(batch_id, tx_id, func)
-                        self.subjection_table.update_subjection_table(batch_id, workflow_name, upstream_tx_id, tx_id, upstream_writer, func, function_pos_per_tx[upstream_tx_id][upstream_writer], ip, key)
+                        self.repair_info.target_function_dirty(batch_id, function_pos_per_tx[tx_id][func]['ip'], tx_id, func) 
+                        self.repair_info.update_crosstx_subjection_table(batch_id, workflow_name, upstream_tx_id, tx_id, upstream_writer, func, function_pos_per_tx[upstream_tx_id][upstream_writer]['ip'], function_pos_per_tx[tx_id][func]['ip'], key)
 
             # keys in write set:
             # cover the last written sign.
-            for key, write_key_info in write_set.items():
-                func = write_key_info['func']
-                ip = write_key_info['ip']
-                already_waiting, _, _, _ = self.ask_for_lock(batch_id, tx_id , func, key, "write")
+            for key, write_func in write_set.items():
+                ip = function_pos_per_tx[tx_id][func]['ip']
+                if write_func in RYW_subjection[tx_id]:
+                    self.repair_info.update_introtx_RYW_subjection_table(batch_id, ip, tx_id, write_func, RYW_subjection[tx_id][write_func])
+                already_waiting, _, _, _ = self.ask_for_lock(batch_id, tx_id , write_func, key, "write")
                 if not already_waiting:
                     self.acquired_locks[batch_id]["target"] += 1
                     self.lock_key_set_per_batch[batch_id].append(key)
@@ -149,25 +138,22 @@ class BatchValidator:
         # check the keys in read set, if the version is expired.
         # collect expired keys for each node and damaged functions.
         expired_keys:Dict[str:list] = {}
-        damaged_funcs:Dict[str:set] = {}
-        for txid, rs in read_set_per_batch.items():
+        for tx_id, rs in read_set_per_batch.items():
             for func, kv_pair in rs.items():
                     for key, version in kv_pair.items():       
                         if version < self.global_table.get(key):
-                            ip = function_pos_per_tx[txid][func]
-                            self.target_damaged_funcs_per_tx(batch_id, txid, func)
+                            ip = function_pos_per_tx[tx_id][func]['ip']
+                            self.repair_info.target_function_dirty(batch_id, ip, tx_id, func) 
                             self.target_expired_keys_per_node(batch_id, ip, key)
-            damaged_funcs[txid] = self.damaged_functions_per_batch[batch_id].get(txid, {})
 
-        downstream_func_table, upstream_func_table = self.get_subjection_table_for_batch(batch_id)
         for k, v in self.expired_keys_per_batch[batch_id].items():
             expired_keys[k] = list(v)
 
-        return expired_keys, len(expired_keys) != 0, damaged_funcs, downstream_func_table, upstream_func_table
+        return expired_keys, len(expired_keys) != 0 
     
     # modify global table, and release locks.
     # need to know the whole write set and what ip whey are on.
-    def commit_batch(self, batch_id, version: str):
+    def commit_batch(self, batch_id, version: str, function_pos_per_tx):
         tx_list = self.tx_list_per_batch[batch_id]
         keys_found = {}
         commit_table = {} # {ip:{tx_id:{key:True}}}
@@ -180,7 +166,8 @@ class BatchValidator:
                     continue
                 else:
                     keys_found[key] = True
-                    ip = content['ip']
+                    function_pos_per_tx
+                    ip = function_pos_per_tx[tx_id][content['func']]['ip']
                     ip_set.add(ip)
                     if ip not in commit_table:
                         commit_table[ip] = {}
@@ -189,7 +176,7 @@ class BatchValidator:
                     commit_table[ip][tx_id][key] = True
 
         jobs = [
-            gevent.spawn(self.trigger_worker_commit, batch_id, ip, commit_table[ip], version)
+            gevent.spawn(self.trigger_worker_commit, batch_id, ip, commit_table[ip], version, tx_list)
             for ip in ip_set
         ]
         gevent.joinall(jobs)
@@ -200,11 +187,11 @@ class BatchValidator:
         self.lock_key_set_per_batch.pop(batch_id)
         self.write_set_per_batch.pop(batch_id)
         self.tx_list_per_batch.pop(batch_id)
-        self.subjection_table.clean_table_of_batch(batch_id)
+        self.repair_info.clean_table_of_batch(batch_id)
         return tx_list
         
 
-    def trigger_worker_commit(self,batch_id, ip, commit_table, version):
+    def trigger_worker_commit(self,batch_id, ip, commit_table, version, tx_list):
         if not ip.endswith(":7000"):
             url = f"http://{ip}:7000/commit"
         else:
@@ -214,6 +201,7 @@ class BatchValidator:
         data = {
             'batch_id':batch_id,
             'commit_table': commit_table,
-            "version": version
+            "version": version,
+            "tx_list": tx_list
         }
         requests.post(url, json=data)
