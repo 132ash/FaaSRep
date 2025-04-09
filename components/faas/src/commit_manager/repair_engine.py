@@ -1,12 +1,8 @@
-import logging
-import requests
 from gevent import monkey
 monkey.patch_all()
-import gevent.lock
-
-
+import requests
+import gevent
 import sys
-from flask import Flask, request
 from gevent import event
 import time
 import validator_repo
@@ -74,7 +70,7 @@ class RepairEngine:
         for ip in worker_ip_set:
             repair_metadata_local = self.repair_info.get_repair_metadata_for_ip(batch_id, ip)
             repair_metadata_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, function_pos_per_tx, repair_metadata_local, expired_keys[ip]))
-        gevent.joinall(trigger_jobs) 
+        gevent.joinall(repair_metadata_jobs) 
         
         # metadata filled. Trigger start functions to repair workflow.
         trigger_jobs = []
@@ -84,6 +80,7 @@ class RepairEngine:
             for n in start_functions:
                 ip = function_pos_per_tx[tx_id][n]['ip']
                 port = function_pos_per_tx[tx_id][n]['port']
+                print(f"start functions: {start_functions}, tx_id: {tx_id}, workflow_name: {workflow_name}, function: {n}, ip: {ip}")
                 trigger_jobs.append(gevent.spawn(self.trigger_function, workflow_name, tx_id, n, ip, port,batch_id))
         gevent.joinall(trigger_jobs)   
         end = time.time()

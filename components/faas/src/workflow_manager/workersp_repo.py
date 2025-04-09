@@ -136,7 +136,7 @@ class Repository:
         for key in keys:
             version, value = self.data_db.get_data_from_db(key)
             data = {"value": value, "version": version}
-            self.redis[key] = json.dumps(data)
+            self.cache_redis[key] = json.dumps(data)
 
     def fillup_repair_matadata(self, batch_id, repair_metadata, function_pos):
         func_pos_key =  self.param_wrapper(batch_id, 'POS')

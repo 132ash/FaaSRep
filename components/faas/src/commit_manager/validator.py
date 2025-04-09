@@ -1,9 +1,8 @@
-import sys
 from gevent import monkey
 monkey.patch_all()
 from TX_timestamp import TimeStampAllocator
 import gevent
-import gevent.lock
+import sys
 import logging
 from typing import Any, Dict, List
 from TX_timestamp import BatchVersion
@@ -15,6 +14,7 @@ from repair_info import RepairInfo
 sys.path.append('../../config')
 import config
 repo = validator_repo.Repository()
+# TODO: modify validator. single locker + multiple validator. producer and consumer model.
 
 class BatchValidator:
 
@@ -161,13 +161,12 @@ class BatchValidator:
 
         for tx_id in reversed(tx_list):
             ws = self.write_set_per_batch[batch_id].get(tx_id, {})
-            for key, content in ws.items():
+            for key, func in ws.items():
                 if key in keys_found:
                     continue
                 else:
                     keys_found[key] = True
-                    function_pos_per_tx
-                    ip = function_pos_per_tx[tx_id][content['func']]['ip']
+                    ip = function_pos_per_tx[tx_id][func]['ip']
                     ip_set.add(ip)
                     if ip not in commit_table:
                         commit_table[ip] = {}

@@ -3,7 +3,9 @@ monkey.patch_all()
 import requests
 import os
 import gevent
+import logging
 import json
+import sys
 import boto3
 
 from flask import Flask, request
@@ -11,6 +13,15 @@ from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
 from Store import RedisShadowTable, RedisCache
+
+# 配置日志记录
+logging.basicConfig(
+    level=logging.INFO,  # 设置日志级别为 INFO
+    format='%(asctime)s [%(levelname)s] %(message)s',  # 日志格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ]
+)
 
 
 dynamodb_url = container_config.DYNAMODB_URL
@@ -35,10 +46,10 @@ class Runner:
 
         # infomation saved in first run
         self.transaction_id = None
-        self.input = None
-        self.output = None
-        self.function_pos = None
-        self.write_set = None
+        self.input = {}
+        self.output = {}
+        self.function_pos_inside_tx = {}
+        self.write_set = {}
         self.is_repair = None
         self.next_functions = None
         self.parent_cnt = None
@@ -47,11 +58,11 @@ class Runner:
 
         # infomation fetched from Redis in repair
         self.repair_metadata_fetched = False
-        self.RYW_table = None
-        self.downstream_func_table = None
-        self.upstream_func_table = None
-        self.dirty = None
-        self.function_pos_whole_batch = None
+        self.RYW_table = {}
+        self.downstream_func_table = {}
+        self.upstream_func_table = {}
+        self.dirty = False
+        self.function_pos_whole_batch = {}
 
 
     def init(self, workflow, function, node_list):
@@ -87,15 +98,16 @@ class Runner:
     def fetch_repair_metadata(self, batch_id, transaction_id, dirty):
         self.dirty = dirty
         if not self.repair_metadata_fetched:
-            redis_key = f"{transaction_id}:{"REPAIR"}:{self.function}" 
-            self_ip = self.function_pos[self.function]['ip']
-            repair_metadata = json.loads(self.shadow_table.fetch(redis_key, self_ip))
-            function_pos_whole_batch = json.loads(self.shadow_table.fetch(f"{batch_id}:POS", self_ip))
-            self.RYW_table = repair_metadata['RYW']
-            self.downstream_func_table = repair_metadata['downstream']
-            self.upstream_func_table = repair_metadata['upstream']
-            self.dirty = repair_metadata['dirty']
-            self.function_pos_whole_batch = function_pos_whole_batch
+            redis_key = f"{transaction_id}:REPAIR:{self.function}:" 
+            self_ip = self.function_pos_inside_tx[self.function]['ip']
+            metadata_string = self.shadow_table.fetch(redis_key, self_ip)
+            if metadata_string:
+                repair_metadata = json.loads(metadata_string)
+                self.RYW_table = repair_metadata['RYW']
+                self.downstream_func_table = repair_metadata['downstream']
+                self.upstream_func_table = repair_metadata['upstream']
+                self.dirty = repair_metadata['dirty']
+            self.function_pos_whole_batch = json.loads(self.shadow_table.fetch(f"{batch_id}:POS::", self_ip))
             self.repair_metadata_fetched = True
             # modify parent_cnt
             self.parent_cnt = self.downstream_func_table.get("up_cnt", 0) + self.RYW_table.get('up_cnt', 0) + self.parent_cnt
@@ -116,26 +128,30 @@ class Runner:
             'repair': True,
             'dirty':dirty
             }
+        logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
         requests.post(url, json=data)
 
     def fin_repair(self, batch_id, ip):
+        logging.info(f"Finishing repair: {self.function}")
         url = f'http://{ip}:7000/fin_repair'
         data = {'batch_id': batch_id}
         requests.post(url, json=data)
 
-    def run(self, batch_id, transaction_id,  write_set, is_repair):
+    def run(self, batch_id, transaction_id, is_repair):
         # in first run, collect read/write set, and RYW subjection
         # in repair, use the metadata from redis.
+
         TxMetaData_thisFunc = {
                                 "read_set": {}, 
-                                "write_set": write_set, 
+                                "write_set": self.write_set, 
                                 "RYW_subjection": {},
                                 "downstream_func_table": self.downstream_func_table, 
+                                "function_pos_whole_batch":self.function_pos_whole_batch,
                                 "dirty": self.dirty,
                                }
         # not in repair mode or the fucntion is dirty: need re run.
         if not is_repair or self.dirty:
-            store = Store(self.workflow, self.function, transaction_id, self.input, self.output, self.function_pos, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair)
+            store = Store(self.workflow, self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
             # pre-exec
@@ -143,28 +159,31 @@ class Runner:
 
             # run function
             out = eval('main()', self.ctx)
-
         # in repair mode: trigger next function inside the container.
+        logging.info(f"Trigger Next functions: {self.next_functions}, RYW:{self.RYW_table.get('down_funcs', [])}, crosstx:{self.upstream_func_table}")
         if is_repair:
             next_trigger_tasks = []
             for next_func in self.next_functions:
                 if next_func == 'END':
-                    self_ip = self.function_pos[self.function]['ip']
+                    self_ip = self.function_pos_inside_tx[self.function]['ip']
                     next_trigger_tasks.append(gevent.spawn(self.fin_repair, batch_id, self_ip))
                     break
                 ip = self.function_pos_whole_batch[self.transaction_id][next_func]['ip']
                 port = self.function_pos_whole_batch[self.transaction_id][next_func]['port']
-                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port,batch_id, self.dirty))
-            for RYW_downstream_func in self.RYW_table['down_funcs']:
+                logging.info(f"Next function: {next_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
+                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port, self.dirty))
+            for RYW_downstream_func in self.RYW_table.get('down_funcs', []):
                 ip = self.function_pos_whole_batch[self.transaction_id][RYW_downstream_func]['ip']
                 port = self.function_pos_whole_batch[self.transaction_id][RYW_downstream_func]['port']
-                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port,batch_id, self.dirty))
+                logging.info(f"RYW Next function: {RYW_downstream_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
+                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port, self.dirty))
             for downstream_func_info in self.upstream_func_table:
-                downstream_func = downstream_func_info['func_name']
+                downstream_func = downstream_func_info['function_name']
                 downstream_transaction_id =  downstream_func_info['transaction_id']
                 ip = self.function_pos_whole_batch[downstream_transaction_id][downstream_func]['ip']
                 port = self.function_pos_whole_batch[downstream_transaction_id][downstream_func]['port']
-                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, downstream_transaction_id, ip, port,batch_id, True))
+                logging.info(f"CrossTX Next function: {downstream_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
+                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, downstream_transaction_id, ip, port, True))
             gevent.joinall(next_trigger_tasks)
 
         return TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], store.io_latency
@@ -204,6 +223,10 @@ def run():
     inp = request.get_json(force=True, silent=True)
     is_repair = inp['repair']
     transaction_id = inp['transaction_id']
+    batch_id = ""
+    no_parent_execution = False
+    io_latency = 0
+    rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
     if not is_repair:
         input = inp['input']
@@ -221,6 +244,7 @@ def run():
         runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
         
     # record the execution time
+    logging.info(f"is_repair:{is_repair}, no_parent_execution:{no_parent_execution}")
     if runner.check_runnable(is_repair, no_parent_execution):
         rs, ws, RYW_subjection,io_latency = runner.run(batch_id, transaction_id, is_repair)
 

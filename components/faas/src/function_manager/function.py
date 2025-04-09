@@ -28,20 +28,20 @@ class Function:
         self.rq = []
 
         # container pool
-        self.container_pool = ContainerPool()
+        self.container_pool = ContainerPool(self.info.max_containers, self.info.function_name)
 
-        while len(self.container_pool) < self.default_container_num:
+        while self.container_pool.len() < self.default_container_num:
             container = self.create_container()
-            if container is None:
+            if container == None:
                 raise Exception("Container creation failed")
             self.container_pool.put(container)
-        print(f"function: {self.info.function_name} container pool created, len {len(self.container_pool)}")
+        print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
         
 
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt, no_parent_execution):
-        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'is_repair': is_repair,
+    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt,batch_id, no_parent_execution):
+        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'repair': is_repair, 'batch_id':batch_id,
                  'output': output, 'write_set':write_set, "next_functions":next_funcs, "parent_cnt":parent_cnt,'no_parent_execution':no_parent_execution}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
@@ -85,7 +85,7 @@ class Function:
     def create_container(self):
         # do not create new exec container
         # when the number of execs hits the limit
-        if self.container_pool.check_pool_full_and_occupy() is None:
+        if self.container_pool.check_pool_full_and_occupy() == None:
             return None
 
         logging.info('create container of function: %s', self.info.function_name)

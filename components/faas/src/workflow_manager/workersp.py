@@ -28,7 +28,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], function_pos: Dict[str, str]={}, worker_set={}, read_set={}, write_set={}, RYW_subjection={}):
+    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -41,7 +41,7 @@ class TransactionState:
         self.function_pos: Dict[str, str] = function_pos
         self.worker_set:Dict = worker_set
         self.parent_executed: Dict[str, int] = {}
-        self.batch_id = 0
+        self.batch_id = batch_id
 
         for f in all_func:
             self.executed[f] = False
@@ -76,14 +76,15 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, function_pos, worker_set, read_set, write_set, RYW_subjection) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection) -> TransactionState:
         self.lock.acquire()
         # first time to run, create new state
         if transaction_id not in self.states:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, worker_set, read_set, write_set)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
+            state.batch_id = ""
             state.function_pos.update(function_pos)
             state.worker_set.update(worker_set) 
             state.RYW_subjection.update(RYW_subjection)
@@ -176,7 +177,8 @@ class WorkerSPManager:
             'worker_set': state.worker_set,
             'read_set': state.read_set,
             'write_set': state.write_set,
-            'batch_id': state.batch_id
+            'batch_id': state.batch_id,
+            'RYW_subjection':state.RYW_subjection
         }
         response = requests.post(remote_url, json=data)
         response.close()
@@ -228,7 +230,7 @@ class WorkerSPManager:
         name = info['function_name']
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, False, 
-                            info['next'], info['parent_cnt'])
+                            info['next'], info['parent_cnt'], state.batch_id)
         end = time.time()
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
@@ -236,14 +238,12 @@ class WorkerSPManager:
         state.read_set[info["function_name"]] = res["read_set"]
         state.write_set.update(res["write_set"])
         # set RYW subjection table for itself if not exist.
-        if name not in state.RYW_subjection:
-            state.RYW_subjection[name] = {"down_funcs":{}, "up_cnt":0}
+        downstream_func_table = state.RYW_subjection.setdefault(name, {"down_funcs":{}, "up_cnt":0})
         # update RYW subjection table for upstream functions.
         for upstream_RYW_func in res["RYW_upstreams"].keys():
-            if upstream_RYW_func not in state.RYW_subjection:
-                state.RYW_subjection[upstream_RYW_func] = {"down_funcs":{}, "up_cnt":0}
-            state.RYW_subjection[upstream_RYW_func]["down_funcs"][name] = True
-            state.RYW_subjection[name]["up_cnt"] += 1
+            upstream_func_table = state.RYW_subjection.setdefault(upstream_RYW_func, {"down_funcs":{}, "up_cnt":0})
+            upstream_func_table["down_funcs"][name] = True
+            downstream_func_table["up_cnt"] += 1
             print(f"update RYW subjection table, now: {state.RYW_subjection}")
         state.lock.release()
         print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")

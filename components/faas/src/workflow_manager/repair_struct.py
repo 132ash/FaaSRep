@@ -37,9 +37,9 @@ class ValidationQueue:
         self.batch_size = batch_size
         self.repairing_batch_table: Dict[str, Dict] = {}
 
-    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos: Dict[str, str], RYW_subjection:Dict[str, dict]):
+    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos: Dict[str, str], worker_set: Dict[str, str], RYW_subjection:Dict[str, dict]):
         self.queue_lock.acquire()
-        self.queue.append({'transaction_id': transaction_id, "workflow_name":workflow_name, 
+        self.queue.append({'transaction_id': transaction_id, "workflow_name":workflow_name, 'worker_set': worker_set,
                            'read_set': read_set, 'write_set': write_set, 'function_pos': function_pos, 'RYW_subjection': RYW_subjection})
         self.queue_lock.release()
 

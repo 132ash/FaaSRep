@@ -70,7 +70,7 @@ def run():
 
     txTable.waitTX(transaction_id)
     res = repo.get_result(transaction_id, workflow)
-    validate_latency = txTable.finishTX(transaction_id)
+    validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     print(f"transaction_id: {transaction_id}, res: {res}, e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
@@ -82,7 +82,7 @@ def run():
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
     
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res})
+    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
 
 
 
@@ -92,8 +92,9 @@ def notify():
     transaction_id_list = data['transaction_id_list']
     success = data['success']
     start_time = data['start_time']
+    validate_time_inside_validator = data['validate_time_inside_validator']
     end_time = time.time()
-    txTable.notifyTX(transaction_id_list, end_time - start_time)
+    txTable.notifyTX(transaction_id_list, end_time - start_time, validate_time_inside_validator)
     logging.info(f"Validated: transaction_ids: {transaction_id_list}, commited: {success}")
     return json.dumps({"status": "notified"})
 

@@ -16,17 +16,21 @@ class RedisShadowTable:
         self.redis[ip][key] = value
 
     def fetch(self, redis_key, ip):
-        return self.redis[ip][redis_key].decode('utf-8')
+        res = ""
+        try:
+            res = self.redis[ip][redis_key].decode('utf-8')
+        except KeyError:
+            pass
+        return res
     
    
         
 
 # data in cache: value and version 
 class RedisCache:
-    def __init__(self, port, db, db_server, func_name):
+    def __init__(self, port, db, db_server):
         self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db)
         self.data_db = db_server.Table('data')
-        self.func_name = func_name
 
     def cache_get(self, key):
         value_tuple = self.redis.get(key)
@@ -76,6 +80,7 @@ class Store:
         # metadata used in repair mode
         self.is_repair = is_repair
         self.downstream_func_table = TxMetaData['downstream_func_table']
+        self.function_pos_whole_batch = TxMetaData['function_pos_whole_batch']
         self.dirty = TxMetaData['dirty']
 
 
@@ -143,19 +148,21 @@ class Store:
         value = None
         start = time.time()
         RYW_sign=False
-        func_ip_pair = self.write_set.get(key, {})
+        upstream_func = self.write_set.get(key, "")
         upstream_txid = None
-        if func_ip_pair:
+        upstream_ip = ''
+        if upstream_func:
             RYW_sign = True
+            upstream_ip = self.function_pos[upstream_func]['ip']
         else:
-            func_ip_pair = self.downstream_func_table.get(key, {})
-            upstream_txid = func_ip_pair.get("transaction_id", None)
-        # upstream fucntion has written this key(maybe itself)，fetch from shadow table. 
-        if func_ip_pair:
-            key_pos = func_ip_pair['ip']
-            upstream_func = func_ip_pair['func']
-            value = self.redis_shadow_table.fetch(self.param_wrapper(func_ip_pair['func'], key, 'PUT', upstream_txid), key_pos)
-            # first run, update RYW subjection table.
+            upstream_func_info = self.downstream_func_table.get(key, {})
+            upstream_func = upstream_func_info.get("func")
+            if upstream_func:
+                upstream_txid = upstream_func_info.get("transaction_id")
+                upstream_ip = self.function_pos_whole_batch[upstream_txid][upstream_func]['ip']
+
+        if upstream_func:
+            value = self.redis_shadow_table.fetch(self.param_wrapper(upstream_func, key, 'PUT', upstream_txid), upstream_ip)
             if not self.is_repair and RYW_sign and upstream_func != self.function_name:
                 self.RYW_subjection[upstream_func] = True
         else:
@@ -169,9 +176,7 @@ class Store:
     def put(self, key, value):
         start = time.time()
         if key not in self.write_set:
-            self.write_set[key] = {}
-        self.write_set[key]['ip'] = self.function_pos[self.function_name]['ip']
-        self.write_set[key]['func'] = self.function_name
+            self.write_set[key] = self.function_name
         self.put_to_mem(key, self.function_pos[self.function_name]['ip'], 'PUT', value)
         end = time.time()
         self.io_latency += (end - start)

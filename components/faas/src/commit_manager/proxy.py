@@ -31,12 +31,13 @@ repairer = RepairEngine(repair_info)
 GATEWAY_ADDR = config.GATEWAY_ADDR
 print(f"Validator and repairer started. initial key version: {Validator.global_table}")
 
-def notify_gateway(transaction_id_list, success:bool, start_time):
+def notify_gateway(transaction_id_list, success:bool, start_time, validate_time_inside_validator):
     url = 'http://{}/notify'.format(GATEWAY_ADDR)
     data = {
         'transaction_id_list': transaction_id_list,
         'success': success,
-        "start_time": start_time
+        "start_time": start_time,
+        'validate_time_inside_validator':validate_time_inside_validator
     }
     r = requests.post(url, json=data)
     return r.json()
@@ -70,6 +71,7 @@ def validate_tx():
     # start repairing.
     print(f"expired_keys: {expired_keys}, time:{time.time() - start_time}")
     repair_successful = True
+    validate_time_inside_validator = time.time() - start_time
     if confilcted:
         logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}")
         repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set)
@@ -77,7 +79,7 @@ def validate_tx():
 
     if repair_successful:
         TXid_list = Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx)
-        notify_gateway(TXid_list, True,  start_time)
+        notify_gateway(TXid_list, True,  start_time, validate_time_inside_validator)
         return json.dumps({'status': 'successed'})
     else:
         return json.dumps({'status': 'failed'})

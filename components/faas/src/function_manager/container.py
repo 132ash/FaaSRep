@@ -50,6 +50,7 @@ class ContainerPool:
             return None
         self.num_exec += 1
         self.lock.release()
+        return True
 
     def len(self):
         return len(self.pool)

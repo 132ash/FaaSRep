@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+
 from typing import Any, List
 import couchdb
 import sys
