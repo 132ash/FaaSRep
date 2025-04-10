@@ -59,14 +59,15 @@ def run_workflow(workflow_name, transaction_id, parameters):
 
 @app.route('/run', methods = ['POST'])
 def run():
-    start = time.time()
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(transaction_id, parameters)
     print('processing request ' + transaction_id + '...')
-    exec_latency = run_workflow(workflow, transaction_id, parameters)
+    start = time.time()
+    exec_first_latency = run_workflow(workflow, transaction_id, parameters)
+    print(f"exec_first_latency: {exec_first_latency}")
 
     txTable.waitTX(transaction_id)
     res = repo.get_result(transaction_id, workflow)

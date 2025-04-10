@@ -2,6 +2,7 @@ from gevent import monkey
 monkey.patch_all()
 import gevent
 import requests
+from gevent.queue import Queue
 from typing import Dict
 import sys
 import gevent.lock
@@ -69,12 +70,10 @@ class ValidationQueue:
 
     def send_validate_request(self):
         self.queue_lock.acquire()
-        # if len(self.queue) == 0:
-        # TEST: batch size is fixed to 2
-        if len(self.queue) != 2:
+        idx = min(self.batch_size, len(self.queue))
+        if idx == 0:
             self.queue_lock.release()
             return
-        idx = min(self.batch_size, len(self.queue))
         batch = self.transform_batch(self.queue[:idx])
         self.queue = self.queue[idx:]
         self.queue_lock.release()

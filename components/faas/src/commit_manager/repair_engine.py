@@ -69,7 +69,7 @@ class RepairEngine:
         repair_metadata_jobs = []
         for ip in worker_ip_set:
             repair_metadata_local = self.repair_info.get_repair_metadata_for_ip(batch_id, ip)
-            repair_metadata_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, function_pos_per_tx, repair_metadata_local, expired_keys[ip]))
+            repair_metadata_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, function_pos_per_tx, repair_metadata_local, expired_keys.get(ip, [])))
         gevent.joinall(repair_metadata_jobs) 
         
         # metadata filled. Trigger start functions to repair workflow.

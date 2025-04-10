@@ -14,7 +14,7 @@ from repair_info import RepairInfo
 sys.path.append('../../config')
 import config
 repo = validator_repo.Repository()
-# TODO: modify validator. single locker + multiple validator. producer and consumer model.
+# TODO: check code, find possibile bug, and add the technique to ban fastpath.
 
 class BatchValidator:
 

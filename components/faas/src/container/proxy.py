@@ -186,7 +186,11 @@ class Runner:
                 next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, downstream_transaction_id, ip, port, True))
             gevent.joinall(next_trigger_tasks)
 
-        return TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], store.io_latency
+        io_latency = 0
+        if not is_repair or self.dirty:
+            io_latency = store.io_latency
+
+        return TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency
 
 
 proxy = Flask(__name__)

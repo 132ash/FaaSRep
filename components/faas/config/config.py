@@ -22,7 +22,7 @@ FUNCTION_INFO_ADDRS = { 'sectestflow': '../../../../benchmark/sectestflow',
                     #    'simpleseq': '../../../../benchmark/simpleseq'
                        }
 # cache setting
-CLEAR_MEM = True
+CLEAR_MEM = False
 FILLUP_CACHE = True
 EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 1

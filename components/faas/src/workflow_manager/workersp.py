@@ -180,8 +180,7 @@ class WorkerSPManager:
             'batch_id': state.batch_id,
             'RYW_subjection':state.RYW_subjection
         }
-        response = requests.post(remote_url, json=data)
-        response.close()
+        requests.post(remote_url, json=data)
 
     def trigger_function_cross_tx(self, transaction_id, workflow_name, function_name, ip, batch_id):
         if not ip.endswith(":7000"):

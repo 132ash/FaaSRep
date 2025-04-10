@@ -15,7 +15,8 @@ import time
 import config
 repo = Repository()
 
-batch = ["sectestflow", "testflow"]
+batches = [["sectestflow", "testflow"]]
+
 
 TEST_TIME = 1
 
@@ -63,6 +64,8 @@ def analyze_batch(batch):
             jobs.append(gevent.spawn(run_workflow, workflow, parameters_input[workflow], result))
         gevent.joinall(jobs) 
         for workflow in batch:
+            while not result.get(workflow, False):
+                time.sleep(0.1)
             rep = result[workflow]
             txid = rep['transaction_id']
             validate_time_inside_validator[workflow] += (rep['validate_time_inside_validator'] / TEST_TIME)
@@ -77,21 +80,22 @@ def analyze_batch(batch):
     
 
 def analyze(mode='batch'):
-    validate_time_inside_validator_overall = []
-    validate_overall = []
-    e2e_overall = []
-    func_io_overall = []
-    func_exec_overall = []
-    validate_time_inside_validator, validate_latency, e2e_latency, func_io_time, func_exec_time = analyze_batch(batch)
-    for workflow in batch:
-        validate_time_inside_validator_overall.append(validate_time_inside_validator[workflow])
-        validate_overall.append(validate_latency[workflow])
-        e2e_overall.append(e2e_latency[workflow])
-        func_io_overall.append(func_io_time[workflow])
-        func_exec_overall.append(func_exec_time[workflow])
-        print(f"workflow {workflow} finished with  validate_time_inside_validator{ validate_time_inside_validator}, validate_latency {validate_latency}, e2e_latency {e2e_latency}, func_io_time {func_io_time}, func_exec_time {func_exec_time}")
-    df = pd.DataFrame({'workflow': batch,'validate_time_inside_validator':validate_time_inside_validator_overall, 'validate_latency': validate_overall, 'e2e_latency': e2e_overall, 'func_io_time': func_io_overall, 'func_exec_time': func_exec_overall})
-    df.to_csv(mode + '.csv')
+    for batch in batches:
+        validate_time_inside_validator_overall = []
+        validate_overall = []
+        e2e_overall = []
+        func_io_overall = []
+        func_exec_overall = []
+        validate_time_inside_validator, validate_latency, e2e_latency, func_io_time, func_exec_time = analyze_batch(batch)
+        for workflow in batch:
+            validate_time_inside_validator_overall.append(validate_time_inside_validator[workflow])
+            validate_overall.append(validate_latency[workflow])
+            e2e_overall.append(e2e_latency[workflow])
+            func_io_overall.append(func_io_time[workflow])
+            func_exec_overall.append(func_exec_time[workflow])
+            print(f"workflow {workflow} finished with  validate_time_inside_validator{ validate_time_inside_validator}, validate_latency {validate_latency}, e2e_latency {e2e_latency}, func_io_time {func_io_time}, func_exec_time {func_exec_time}")
+        df = pd.DataFrame({'workflow': batch,'validate_time_inside_validator':validate_time_inside_validator_overall, 'validate_latency': validate_overall, 'e2e_latency': e2e_overall, 'func_io_time': func_io_overall, 'func_exec_time': func_exec_overall})
+        df.to_csv(str(batch)+mode + '.csv')
    
 
 
