@@ -27,7 +27,7 @@ app = Flask(__name__)
 
 
 Timestamp_allocator = TimeStampAllocator()
-repair_info = RepairInfo()
+repair_info = RepairInfo(config.FAST_PATH)
 Validator = BatchValidator(Timestamp_allocator, repair_info)
 repairer = RepairEngine(repair_info)
 GATEWAY_ADDR = config.GATEWAY_ADDR
@@ -83,7 +83,7 @@ class ValidateDispatcher:
         validate_time_inside_validator = time.time() - start_time
         if confilcted:
             logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}")
-            repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set)
+            repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set ,config.FAST_PATH)
 
         if repair_successful:
             TXid_list = Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx)

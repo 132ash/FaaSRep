@@ -28,7 +28,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection):
+    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -41,7 +41,12 @@ class TransactionState:
         self.function_pos: Dict[str, str] = function_pos
         self.worker_set:Dict = worker_set
         self.parent_executed: Dict[str, int] = {}
+
+        # repair state, used only when fast-path is turned off.
+        self.repair = repair
+        self.repair_states = repair_states # { func: {"RYW":{}, "dirty":False, "downstream": {"up_cnt": 0, "upstream_keys": {}}, "upstream":[]}}
         self.batch_id = batch_id
+        self.function_pos_whole_batch = None
 
         for f in all_func:
             self.executed[f] = False
@@ -76,26 +81,30 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states) -> TransactionState:
         self.lock.acquire()
         # first time to run, create new state
         if transaction_id not in self.states:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair_states)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
-            state.batch_id = ""
-            state.function_pos.update(function_pos)
-            state.worker_set.update(worker_set) 
-            state.RYW_subjection.update(RYW_subjection)
-            for func, RYW_info in RYW_subjection.items():
-                if func not in state.RYW_subjection:
-                    state.RYW_subjection[func] = RYW_info
-                else:
-                    state.RYW_subjection[func]["up_cnt"] = RYW_info["up_cnt"]
-                    state.RYW_subjection[func]["down_funcs"].update(RYW_info["down_funcs"])
-            state.read_set.update(read_set)
-            state.write_set.update(write_set)
+            if repair:
+                state.function_pos_whole_batch = repo.get_global_function_pos(batch_id) if state.function_pos_whole_batch is None else state.function_pos_whole_batch
+                state.repair = repair
+                state.repair_states = repair_states 
+                state.batch_id = batch_id
+            else:
+                state.function_pos.update(function_pos)
+                state.worker_set.update(worker_set) 
+                state.read_set.update(read_set)
+                state.write_set.update(write_set)
+                for func, RYW_info in RYW_subjection.items():
+                    if func not in state.RYW_subjection:
+                        state.RYW_subjection[func] = RYW_info
+                    else:
+                        state.RYW_subjection[func]["up_cnt"] = RYW_info["up_cnt"]
+                        state.RYW_subjection[func]["down_funcs"].update(RYW_info["down_funcs"])
             state.lock.release()
         state = self.states[transaction_id]
         self.lock.release()
@@ -137,7 +146,10 @@ class WorkerSPManager:
     # with dirty set: the corresponding downstream is triggered, update dirty set.
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
-            self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.function_pos, state.worker_set, state.RYW_subjection)
+            if not state.repair:
+                self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.function_pos, state.worker_set, state.RYW_subjection)
+            else:
+                self.validation_queue.send_fin_repair_request(state.batch_id)
             return
         func_info = self.get_function_info(function_name)
         if func_info['ip'] == self.host_addr:
@@ -156,9 +168,10 @@ class WorkerSPManager:
         # remember to release state.lock
         if runnable:
             state.executed[function_name] = True
-            ip = extract_ip(ip)
-            state.function_pos[function_name] = {'ip':ip, 'port':0}
-            state.worker_set[ip] = True
+            if not state.repair:
+                ip = extract_ip(ip)
+                state.function_pos[function_name] = {'ip':ip, 'port':0}
+                state.worker_set[ip] = True
             state.lock.release()
             self.run_function(state, function_name)
         else:
@@ -178,7 +191,9 @@ class WorkerSPManager:
             'read_set': state.read_set,
             'write_set': state.write_set,
             'batch_id': state.batch_id,
-            'RYW_subjection':state.RYW_subjection
+            'RYW_subjection':state.RYW_subjection,
+            'repair': state.repair,
+            'repair_states': state.repair_states
         }
         requests.post(remote_url, json=data)
 
@@ -203,47 +218,80 @@ class WorkerSPManager:
     # If in repair mode, add upstream parents 
     def check_runnable(self, state: TransactionState, function_name: str) -> bool:
         info = self.get_function_info(function_name)
+        upstream_cnt = 0
+        if state.repair:
+            up_cnt = state.repair_states.get(function_name, {}).get("downstream", {}).get('up_cnt', 0)
+            upstream_cnt += up_cnt
+            up_cnt = state.repair_states.get(function_name, {}).get("RYW", {}).get('up_cnt', 0)
+            upstream_cnt += up_cnt
+            print(f"checking repairing {function_name}, executed:{state.parent_executed[function_name]}, upstream_cnt: {upstream_cnt}, origin parent_cnt: {info['parent_cnt']}")
         # parent count: the sum of parents in workflow graph and parents in subject table
-        return state.parent_executed[function_name] == info['parent_cnt'] and not state.executed[function_name] 
+        return state.parent_executed[function_name] == info['parent_cnt'] + upstream_cnt and not state.executed[function_name] 
 
     # run a function on local
     def run_function(self, state: TransactionState, function_name: str) -> None:
         logging.info('run function: %s of: %s', function_name, state.transaction_id)
         # if function in repair mode and not dirty, skip running
-        info = self.get_function_info(function_name)
-        self.run_normal(state, info)
-        
-        # clear parent cnt and run state. For repairing.
+        repair_metadata = state.repair_states.get(function_name, {})
+
+        dirty = repair_metadata.get("dirty", False)
+        # if function in repair mode and not dirty, skip running
+        if not state.repair or dirty:
+            info = self.get_function_info(function_name)
+            self.run_normal(state, info)
+
+        # clear parent cnt and run state. For repairing. Remove the repair state of this function.
         state.parent_executed[function_name] = 0
         state.executed[function_name] = False
+        state.repair_states.pop(function_name, {})
         
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
             gevent.spawn(self.trigger_function, state, func)
             for func in info['next']
         ]
+        if state.repair:
+            RYW_sub = repair_metadata.get("RYW", {})
+            downstream_sub = repair_metadata.get("upstream", {})
+            print(f"REPAIR: RYW subjection table for func{function_name}: {RYW_sub}")
+            for func in RYW_sub['down_funcs']:
+                print(f"function {function_name} RYW trigger downstream: {func}")
+                jobs.append(gevent.spawn(self.trigger_function, state, func))
+            for downstream_func_info in downstream_sub:
+                downstream_txid = downstream_func_info['transaction_id']
+                downstream_name = downstream_func_info['function_name']
+                downstream_ip = state.function_pos_whole_batch[downstream_txid][downstream_name]['ip']
+                workflow_name = downstream_func_info['workflow_name']
+                print(f"function {function_name} crossrx trigger downstream: {downstream_name}")
+                jobs.append(gevent.spawn(self.trigger_function_cross_tx, downstream_txid, workflow_name, downstream_name, downstream_ip, state.batch_id))
         gevent.joinall(jobs)
 
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
+        next_funcs = info['next']
+        downstream_table = state.repair_states.get(name, {}).get("downstream", {})
+        if state.repair:
+            next_funcs = {}
+            print(f"RUN FUNC: repairing {name}, downstream_func_table:{downstream_table}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
-                             info['input'], info['output'], state.write_set, False, 
-                            info['next'], info['parent_cnt'], state.batch_id)
+                             info['input'], info['output'], state.write_set, state.repair,
+                             next_funcs, info['parent_cnt'], downstream_table.get('upstream_keys', {}))
         end = time.time()
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
-        state.function_pos[name]['port'] = res['port']
-        state.read_set[info["function_name"]] = res["read_set"]
-        state.write_set.update(res["write_set"])
-        # set RYW subjection table for itself if not exist.
-        downstream_func_table = state.RYW_subjection.setdefault(name, {"down_funcs":{}, "up_cnt":0})
-        # update RYW subjection table for upstream functions.
-        for upstream_RYW_func in res["RYW_upstreams"].keys():
-            upstream_func_table = state.RYW_subjection.setdefault(upstream_RYW_func, {"down_funcs":{}, "up_cnt":0})
-            upstream_func_table["down_funcs"][name] = True
-            downstream_func_table["up_cnt"] += 1
-            print(f"update RYW subjection table, now: {state.RYW_subjection}")
+        if not state.repair:
+            state.function_pos[name]['port'] = res['port']
+            state.read_set[info["function_name"]] = res["read_set"]
+            state.write_set.update(res["write_set"])
+            # set RYW subjection table for itself if not exist.
+            downstream_RYW_func_table = state.RYW_subjection.setdefault(name, {"down_funcs":{}, "up_cnt":0})
+            # update RYW subjection table for upstream functions.
+            for upstream_RYW_func in res["RYW_upstreams"].keys():
+                upstream_func_table = state.RYW_subjection.setdefault(upstream_RYW_func, {"down_funcs":{}, "up_cnt":0})
+                upstream_func_table["down_funcs"][name] = True
+                downstream_RYW_func_table["up_cnt"] += 1
+                print(f"update RYW subjection table, now: {state.RYW_subjection}")
         state.lock.release()
         print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})

@@ -147,6 +147,12 @@ class Repository:
                 redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
                 self.shadowtable_redis[redis_key] = json.dumps(repair_metadata[txid][func])
 
+    def get_global_function_pos(self, batch_id):
+        func_pos_key =  self.param_wrapper(batch_id, 'POS')
+        # get the function position from redis
+        func_pos = json.loads(self.shadowtable_redis[func_pos_key])
+        return func_pos
+
     # commit_table: {tx_id:{key:True}}
     def commit_tx_writes(self, commit_table, version):
         for transaction_id, keys_dict in commit_table.items():  

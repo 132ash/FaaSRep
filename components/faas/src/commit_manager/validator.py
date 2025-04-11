@@ -118,7 +118,7 @@ class BatchValidator:
             # cover the last written sign.
             for key, write_func in write_set.items():
                 ip = function_pos_per_tx[tx_id][func]['ip']
-                if write_func in RYW_subjection[tx_id]:
+                if write_func in RYW_subjection[tx_id] and self.repair_info.fast_path_enabled:
                     self.repair_info.update_introtx_RYW_subjection_table(batch_id, ip, tx_id, write_func, RYW_subjection[tx_id][write_func])
                 already_waiting, _, _, _ = self.ask_for_lock(batch_id, tx_id , write_func, key, "write")
                 if not already_waiting:

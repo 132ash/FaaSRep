@@ -64,14 +64,18 @@ class Runner:
         self.dirty = False
         self.function_pos_whole_batch = {}
 
+        # fast path enabled
+        self.fast_path_enabled = False
 
-    def init(self, workflow, function, node_list):
+
+    def init(self, workflow, function, node_list, fast_path_enabled):
         print('init...')
 
         # update function status
         self.workflow = workflow
         self.function = function
         self.node_list = node_list
+        self.fast_path_enabled = fast_path_enabled
         # shadow table on each host
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
         # local cache
@@ -114,7 +118,7 @@ class Runner:
 
     def check_runnable(self, is_repair, no_parent_execution):
         # not in repair mode, check is finished outside the container.
-        if not is_repair or no_parent_execution:
+        if not is_repair or no_parent_execution or not self.fast_path_enabled:
             return True
         else:
             self.parent_executed += 1
@@ -149,8 +153,8 @@ class Runner:
                                 "function_pos_whole_batch":self.function_pos_whole_batch,
                                 "dirty": self.dirty,
                                }
-        # not in repair mode or the fucntion is dirty: need re run.
-        if not is_repair or self.dirty:
+        # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
+        if not self.fast_path_enabled or not is_repair or self.dirty:
             store = Store(self.workflow, self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
@@ -159,9 +163,9 @@ class Runner:
 
             # run function
             out = eval('main()', self.ctx)
-        # in repair mode: trigger next function inside the container.
+        # in repair mode and in fast-path: trigger next function inside the container.
         logging.info(f"Trigger Next functions: {self.next_functions}, RYW:{self.RYW_table.get('down_funcs', [])}, crosstx:{self.upstream_func_table}")
-        if is_repair:
+        if self.fast_path_enabled and is_repair:
             next_trigger_tasks = []
             for next_func in self.next_functions:
                 if next_func == 'END':
@@ -187,7 +191,7 @@ class Runner:
             gevent.joinall(next_trigger_tasks)
 
         io_latency = 0
-        if not is_repair or self.dirty:
+        if not self.fast_path_enabled or not is_repair or self.dirty:
             io_latency = store.io_latency
 
         return TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency
@@ -214,7 +218,7 @@ def init():
     proxy.status = 'init'
 
     inp = request.get_json(force=True, silent=True)
-    runner.init(inp['workflow'], inp['function'],inp['node_list'])
+    runner.init(inp['workflow'], inp['function'],inp['node_list'], inp['fast_path_enabled'])
 
     proxy.status = 'ok'
     return ('OK', 200)
@@ -242,10 +246,11 @@ def run():
         runner.save(transaction_id, input, output, function_pos, write_set, next_functions, parent_cnt)
     else:
         batch_id = inp['batch_id']
-        dirty = inp.get('dirty', False)
-        no_parent_execution = inp.get('no_parent_execution', False)
-        # get the info from redis
-        runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
+        if runner.fast_path_enabled:
+            dirty = inp.get('dirty', False)
+            no_parent_execution = inp.get('no_parent_execution', False)
+            # get the info from redis
+            runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
         
     # record the execution time
     logging.info(f"is_repair:{is_repair}, no_parent_execution:{no_parent_execution}")

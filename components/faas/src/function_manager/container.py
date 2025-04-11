@@ -13,13 +13,14 @@ base_url = 'http://127.0.0.1:{}/{}'
 
 class ContainerPool:
 
-    def __init__(self, max_containers, function_name):
+    def __init__(self, max_containers, function_name, fast_path_enabled):
         self.pool = []
         self.lock = BoundedSemaphore()
         self.num_exec = 0 # the number of containers in execution, not in container pool
         self.max_containers = max_containers
         self.function_name = function_name
         self.repair_reserve_pool = {} # reserve container for repair. {txid: container}
+        self.fast_path_enabled = fast_path_enabled
 
     # the pool list is in order:
     # - at the tail is the hottest containers (most recently used)
@@ -113,8 +114,8 @@ class Container:
         return r.json()
 
     # initialize the container
-    def init(self, workflow_name, function_name, node_list):
-        data = {'workflow': workflow_name, 'function': function_name , "node_list": node_list}
+    def init(self, workflow_name, function_name, node_list, fast_path_enabled=False):
+        data = {'workflow': workflow_name, 'function': function_name , "node_list": node_list, "fast_path_enabled":fast_path_enabled}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

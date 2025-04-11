@@ -19,6 +19,9 @@ container_names = []
 repo = workersp_repo.Repository()
 from repair_struct import ValidationQueue, ReservePool
 
+sys.path.append('../../config')
+import config
+
 validate_interval = 0.005 # 200 qps at most
 
 class Dispatcher:
@@ -36,8 +39,8 @@ class Dispatcher:
     def fin_repair_within_batch(self, batch_id):
         self.validation_queue.send_fin_repair_request(batch_id)
 
-    def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection)
+    def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -96,15 +99,20 @@ def req():
     no_parent_execution = data['no_parent_execution']
     # sent from the previous function
     function_pos = data.get('function_pos', {})
-    worker_set = data.get('worker_set', {})
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
+    worker_set = data.get('worker_set', {})
     RYW_subjection = data.get('RYW_subjection', {})
     # data for repair
     batch_id = data.get('batch_id', "")
-    print(f"--------request {workflow_name} {transaction_id} {function_name}, RYW:{RYW_subjection}")
+    repair = False
+    repair_states = {}
+    if not config.FAST_PATH:
+        repair = data.get('repair', False)
+        repair_states = data.get('repair_states', {})
+    print(f"--------request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}")
     # get the corresponding workflow state and trigger the function
-    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection)
+    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
 

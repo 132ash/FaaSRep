@@ -16,13 +16,14 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info, port_controller, node_list, default_container_num, reserve_pool):
+    def __init__(self, client, function_info, port_controller, node_list, default_container_num, reserve_pool, fast_path_enabled):
         self.client = client
         self.info = function_info
         self.port_controller = port_controller
         self.node_list = node_list
         self.default_container_num = default_container_num
         self.reserve_pool = reserve_pool
+        self.fast_path_enabled = fast_path_enabled
         
         self.num_processing = 0
         self.rq = []
@@ -40,8 +41,8 @@ class Function:
 
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt,batch_id, no_parent_execution):
-        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'repair': is_repair, 'batch_id':batch_id,
+    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution):
+        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'repair': is_repair, 'batch_id':batch_id, 'downstream_func_table':downstream_func_table,
                  'output': output, 'write_set':write_set, "next_functions":next_funcs, "parent_cnt":parent_cnt,'no_parent_execution':no_parent_execution}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
@@ -108,7 +109,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container):
-        container.init(self.info.workflow_name, self.info.function_name, self.node_list)
+        container.init(self.info.workflow_name, self.info.function_name, self.node_list, self.fast_path_enabled)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

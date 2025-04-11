@@ -23,7 +23,7 @@ class FunctionManager:
         self.default_container_num = config.DEFAULT_CONTAINER_NUM
 
         self.functions = {
-            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool)
+            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool, config.FAST_PATH)
             for x in self.function_info
         }
         self.init()
@@ -42,10 +42,10 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, next_funcs, parent_cnt,batch_id, no_parent_execution=False):
+    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution=False):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
         if is_repair:
             print(f"FUNCMANAGER: repairing {function_name}")
-        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt,batch_id, no_parent_execution)
+        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution)
