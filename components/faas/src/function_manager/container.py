@@ -13,14 +13,13 @@ base_url = 'http://127.0.0.1:{}/{}'
 
 class ContainerPool:
 
-    def __init__(self, max_containers, function_name, fast_path_enabled):
+    def __init__(self, max_containers, function_name):
         self.pool = []
         self.lock = BoundedSemaphore()
         self.num_exec = 0 # the number of containers in execution, not in container pool
         self.max_containers = max_containers
         self.function_name = function_name
         self.repair_reserve_pool = {} # reserve container for repair. {txid: container}
-        self.fast_path_enabled = fast_path_enabled
 
     # the pool list is in order:
     # - at the tail is the hottest containers (most recently used)

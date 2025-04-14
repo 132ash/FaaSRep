@@ -34,6 +34,7 @@ class RepairEngine:
             url = f'http://{ip}:7000/{route}'
         else:
             url = f'http://{ip}/{route}'
+        print(f"-----repair function: {function_name}, ip: {ip}, port: {port}, batch_id: {batch_id}, repair_states:{repair_metadata_per_tx}-----")
         data = {
             'batch_id': batch_id,
             'transaction_id': transaction_id,

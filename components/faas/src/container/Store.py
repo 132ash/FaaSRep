@@ -61,7 +61,8 @@ class RedisCache:
 
 
 class Store:
-    def __init__(self, workflow_name, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False):
+    def __init__(self, workflow_name, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False, fast_path_enabled=False):
+        self.fast_path_enabled = fast_path_enabled
         self.redis_shadow_table = redis_shadow_table
         self.redis_cache = cache
         self.fetch_dict = {}
@@ -77,6 +78,7 @@ class Store:
         self.read_set = TxMetaData['read_set']
         self.write_set = TxMetaData['write_set']
         self.RYW_subjection = TxMetaData['RYW_subjection']
+        self.RYW_upstream = TxMetaData['RYW_upstream']
         # metadata used in repair mode
         self.is_repair = is_repair
         self.downstream_func_table = TxMetaData['downstream_func_table']
@@ -148,18 +150,23 @@ class Store:
         value = None
         start = time.time()
         RYW_sign=False
-        upstream_func = self.write_set.get(key, "")
+        upstream_func=''
         upstream_txid = None
         upstream_ip = ''
+        if not self.is_repair:
+            upstream_func = self.write_set.get(key, "")
+        else:
+            upstream_func = self.RYW_upstream.get(key, "")
+
         if upstream_func:
             RYW_sign = True
             upstream_ip = self.function_pos[upstream_func]['ip']
         else:
-            upstream_func_info = self.downstream_func_table.get(key, {})
-            upstream_func = upstream_func_info.get("func")
-            if upstream_func:
-                upstream_txid = upstream_func_info.get("transaction_id")
-                upstream_ip = self.function_pos_whole_batch[upstream_txid][upstream_func]['ip']
+            upstream_func_info = self.downstream_func_table['upstream_keys'].get(key, {})
+            if upstream_func_info:
+                upstream_func = upstream_func_info["func"]
+                upstream_txid = upstream_func_info["transaction_id"]
+                upstream_ip = self.function_pos_whole_batch[upstream_txid][upstream_func]['ip'] if self.fast_path_enabled else upstream_func_info["ip"]
 
         if upstream_func:
             value = self.redis_shadow_table.fetch(self.param_wrapper(upstream_func, key, 'PUT', upstream_txid), upstream_ip)

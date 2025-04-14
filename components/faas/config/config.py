@@ -32,4 +32,4 @@ BATCH_SIZE = 1
 BATCH_INTERVAL = 0.05
 
 # fast-path setting
-FAST_PATH = True
+FAST_PATH = False

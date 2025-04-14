@@ -39,11 +39,14 @@ class RepairInfo:
     # downstream function needs:
     # 1. cnt of upstream functions to know when to run
     # 2. func name and ip to get upstream data 
-    def add_downstream_func_key(self, batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, downstream_ip, key):
+    def add_downstream_func_key(self, batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, upstream_ip, downstream_ip, key):
         func_dict = self.get_func_info_dict(batch_id, downstream_ip, downstream_tx_id, downstream_func)
         downstream_dict = func_dict["downstream"]
         downstream_dict["up_cnt"] += 1
-        downstream_dict["upstream_keys"].setdefault(key, {"transaction_id": upstream_tx_id, "func": upstream_func})
+        if self.fast_path_enabled:
+            downstream_dict["upstream_keys"].setdefault(key, {"transaction_id": upstream_tx_id, "func": upstream_func})
+        else:
+            downstream_dict["upstream_keys"].setdefault(key, {"transaction_id": upstream_tx_id, "func": upstream_func, 'ip': upstream_ip})
 
     def add_upstream_func_key(self, batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, upstream_ip):
         downstream_func_dict = self.downstream_func_dict[batch_id].setdefault(upstream_tx_id, {}).setdefault(upstream_func, {}).setdefault(downstream_tx_id, {})
@@ -54,7 +57,7 @@ class RepairInfo:
 
     def update_crosstx_subjection_table(self, batch_id, downstream_workflow_name, upstream_tx_id,  downstream_tx_id, upstream_func, downstream_func, upstream_ip, downstream_ip, key):
         print(f"update subjection table: batch_id:{batch_id}, downstream_workflow_name:{downstream_workflow_name}, upstream_tx_id:{upstream_tx_id}, downstream_tx_id:{downstream_tx_id}, upstream_func:{upstream_func}, downstream_func:{downstream_func}, upstream_ip:{upstream_ip}, downstream_ip:{downstream_ip}, key:{key}")
-        self.add_downstream_func_key(batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, downstream_ip, key)
+        self.add_downstream_func_key(batch_id, upstream_tx_id, downstream_tx_id, upstream_func, downstream_func, upstream_ip, downstream_ip, key)
         self.add_upstream_func_key(batch_id, upstream_tx_id, downstream_tx_id, upstream_func,downstream_func, upstream_ip)
 
     def update_introtx_RYW_subjection_table(self, batch_id, ip, tx_id, write_func, RYW_subjection):
