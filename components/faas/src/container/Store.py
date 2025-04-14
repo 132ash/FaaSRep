@@ -81,6 +81,7 @@ class Store:
         self.RYW_upstream = TxMetaData['RYW_upstream']
         # metadata used in repair mode
         self.is_repair = is_repair
+        self.RYW_table_fastpath = TxMetaData['RYW_table_fastpath']
         self.downstream_func_table = TxMetaData['downstream_func_table']
         self.function_pos_whole_batch = TxMetaData['function_pos_whole_batch']
         self.dirty = TxMetaData['dirty']
@@ -156,13 +157,13 @@ class Store:
         if not self.is_repair:
             upstream_func = self.write_set.get(key, "")
         else:
-            upstream_func = self.RYW_upstream.get(key, "")
+            upstream_func = self.RYW_upstream.get(key, "") if not self.fast_path_enabled else self.RYW_table_fastpath.get("upstream", {}).get(key, "")
 
         if upstream_func:
             RYW_sign = True
             upstream_ip = self.function_pos[upstream_func]['ip']
         else:
-            upstream_func_info = self.downstream_func_table['upstream_keys'].get(key, {})
+            upstream_func_info = self.downstream_func_table.get('upstream_keys', {}).get(key, {})
             if upstream_func_info:
                 upstream_func = upstream_func_info["func"]
                 upstream_txid = upstream_func_info["transaction_id"]

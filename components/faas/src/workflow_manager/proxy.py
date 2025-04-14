@@ -40,7 +40,7 @@ class Dispatcher:
         self.validation_queue.send_fin_repair_request(batch_id)
 
     def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states)
+        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -110,9 +110,14 @@ def req():
     if not config.FAST_PATH:
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
+        state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
+        if data.get('crosstx', False):
+            state.crosstx_trigger_modify(function_name, no_parent_execution)
+    else:
+        state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
+        
     print(f"--------request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}")
     # get the corresponding workflow state and trigger the function
-    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
 

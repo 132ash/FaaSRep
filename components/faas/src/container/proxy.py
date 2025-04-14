@@ -152,6 +152,7 @@ class Runner:
                                 "write_set": self.write_set, 
                                 "RYW_upstream": self.RYW_upstream,
                                 "RYW_subjection": {},
+                                "RYW_table_fastpath": self.RYW_table,
                                 "downstream_func_table": self.downstream_func_table, 
                                 "function_pos_whole_batch":self.function_pos_whole_batch,
                                 "dirty": self.dirty,

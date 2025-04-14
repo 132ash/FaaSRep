@@ -28,7 +28,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, RYW_upstream, repair, repair_states):
+    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -36,7 +36,6 @@ class TransactionState:
         self.write_set:Dict[str:Dict[str:str]] = write_set
         # {func:{"down_funcs":[], "up_cnt":xx}
         self.RYW_subjection:Dict = RYW_subjection
-        self.RYW_upstream:Dict = RYW_upstream
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
         self.function_pos: Dict[str, str] = function_pos
@@ -52,6 +51,15 @@ class TransactionState:
         for f in all_func:
             self.executed[f] = False
             self.parent_executed[f] = 0
+
+    # a function is triggered by a cross-tx upstream function.
+    # The function is dirty, and add parent cnt for start fucntion.
+    def crosstx_trigger_modify(self, function_name):
+        self.lock.acquire()
+        func_repair_info = self.repair_states.get(function_name, {})
+        func_repair_info['dirty'] = True
+        self.parent_executed[function_name] += 1
+        self.lock.release()
 
         
 
@@ -82,7 +90,7 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, RYW_upstream,  repair, repair_states) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,  repair, repair_states) -> TransactionState:
         self.lock.acquire()
         # first time to run, create new state
         if transaction_id not in self.states:
@@ -100,12 +108,10 @@ class WorkerSPManager:
                 state.worker_set.update(worker_set) 
                 state.read_set.update(read_set)
                 state.write_set.update(write_set)
-                state.RYW_upstream.update(RYW_upstream)
                 for func, RYW_info in RYW_subjection.items():
                     if func not in state.RYW_subjection:
                         state.RYW_subjection[func] = RYW_info
                     else:
-                        state.RYW_subjection[func]["up_cnt"] = RYW_info["up_cnt"]
                         state.RYW_subjection[func]["down_funcs"].update(RYW_info["down_funcs"])
             state.lock.release()
         state = self.states[transaction_id]
@@ -194,7 +200,6 @@ class WorkerSPManager:
             'read_set': state.read_set,
             'write_set': state.write_set,
             'RYW_subjection':state.RYW_subjection,
-            'RYW_upstream': state.RYW_upstream,
             # get from validator. repair metadata.
             'batch_id': state.batch_id,
             'repair': state.repair,
@@ -240,9 +245,9 @@ class WorkerSPManager:
         repair_metadata = state.repair_states.get(function_name, {})
 
         dirty = repair_metadata.get("dirty", False)
+        info = self.get_function_info(function_name)
         # if function in repair mode and not dirty, skip running
         if not state.repair or dirty:
-            info = self.get_function_info(function_name)
             self.run_normal(state, info)
 
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
@@ -257,9 +262,9 @@ class WorkerSPManager:
         ]
         if state.repair:
             RYW_sub = repair_metadata.get("RYW", {})
-            downstream_sub = repair_metadata.get("upstream", {})
+            downstream_sub = repair_metadata.get("upstream", [])
             print(f"REPAIR: RYW subjection table for func{function_name}: {RYW_sub}")
-            for func in RYW_sub['down_funcs']:
+            for func in RYW_sub.get('down_funcs', {}):
                 print(f"function {function_name} RYW trigger downstream: {func}")
                 jobs.append(gevent.spawn(self.trigger_function, state, func))
             for downstream_func_info in downstream_sub:
@@ -281,7 +286,7 @@ class WorkerSPManager:
             print(f"REPAIR FUNC: repairing {name}, downstream_func_table:{downstream_table}")
         print(f"running function {name}, transaction_id: {state.transaction_id}, batch_id: {state.batch_id}, function_pos: {state.function_pos}, input: {info['input']}, output: {info['output']}, write_set: {state.write_set}, next_funcs: {next_funcs}, parent_cnt: {info['parent_cnt']}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
-                             info['input'], info['output'], state.write_set, state.RYW_upstream.get(name, {}), state.repair, 
+                             info['input'], info['output'], state.write_set, state.RYW_subjection.get(name, {}).get("upstream", {}), state.repair, 
                              next_funcs, info['parent_cnt'], state.batch_id, downstream_table.get('upstream_keys', {}))
         end = time.time()
         state.lock.acquire()
@@ -291,14 +296,13 @@ class WorkerSPManager:
             state.read_set[info["function_name"]] = res["read_set"]
             state.write_set.update(res["write_set"])
             # set RYW subjection table for itself if not exist.
-            downstream_RYW_func_table = state.RYW_subjection.setdefault(name, {"down_funcs":{}, "up_cnt":0, "upstreams":{}})
-            downstream_RYW_func_key_upstream = state.RYW_upstream.setdefault(name, {})
+            downstream_RYW_func_table = state.RYW_subjection.setdefault(name, {"down_funcs":{}, "up_cnt":0, "upstream":{}})
             # update RYW subjection table for upstream functions.
             for key, upstream_RYW_func in res["RYW_upstreams"].items():
-                upstream_func_table = state.RYW_subjection.setdefault(upstream_RYW_func, {"down_funcs":{}, "up_cnt":0, "upstreams":{}})
+                upstream_func_table = state.RYW_subjection.setdefault(upstream_RYW_func, {"down_funcs":{}, "up_cnt":0, "upstream":{}})
                 upstream_func_table["down_funcs"][name] = True
                 downstream_RYW_func_table["up_cnt"] += 1
-                downstream_RYW_func_key_upstream[key] = upstream_RYW_func
+                downstream_RYW_func_table["upstream"][key] = upstream_RYW_func
                 print(f"update RYW subjection table, now: {state.RYW_subjection}")
         state.lock.release()
         print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
