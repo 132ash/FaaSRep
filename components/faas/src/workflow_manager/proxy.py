@@ -17,7 +17,7 @@ app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
-from repair_struct import ValidationQueue, ReservePool
+from components.faas.src.workflow_manager.validate_struct import ValidationQueue, ReservePool
 
 sys.path.append('../../config')
 import config
@@ -39,8 +39,8 @@ class Dispatcher:
     def fin_repair_within_batch(self, batch_id):
         self.validation_queue.send_fin_repair_request(batch_id)
 
-    def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
+    def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -107,14 +107,16 @@ def req():
     batch_id = data.get('batch_id', "")
     repair = False
     repair_states = {}
-    if not config.FAST_PATH:
+    # data for remote lock
+    lock_set = data.get('lock_set', {})
+    if config.REPAIR and not config.FAST_PATH:
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
         state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
         if data.get('crosstx', False):
             state.crosstx_trigger_modify(function_name, no_parent_execution)
     else:
-        state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
+        state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         
     print(f"--------request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}")
     # get the corresponding workflow state and trigger the function
@@ -182,6 +184,8 @@ from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
+    if not ((not config.REPAIR and config.REMOTE_LOCK) or (config.REPAIR and not config.REMOTE_LOCK)):
+        raise Exception("only onr in REPAIR and REMOTE_LOCK be true.")
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()
    

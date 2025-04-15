@@ -41,9 +41,9 @@ class Function:
 
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, RYW_upstream, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution):
+    def send_request(self, transaction_id, function_pos, input, output, write_set, RYW_upstream, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution,lock_set):
         data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'repair': is_repair, 'batch_id':batch_id, 'downstream_func_table':downstream_func_table,
-                 'output': output, 'write_set':write_set, "RYW_upstream":RYW_upstream, "next_functions":next_funcs, "parent_cnt":parent_cnt,'no_parent_execution':no_parent_execution}
+                 'output': output, 'write_set':write_set, "RYW_upstream":RYW_upstream, "next_functions":next_funcs, "parent_cnt":parent_cnt,'no_parent_execution':no_parent_execution,"lock_set":lock_set}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()

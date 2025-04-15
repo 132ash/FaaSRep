@@ -69,7 +69,7 @@ class Runner:
         self.fast_path_enabled = False
 
 
-    def init(self, workflow, function, node_list, fast_path_enabled):
+    def init(self, workflow, function, node_list, fast_path_enabled, remote_lock_enabled):
         print('init...')
 
         # update function status
@@ -77,6 +77,7 @@ class Runner:
         self.function = function
         self.node_list = node_list
         self.fast_path_enabled = fast_path_enabled
+        self.remote_lock_enabled = remote_lock_enabled
         # shadow table on each host
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
         # local cache
@@ -143,7 +144,7 @@ class Runner:
         data = {'batch_id': batch_id}
         requests.post(url, json=data)
 
-    def run(self, batch_id, transaction_id, is_repair):
+    def run(self, batch_id, transaction_id, is_repair, lock_set={}):
         # in first run, collect read/write set, and RYW subjection
         # in repair, use the metadata from redis.
 
@@ -160,11 +161,15 @@ class Runner:
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
         logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, function_pos_inside_tx: {self.function_pos_inside_tx}, write_set: {self.write_set}, RYW_upstream:{self.RYW_upstream}, next_functions: {self.next_functions}, parent_cnt: {self.parent_cnt}")
         if not self.fast_path_enabled or not is_repair or self.dirty:
-            store = Store(self.workflow, self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair, self.fast_path_enabled)
+            store = Store(self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair, self.fast_path_enabled, self.remote_lock_enabled, db_server, lock_set)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
             # pre-exec
-            exec(self.code, self.ctx)
+            try:
+                exec(self.code, self.ctx)
+            except KeyError as e:
+                logging.error(f"KeyError: {e} in function: {self.function}, transaction_id: {transaction_id}")
+                raise e
 
             # run function
             out = eval('main()', self.ctx)
@@ -196,10 +201,14 @@ class Runner:
             gevent.joinall(next_trigger_tasks)
 
         io_latency = 0
+        lock_latency = 0
+        if self.remote_lock_enabled:
+            lock_latency = store.lock_latency
+
         if not self.fast_path_enabled or not is_repair or self.dirty:
             io_latency = store.io_latency
 
-        return TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency
+        return TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency, lock_latency
 
 
 proxy = Flask(__name__)
@@ -223,7 +232,7 @@ def init():
     proxy.status = 'init'
 
     inp = request.get_json(force=True, silent=True)
-    runner.init(inp['workflow'], inp['function'],inp['node_list'], inp['fast_path_enabled'])
+    runner.init(inp['workflow'], inp['function'],inp['node_list'], inp['fast_path_enabled'], inp['remote_lock_enabled'])
 
     proxy.status = 'ok'
     return ('OK', 200)
@@ -234,39 +243,48 @@ def run():
     proxy.status = 'run'
 
     inp = request.get_json(force=True, silent=True)
-    is_repair = inp['repair']
     transaction_id = inp['transaction_id']
-    batch_id = ""
-    no_parent_execution = False
     io_latency = 0
-    rs, ws, RYW_subjection={},{},{}
-    # first run, or not the reserved container. Save the info for this container.
-    if not is_repair or not runner.fast_path_enabled:
-        input = inp['input']
-        output = inp['output']
-        function_pos = inp['function_pos']
-        write_set = inp['write_set'] 
-        next_functions = inp['next_functions']
-        parent_cnt = inp['parent_cnt']
-        RYW_upstream = inp['RYW_upstream']
-        runner.save(transaction_id, input, output, function_pos, write_set, RYW_upstream, next_functions, parent_cnt)
+    is_repair = inp.get('repair',False)
+    no_parent_execution = False
+    lock_set = {}
+    if runner.remote_lock_enabled:
+        lock_set = inp['lock_set']
     else:
-        batch_id = inp['batch_id']
-        if runner.fast_path_enabled:
-            dirty = inp.get('dirty', False)
-            no_parent_execution = inp.get('no_parent_execution', False)
-            # get the info from redis
-            runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
+        batch_id = ""
+        rs, ws, RYW_subjection={},{},{}
+        # first run, or not the reserved container. Save the info for this container.
+        if not is_repair or not runner.fast_path_enabled:
+            input = inp['input']
+            output = inp['output']
+            function_pos = inp['function_pos']
+            write_set = inp['write_set'] 
+            next_functions = inp['next_functions']
+            parent_cnt = inp['parent_cnt']
+            RYW_upstream = inp['RYW_upstream']
+            runner.save(transaction_id, input, output, function_pos, write_set, RYW_upstream, next_functions, parent_cnt)
+        else:
+            batch_id = inp['batch_id']
+            if runner.fast_path_enabled:
+                dirty = inp.get('dirty', False)
+                no_parent_execution = inp.get('no_parent_execution', False)
+                # get the info from redis
+                runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
         
     # record the execution time
     if runner.check_runnable(is_repair, no_parent_execution):
-        rs, ws, RYW_subjection,io_latency = runner.run(batch_id, transaction_id, is_repair)
+        try:
+            rs, ws, RYW_subjection, io_latency, lock_latency = runner.run(batch_id, transaction_id, is_repair, lock_set)
+        except KeyError as e:
+            return json.dumps({'KeyError':True, 'error': str(e)})
 
     res = {
         "read_set": rs,
         "write_set": ws,
         "RYW_upstreams": RYW_subjection,
-        "io_latency": io_latency
+        "io_latency": io_latency,
+        "lock_set": lock_set,
+        "lock_latency": lock_latency
     }
 
     proxy.status = 'ok'

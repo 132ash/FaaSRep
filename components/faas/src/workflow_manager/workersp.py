@@ -7,7 +7,7 @@ import gevent.lock
 import workersp_repo
 from typing import Any, Dict, List
 import requests
-from repair_struct import ValidationQueue
+from validate_struct import ValidationQueue
 import re
 
 sys.path.append('../../config')
@@ -28,7 +28,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states):
+    def __init__(self, transaction_id: str, all_func: List[str], function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -47,6 +47,9 @@ class TransactionState:
         self.repair_states = repair_states # { func: {"RYW":{}, "dirty":False, "downstream": {"up_cnt": 0, "upstream_keys": {}}, "upstream":[]}}
         self.batch_id = batch_id
         self.function_pos_whole_batch = None
+
+        # used only in remote lock mode.
+        self.lock_set:Dict = lock_set
 
         for f in all_func:
             self.executed[f] = False
@@ -90,7 +93,7 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,  repair, repair_states) -> TransactionState:
+    def get_state(self, transaction_id: str, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,  repair, repair_states, lock_set) -> TransactionState:
         self.lock.acquire()
         # first time to run, create new state
         if transaction_id not in self.states:
@@ -104,6 +107,7 @@ class WorkerSPManager:
                 state.repair_states = repair_states 
                 state.batch_id = batch_id
             else:
+                state.lock_set.update(lock_set)
                 state.function_pos.update(function_pos)
                 state.worker_set.update(worker_set) 
                 state.read_set.update(read_set)
@@ -133,10 +137,18 @@ class WorkerSPManager:
             self.function_info[function_name] = repo.get_function_info(function_name, self.info_db)
         return self.function_info[function_name]
     
-    def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos, worker_set, RYW_subjection):
-        print(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, function_pos:{function_pos}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}")
-        self.validation_queue.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection)
+    def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set):
+        print(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, function_pos:{function_pos}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}")
+        self.validation_queue.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set)
 
+    def abort_tx(self, transaction_id):
+        # abort the transaction, waiting for re-run
+        url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
+        lock_set = self.states[transaction_id].lock_set
+        data = {"abort":True, 'transaction_id': transaction_id, 'lock_set': lock_set}
+        requests.post(url, json=data)
+        # clear the state
+        self.del_state(transaction_id)
 
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
         base_url = 'http://127.0.0.1:{}/{}'
@@ -155,7 +167,7 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             if not state.repair:
-                self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.function_pos, state.worker_set, state.RYW_subjection)
+                self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.function_pos, state.worker_set, state.RYW_subjection, state.lock_set)
             else:
                 self.validation_queue.send_fin_repair_request(state.batch_id)
             return
@@ -175,7 +187,7 @@ class WorkerSPManager:
         # remember to release state.lock
         if runnable:
             state.executed[function_name] = True
-            if not state.repair:
+            if config.REPAIR and not state.repair:
                 ip = extract_ip(ip)
                 state.function_pos[function_name] = {'ip':ip, 'port':0}
                 state.worker_set[ip] = True
@@ -203,7 +215,9 @@ class WorkerSPManager:
             # get from validator. repair metadata.
             'batch_id': state.batch_id,
             'repair': state.repair,
-            'repair_states': state.repair_states
+            'repair_states': state.repair_states,
+            # used in remote lock
+            'lock_set': state.lock_set
         }
         requests.post(remote_url, json=data)
 
@@ -287,11 +301,16 @@ class WorkerSPManager:
         print(f"running function {name}, transaction_id: {state.transaction_id}, batch_id: {state.batch_id}, function_pos: {state.function_pos}, input: {info['input']}, output: {info['output']}, write_set: {state.write_set}, next_funcs: {next_funcs}, parent_cnt: {info['parent_cnt']}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, state.RYW_subjection.get(name, {}).get("upstream", {}), state.repair, 
-                             next_funcs, info['parent_cnt'], state.batch_id, downstream_table.get('upstream_keys', {}))
+                             next_funcs, info['parent_cnt'], state.batch_id, downstream_table.get('upstream_keys', {}), state.lock_set)
         end = time.time()
+        if res.get("KeyError", False):
+            print(f"function {name} KeyError: {res['error']}")
+            self.abort_tx(state.transaction_id)
+            return
+            
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
-        if not state.repair:
+        if config.REPAIR and not state.repair:
             state.function_pos[name]['port'] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
             state.write_set.update(res["write_set"])
@@ -304,6 +323,10 @@ class WorkerSPManager:
                 downstream_RYW_func_table["up_cnt"] += 1
                 downstream_RYW_func_table["upstream"][key] = upstream_RYW_func
                 print(f"update RYW subjection table, now: {state.RYW_subjection}")
+        if config.REMOTE_LOCK:
+            # update lock set for the function
+            state.lock_set[name].update(res['lock_set'])
+            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         state.lock.release()
         print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})

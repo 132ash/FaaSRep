@@ -51,6 +51,58 @@ class Repository:
         latency_db = self.couch['workflow_latency']
         latency_db.save(log)
 
+    def sync_shadow_to_data_db_with_version(self, transaction_id, version):
+        shadow_table_name = f"{transaction_id}_shadow_table"
+        shadow_table = self.dynamo.Table(shadow_table_name)
+        data_db = self.dynamo.Table('data')
+
+        # 扫描 shadow table 中的所有数据
+        response = shadow_table.scan()
+        items = response.get('Items', [])
+
+        for item in items:
+            key = item['key']
+            value = item['value']
+            data_db.update_item(
+                Key={'key': key},
+                UpdateExpression="SET #v = :value, #ver = :version",
+                ExpressionAttributeNames={
+                    '#v': 'value',
+                    '#ver': 'version'
+                },
+                ExpressionAttributeValues={
+                    ':value': value,
+                    ':version': version
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+
+    def release_lock(self, transaction_id, lock_set):
+        """
+        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
+        """
+        data_db = self.dynamo.Table('data')
+
+        for key in lock_set.keys():
+            # 更新 lock 属性为 None
+            data_db.update_item(
+                Key={'key': key},
+                UpdateExpression="SET #l = :none",
+                ExpressionAttributeNames={
+                    '#l': 'lock'
+                },
+                ExpressionAttributeValues={
+                    ':none': 'None'
+                },
+                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
+                ExpressionAttributeValues={
+                    ':txid': transaction_id,
+                    ':none': 'None'
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+
+
     
 if __name__ == '__main__':
     repo = Repository()

@@ -38,10 +38,10 @@ class ValidationQueue:
         self.batch_size = batch_size
         self.repairing_batch_table: Dict[str, Dict] = {}
 
-    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos: Dict[str, str], worker_set: Dict[str, str], RYW_subjection:Dict[str, dict]):
+    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos: Dict[str, str], worker_set: Dict[str, str], RYW_subjection:Dict[str, dict], lock_set:Dict[str, bool]):
         self.queue_lock.acquire()
         self.queue.append({'transaction_id': transaction_id, "workflow_name":workflow_name, 'worker_set': worker_set,
-                           'read_set': read_set, 'write_set': write_set, 'function_pos': function_pos, 'RYW_subjection': RYW_subjection})
+                           'read_set': read_set, 'write_set': write_set, 'function_pos': function_pos, 'RYW_subjection': RYW_subjection, 'lock_set':lock_set})
         self.queue_lock.release()
 
     # transform the batch from a list of txs to a dict, for the convenience of validation.
@@ -55,7 +55,8 @@ class ValidationQueue:
             "RYW_subjection": {},
             "function_pos": {},
             'worker_set':{},
-            "transaction_list":[]
+            "transaction_list":[],
+            "lock_set": {}
         }
         for tx in batch:
             tx_id = tx["transaction_id"]
@@ -66,6 +67,7 @@ class ValidationQueue:
             transformed_batch["function_pos"][tx_id] = tx["function_pos"]
             transformed_batch["worker_set"].update(tx["worker_set"])
             transformed_batch["transaction_list"].append(tx_id)
+            transformed_batch["lock_set"][tx_id] = tx["lock_set"]
         return transformed_batch
 
     def send_validate_request(self):

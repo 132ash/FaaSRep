@@ -31,5 +31,11 @@ DEFAULT_CONTAINER_NUM = 1
 BATCH_SIZE = 2
 BATCH_INTERVAL = 1
 
+# Validate mode
+REPAIR = False
+REMOTE_LOCK = True
+
 # fast-path setting
 FAST_PATH = False
+
+

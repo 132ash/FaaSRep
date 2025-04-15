@@ -14,7 +14,6 @@ from repair_info import RepairInfo
 sys.path.append('../../config')
 import config
 repo = validator_repo.Repository()
-# TODO: check code, find possibile bug, and add the technique to ban fastpath.
 
 class BatchValidator:
 
@@ -153,41 +152,46 @@ class BatchValidator:
     
     # modify global table, and release locks.
     # need to know the whole write set and what ip whey are on.
-    def commit_batch(self, batch_id, version: str, function_pos_per_tx):
-        tx_list = self.tx_list_per_batch[batch_id]
-        keys_found = {}
-        commit_table = {} # {ip:{tx_id:{key:True}}}
-        ip_set = set()
+    def commit_batch(self, batch_id, version: str, function_pos_per_tx={}, lock_set={}):
+        if config.REMOTE_LOCK:
+            repo.sync_shadow_to_data_db_with_version(batch_id, version)
+            repo.release_lock(batch_id, lock_set)
+            return [batch_id]
+        else:
+            tx_list = self.tx_list_per_batch[batch_id]
+            keys_found = {}
+            commit_table = {} # {ip:{tx_id:{key:True}}}
+            ip_set = set()
 
-        for tx_id in reversed(tx_list):
-            ws = self.write_set_per_batch[batch_id].get(tx_id, {})
-            for key, func in ws.items():
-                if key in keys_found:
-                    continue
-                else:
-                    keys_found[key] = True
-                    ip = function_pos_per_tx[tx_id][func]['ip']
-                    ip_set.add(ip)
-                    if ip not in commit_table:
-                        commit_table[ip] = {}
-                    if tx_id not in commit_table[ip]:
-                        commit_table[ip][tx_id] = {}
-                    commit_table[ip][tx_id][key] = True
+            for tx_id in reversed(tx_list):
+                ws = self.write_set_per_batch[batch_id].get(tx_id, {})
+                for key, func in ws.items():
+                    if key in keys_found:
+                        continue
+                    else:
+                        keys_found[key] = True
+                        ip = function_pos_per_tx[tx_id][func]['ip']
+                        ip_set.add(ip)
+                        if ip not in commit_table:
+                            commit_table[ip] = {}
+                        if tx_id not in commit_table[ip]:
+                            commit_table[ip][tx_id] = {}
+                        commit_table[ip][tx_id][key] = True
 
-        jobs = [
-            gevent.spawn(self.trigger_worker_commit, batch_id, ip, commit_table[ip], version, tx_list)
-            for ip in ip_set
-        ]
-        gevent.joinall(jobs)
-        
-        for key in self.lock_key_set_per_batch[batch_id]:
-            self.release_lock(batch_id, key)
-        self.acquired_locks.pop(batch_id)
-        self.lock_key_set_per_batch.pop(batch_id)
-        self.write_set_per_batch.pop(batch_id)
-        self.tx_list_per_batch.pop(batch_id)
-        self.repair_info.clean_table_of_batch(batch_id)
-        return tx_list
+            jobs = [
+                gevent.spawn(self.trigger_worker_commit, batch_id, ip, commit_table[ip], version, tx_list)
+                for ip in ip_set
+            ]
+            gevent.joinall(jobs)
+            
+            for key in self.lock_key_set_per_batch[batch_id]:
+                self.release_lock(batch_id, key)
+            self.acquired_locks.pop(batch_id)
+            self.lock_key_set_per_batch.pop(batch_id)
+            self.write_set_per_batch.pop(batch_id)
+            self.tx_list_per_batch.pop(batch_id)
+            self.repair_info.clean_table_of_batch(batch_id)
+            return tx_list
         
 
     def trigger_worker_commit(self,batch_id, ip, commit_table, version, tx_list):

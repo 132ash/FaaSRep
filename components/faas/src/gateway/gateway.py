@@ -66,10 +66,14 @@ def run():
     txTable.registerTX(transaction_id, parameters)
     print('processing request ' + transaction_id + '...')
     start = time.time()
-    exec_first_latency = run_workflow(workflow, transaction_id, parameters)
+    aborted = False
+    # run the workflow. in beldi, the workflow may abort in the middle.s
+    while not txTable.TxFinished(transaction_id) or aborted:
+        exec_first_latency = run_workflow(workflow, transaction_id, parameters)
+        aborted = txTable.waitTX(transaction_id)
+        if aborted:
+            txTable.resetTX(transaction_id)
     print(f"exec_first_latency: {exec_first_latency}")
-
-    txTable.waitTX(transaction_id)
     res = repo.get_result(transaction_id, workflow)
     validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
@@ -90,14 +94,22 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id_list = data['transaction_id_list']
-    success = data['success']
-    start_time = data['start_time']
-    validate_time_inside_validator = data['validate_time_inside_validator']
-    end_time = time.time()
-    txTable.notifyTX(transaction_id_list, end_time - start_time, validate_time_inside_validator)
-    logging.info(f"Validated: transaction_ids: {transaction_id_list}, commited: {success}")
-    return json.dumps({"status": "notified"})
+    if config.REMOTE_LOCK:
+        abort = data.get('abort', False)
+        if abort:
+            transaction_id = data['transaction_id']
+            lock_set = data['lock_set']
+            repo.release_lock(transaction_id, lock_set)
+            txTable.notifyTX([transaction_id], 0, 0,abort)
+    else:
+        transaction_id_list = data['transaction_id_list']
+        success = data['success']
+        start_time = data['start_time']
+        validate_time_inside_validator = data['validate_time_inside_validator']
+        end_time = time.time()
+        txTable.notifyTX(transaction_id_list, end_time - start_time, validate_time_inside_validator)
+        logging.info(f"Validated: transaction_ids: {transaction_id_list}, commited: {success}")
+        return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])
 def clear_container():

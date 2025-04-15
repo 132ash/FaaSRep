@@ -1,7 +1,7 @@
 from typing import Any, List
 import couchdb
 import redis
-import json
+import boto3
 import sys
 import re
 
@@ -18,6 +18,10 @@ sys.path.append('../../config')
 import config
 
 couchdb_url = config.COUCHDB_URL
+dynamodb_url = config.DYNAMODB_URL
+dynamodb_key_id = config.DYNAMODB_KEY_ID
+dynamodb_access_key = config.DYNAMODB_ACCESS_KEY
+dynamodb_area = config.DYNAMODB_AREA
 
 # interact with couchdb node
 
@@ -25,6 +29,8 @@ class Repository:
     def __init__(self):
         self.couch = couchdb.Server(couchdb_url)
         addrs = self.get_all_addrs('common')
+        self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
+        
         self.redis = {
             host : redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB)
                 for host in addrs
@@ -98,4 +104,30 @@ class Repository:
             else:
                 result[k] = self.redis[redis_ip][redis_key]
         return result
+    
+    def release_lock(self, transaction_id, lock_set):
+        """
+        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
+        """
+        data_db = self.dynamo.Table('data')
+
+        for key in lock_set.keys():
+            # 更新 lock 属性为 None
+            data_db.update_item(
+                Key={'key': key},
+                UpdateExpression="SET #l = :none",
+                ExpressionAttributeNames={
+                    '#l': 'lock'
+                },
+                ExpressionAttributeValues={
+                    ':none': 'None'
+                },
+                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
+                ExpressionAttributeValues={
+                    ':txid': transaction_id,
+                    ':none': 'None'
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+
     
