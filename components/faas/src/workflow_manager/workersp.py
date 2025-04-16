@@ -97,7 +97,7 @@ class WorkerSPManager:
         self.lock.acquire()
         # first time to run, create new state
         if transaction_id not in self.states:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
@@ -325,6 +325,7 @@ class WorkerSPManager:
                 print(f"update RYW subjection table, now: {state.RYW_subjection}")
         if config.REMOTE_LOCK:
             # update lock set for the function
+            state.write_set.update(res["write_set"])
             state.lock_set[name].update(res['lock_set'])
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         state.lock.release()

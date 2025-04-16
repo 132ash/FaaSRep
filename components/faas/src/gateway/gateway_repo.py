@@ -77,14 +77,30 @@ class Repository:
             self.couch['results'].delete(doc)
         self.couch['results'][request_id] = {}
 
-    def param_wrapper(self, transaction_id, mode, func ,key):
-        return f"{transaction_id}:{mode}:{func}:{key}" 
+    def param_wrapper(self, transaction_id, mode, func ,key, is_dynamo):
+        if is_dynamo:
+            return f"{mode}:{func}:{key}"
+        else:
+            return f"{transaction_id}:{mode}:{func}:{key}" 
     
     def store_input(self, transaction_id, ip, input):
-        for k, v in input.items():
-            redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k)
-            self.redis[extract_ip(ip)][redis_key] = v
-            print(self.redis[extract_ip(ip)][redis_key])
+        if not config.REMOTE_LOCK:
+            for k, v in input.items():
+                redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, False)
+                self.redis[extract_ip(ip)][redis_key] = v
+                print(self.redis[extract_ip(ip)][redis_key])
+        # in remote lock mode. store input in shadow table. add prefix: RET:FUNC.
+        else:
+            shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
+            for k, v in input.items():
+                dynamo_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, True)
+                shadow_table.put_item(
+                    Item={
+                        'key': dynamo_key,
+                        'value': v
+                    }
+                 )
+            
 
     def get_result(self, request_id: str, workflow_name) -> Any:
         end_func = self.get_end_function(workflow_name + '_workflow_metadata')
@@ -119,9 +135,6 @@ class Repository:
                 ExpressionAttributeNames={
                     '#l': 'lock'
                 },
-                ExpressionAttributeValues={
-                    ':none': 'None'
-                },
                 ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
                 ExpressionAttributeValues={
                     ':txid': transaction_id,
@@ -129,5 +142,31 @@ class Repository:
                 },
                 ReturnValues="UPDATED_NEW"
             )
+
+    def create_shadow_table(self, transaction_id):
+        table_name = f"{transaction_id}_shadow_table"
+        existing_tables = self.dynamo.tables.all()
+        if table_name not in [table.name for table in existing_tables]:
+        # 创建表
+            table = self.dynamo.create_table(
+                TableName=table_name,
+                KeySchema=[
+                    {
+                        'AttributeName': 'key',
+                        'KeyType': 'HASH'  # 主键
+                    }
+                ],
+                AttributeDefinitions=[
+                    {
+                        'AttributeName': 'key',
+                        'AttributeType': 'S'  # 字符串类型
+                    }
+                ],
+                ProvisionedThroughput={
+                    'ReadCapacityUnits': 100,
+                    'WriteCapacityUnits': 100
+                }
+            )
+            table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
     

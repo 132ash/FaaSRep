@@ -32,8 +32,14 @@ class BeldiStore:
         self.lock_set = lock_set
         self.shadow_table = self.create_shadow_table()
 
-    def put(self, key, value):
-        success, lock_time = self.acquire_lock(key)
+    def put(self, key, value, this_func="", upstream_func="", write_set={}, ret=False):
+        success = False
+        lock_time = 0
+        # have upstream func: no need for lock. change the write func.
+        if upstream_func:
+            success = True
+        else:
+            success, lock_time = self.acquire_lock(key)
         if success:
             self.shadow_table.put_item(
                 Item={
@@ -41,25 +47,40 @@ class BeldiStore:
                     'value': value
                 }
             )
+            if not ret:
+                write_set[key] = this_func
             return True, lock_time
         else:
             return False, ""
 
         
 
-    def get(self, key):
-        success, lock_time = self.acquire_lock(key)
-        if success:
-            response = self.data_db.get_item(
-                Key={
-                    'key': key
-                }
-            )
+    def get(self, key, upstream_func):
+        item = None
+        value = None
+        lock_success = False
+        lock_time = 0
+        # RYW. not acquire lock, read from shadow table.
+        if upstream_func:
+            response = self.shadow_table.get_item(
+                    Key={
+                        'key': key
+                    }
+                )
             item = response.get('Item')
-            if item:
-                return True, item['value'], lock_time
-            else:
-                return False, "", 0
+            lock_success = True
+        else:
+            lock_success, lock_time = self.acquire_lock(key)
+            if lock_success:
+                response = self.data_db.get_item(
+                    Key={
+                        'key': key
+                    }
+                )
+                item = response.get('Item')
+        value = item['value'] if item else None
+        if lock_success and item:
+            return lock_success, value, lock_time
         else:
             return False, "", 0
     
@@ -186,10 +207,13 @@ class Store:
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode, txid=None):
-        if txid:
-            return f"{txid}:{mode}:{func}:{key}" 
+        if self.remote_lock_enabled:
+            return f"{mode}:{func}:{key}"
         else:
-            return f"{self.transaction_id}:{mode}:{func}:{key}" 
+            if txid:
+                return f"{txid}:{mode}:{func}:{key}" 
+            else:
+                return f"{self.transaction_id}:{mode}:{func}:{key}" 
     
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
@@ -198,11 +222,14 @@ class Store:
             return self.function_pos[upstream]['ip']
 
 
-    def fetch_from_mem(self, k, redis_key, ip, param_type):
-        redis_value = self.redis_shadow_table.fetch(redis_key, ip)
+    def fetch_from_mem(self, k, param_key, ip, param_type):
+        if self.remote_lock_enabled:
+            value = self.beldi_store.get(param_key, self.function_name)
+        else:
+            value = self.redis_shadow_table.fetch(param_key, ip)
         if param_type == "int":
-            redis_value = int(redis_value)
-        self.fetch_dict[k] = redis_value
+            value = int(value)
+        self.fetch_dict[k] = value
 
     def fetch_input(self):
         return self.fetch(self.input.keys())
@@ -214,9 +241,9 @@ class Store:
         for k in input_keys:
             upstream = self.input[k]["from"]
             param_type =  self.input[k]["type"]
-            redis_key = self.param_wrapper(upstream, k, 'RET')
+            param_key = self.param_wrapper(upstream, k, 'RET')
             ip = self.get_redis_ip(upstream)
-            thread_ = threading.Thread(target=self.fetch_from_mem, args=(k, redis_key, ip, param_type))
+            thread_ = threading.Thread(target=self.fetch_from_mem, args=(k, param_key, ip, param_type))
             threads.append(thread_)
         for thread_ in threads:
             thread_.start()
@@ -226,11 +253,16 @@ class Store:
 
     # return to local redis.
     def put_to_mem(self, k, ip, mode, value=None):
-        redis_key = self.param_wrapper(self.function_name, k, mode)
-        if mode == 'RET':
-            self.redis_shadow_table.put(redis_key, ip, self.ret_dict[k])
+        if not self.remote_lock_enabled:
+            redis_key = self.param_wrapper(self.function_name, k, mode)
+            if mode == 'RET':
+                self.redis_shadow_table.put(redis_key, ip, self.ret_dict[k])
+            else:
+                self.redis_shadow_table.put(redis_key, ip, value)
         else:
-            self.redis_shadow_table.put(redis_key, ip, value)
+            dynamo_key = self.param_wrapper(self.function_name, k, mode)
+            self.beldi_store.put(dynamo_key, self.ret_dict[k], "", self.function_name,{}, True)
+
 
     # output_result: {'k': 'value'}
     # output_content_type: default application/json, just specify one when you need to
@@ -244,7 +276,9 @@ class Store:
         value = None
         start = time.time()
         if self.remote_lock_enabled:
-            success, value, lock_time = self.beldi_store.get(key)
+            # RYW. read from shadow table.
+            upstream_func = self.write_set.get(key, "")
+            success, value, lock_time = self.beldi_store.get(key, upstream_func)
             if not success:
                 raise KeyError(f"Failed to acquire lock for key {key}")
             else:
@@ -285,7 +319,8 @@ class Store:
     def put(self, key, value):
         start = time.time()
         if self.remote_lock_enabled:
-            success, lock_time = self.beldi_store.put(key, value)
+            upstream_func = self.write_set.get(key, "")
+            success, lock_time = self.beldi_store.put(key, value, self.function_name, upstream_func, self.write_set)
             if not success:
                 raise KeyError(f"Failed to acquire lock for key {key}")
             else:

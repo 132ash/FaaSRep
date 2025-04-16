@@ -23,7 +23,7 @@ class FunctionManager:
         self.default_container_num = config.DEFAULT_CONTAINER_NUM
 
         self.functions = {
-            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool, config.FAST_PATH)
+            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool, config.FAST_PATH, config.REMOTE_LOCK)
             for x in self.function_info
         }
         self.init()

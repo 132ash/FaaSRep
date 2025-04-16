@@ -63,19 +63,21 @@ class Repository:
         for item in items:
             key = item['key']
             value = item['value']
-            data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #v = :value, #ver = :version",
-                ExpressionAttributeNames={
-                    '#v': 'value',
-                    '#ver': 'version'
-                },
-                ExpressionAttributeValues={
-                    ':value': value,
-                    ':version': version
-                },
-                ReturnValues="UPDATED_NEW"
-            )
+            # only flush the items func write.
+            if not key.startswith('RET'):
+                data_db.update_item(
+                    Key={'key': key},
+                    UpdateExpression="SET #v = :value, #ver = :version",
+                    ExpressionAttributeNames={
+                        '#v': 'value',
+                        '#ver': 'version'
+                    },
+                    ExpressionAttributeValues={
+                        ':value': value,
+                        ':version': version
+                    },
+                    ReturnValues="UPDATED_NEW"
+                )
 
     def release_lock(self, transaction_id, lock_set):
         """
@@ -90,9 +92,6 @@ class Repository:
                 UpdateExpression="SET #l = :none",
                 ExpressionAttributeNames={
                     '#l': 'lock'
-                },
-                ExpressionAttributeValues={
-                    ':none': 'None'
                 },
                 ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
                 ExpressionAttributeValues={

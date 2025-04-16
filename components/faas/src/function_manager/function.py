@@ -2,9 +2,10 @@ import logging
 import time
 import math
 from gevent import event
+import sys
 from container import Container, ContainerPool
-from function_info import FunctionInfo
-
+sys.path.append('../../config')
+import config
 # data structure for request info
 class RequestInfo:
     def __init__(self, transaction_id, data):
@@ -16,7 +17,7 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info, port_controller, node_list, default_container_num, reserve_pool, fast_path_enabled):
+    def __init__(self, client, function_info, port_controller, node_list, default_container_num, reserve_pool, fast_path_enabled, remote_lock_enabled):
         self.client = client
         self.info = function_info
         self.port_controller = port_controller
@@ -24,6 +25,7 @@ class Function:
         self.default_container_num = default_container_num
         self.reserve_pool = reserve_pool
         self.fast_path_enabled = fast_path_enabled
+        self.remote_lock_enabled = remote_lock_enabled
         
         self.num_processing = 0
         self.rq = []
@@ -77,8 +79,10 @@ class Function:
         res['port'] = container.port
         req.result.set(res)
         
-        # 3. reserve the container into reserve pool
-        self.reserve_pool.reserve(req.transaction_id, container)
+        # 3. in fastpath, reserve the container into reserve pool
+        if config.REPAIR and config.FAST_PATH:
+            # if the container is not used in fast path, reserve it into reserve pool
+            self.reserve_pool.reserve(req.transaction_id, container)
 
         # self.container_pool.put(container)
 
@@ -86,7 +90,7 @@ class Function:
     def create_container(self):
         # do not create new exec container
         # when the number of execs hits the limit
-        if self.container_pool.check_pool_full_and_occupy() == None:
+        if not self.container_pool.check_pool_full_and_occupy():
             return None
 
         logging.info('create container of function: %s', self.info.function_name)
@@ -94,7 +98,7 @@ class Function:
             container = Container.create(self.client, self.info.img_name, self.port_controller.get(), 'exec', self.container_pool)
         except Exception as e:
             print(e)
-            self.num_exec -= 1
+            self.container_pool.num_exec -= 1
             return None
         logging.info('function: %s container created', self.info.function_name)
         self.init_container(container)
@@ -109,7 +113,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container):
-        container.init(self.info.workflow_name, self.info.function_name, self.node_list, self.fast_path_enabled)
+        container.init(self.info.workflow_name, self.info.function_name, self.node_list, self.fast_path_enabled, self.remote_lock_enabled)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

@@ -67,6 +67,8 @@ class Runner:
 
         # fast path enabled
         self.fast_path_enabled = False
+        # remote lock enabled
+        self.remote_lock_enabled = False
 
 
     def init(self, workflow, function, node_list, fast_path_enabled, remote_lock_enabled):
@@ -138,10 +140,10 @@ class Runner:
         logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
         requests.post(url, json=data)
 
-    def fin_repair(self, batch_id, ip):
+    def fin_repair(self, batch_id, transaction_id, ip):
         logging.info(f"Finishing repair: {self.function}")
         url = f'http://{ip}:7000/fin_repair'
-        data = {'batch_id': batch_id}
+        data = {'batch_id': batch_id, "transaction_id": transaction_id}
         requests.post(url, json=data)
 
     def run(self, batch_id, transaction_id, is_repair, lock_set={}):
@@ -180,7 +182,7 @@ class Runner:
             for next_func in self.next_functions:
                 if next_func == 'END':
                     self_ip = self.function_pos_inside_tx[self.function]['ip']
-                    next_trigger_tasks.append(gevent.spawn(self.fin_repair, batch_id, self_ip))
+                    next_trigger_tasks.append(gevent.spawn(self.fin_repair, batch_id, self.transaction_id, self_ip))
                     break
                 ip = self.function_pos_whole_batch[self.transaction_id][next_func]['ip']
                 port = self.function_pos_whole_batch[self.transaction_id][next_func]['port']
@@ -247,29 +249,26 @@ def run():
     io_latency = 0
     is_repair = inp.get('repair',False)
     no_parent_execution = False
-    lock_set = {}
-    if runner.remote_lock_enabled:
-        lock_set = inp['lock_set']
+    lock_set = inp['lock_set']
+    batch_id = ""
+    rs, ws, RYW_subjection={},{},{}
+    # first run, or not the reserved container. Save the info for this container.
+    if not is_repair or not runner.fast_path_enabled:
+        input = inp['input']
+        output = inp['output']
+        function_pos = inp['function_pos']
+        write_set = inp['write_set'] 
+        next_functions = inp['next_functions']
+        parent_cnt = inp['parent_cnt']
+        RYW_upstream = inp['RYW_upstream']
+        runner.save(transaction_id, input, output, function_pos, write_set, RYW_upstream, next_functions, parent_cnt)
     else:
-        batch_id = ""
-        rs, ws, RYW_subjection={},{},{}
-        # first run, or not the reserved container. Save the info for this container.
-        if not is_repair or not runner.fast_path_enabled:
-            input = inp['input']
-            output = inp['output']
-            function_pos = inp['function_pos']
-            write_set = inp['write_set'] 
-            next_functions = inp['next_functions']
-            parent_cnt = inp['parent_cnt']
-            RYW_upstream = inp['RYW_upstream']
-            runner.save(transaction_id, input, output, function_pos, write_set, RYW_upstream, next_functions, parent_cnt)
-        else:
-            batch_id = inp['batch_id']
-            if runner.fast_path_enabled:
-                dirty = inp.get('dirty', False)
-                no_parent_execution = inp.get('no_parent_execution', False)
-                # get the info from redis
-                runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
+        batch_id = inp['batch_id']
+        if runner.fast_path_enabled:
+            dirty = inp.get('dirty', False)
+            no_parent_execution = inp.get('no_parent_execution', False)
+            # get the info from redis
+            runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
         
     # record the execution time
     if runner.check_runnable(is_repair, no_parent_execution):

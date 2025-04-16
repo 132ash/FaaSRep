@@ -39,7 +39,7 @@ def clear_mem(ip, transaction_id, workflow_name):
     except:
         print(f"node {clear_url} not started or performs well.")
 
-def run_workflow(workflow_name, transaction_id, parameters):
+def run_workflow(workflow_name, transaction_id, parameters, retry=False):
     repo.create_request_doc(transaction_id)
 
     # allocate works
@@ -51,7 +51,8 @@ def run_workflow(workflow_name, transaction_id, parameters):
         info = repo.get_function_info(n, workflow_name + '_function_info')
         ip = info['ip']
         func_param = parameters.get(n, {})
-        repo.store_input(transaction_id, ip, func_param)
+        if not retry:
+            repo.store_input(transaction_id, ip, func_param)
         jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
     gevent.joinall(jobs)
     end = time.time()
@@ -66,13 +67,17 @@ def run():
     txTable.registerTX(transaction_id, parameters)
     print('processing request ' + transaction_id + '...')
     start = time.time()
+    if config.REMOTE_LOCK:
+        repo.create_shadow_table(transaction_id)
     aborted = False
+    retry = False
     # run the workflow. in beldi, the workflow may abort in the middle.s
     while not txTable.TxFinished(transaction_id) or aborted:
-        exec_first_latency = run_workflow(workflow, transaction_id, parameters)
+        exec_first_latency = run_workflow(workflow, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
             txTable.resetTX(transaction_id)
+        retry = True
     print(f"exec_first_latency: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)

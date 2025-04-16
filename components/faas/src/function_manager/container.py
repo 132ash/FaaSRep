@@ -47,7 +47,7 @@ class ContainerPool:
         self.lock.acquire()
         if self.num_exec + len(self.pool) > self.max_containers:
             logging.info('hit container limit, function: %s', self.function_name)
-            return None
+            return False
         self.num_exec += 1
         self.lock.release()
         return True
@@ -113,8 +113,8 @@ class Container:
         return r.json()
 
     # initialize the container
-    def init(self, workflow_name, function_name, node_list, fast_path_enabled=False):
-        data = {'workflow': workflow_name, 'function': function_name , "node_list": node_list, "fast_path_enabled":fast_path_enabled}
+    def init(self, workflow_name, function_name, node_list, fast_path_enabled=False, remote_lock_enabled=False):
+        data = {'workflow': workflow_name, 'function': function_name , "node_list": node_list, "fast_path_enabled":fast_path_enabled, "remote_lock_enabled":remote_lock_enabled}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

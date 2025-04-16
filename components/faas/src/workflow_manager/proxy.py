@@ -17,7 +17,7 @@ app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
-from components.faas.src.workflow_manager.validate_struct import ValidationQueue, ReservePool
+from validate_struct import ValidationQueue, ReservePool
 
 sys.path.append('../../config')
 import config
@@ -36,8 +36,9 @@ class Dispatcher:
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.validation_queue, self.reserve_pool) for name, addr in info_addrs.items()}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
-    def fin_repair_within_batch(self, batch_id):
+    def fin_repair_within_batch(self, batch_id, transaction_id):
         self.validation_queue.send_fin_repair_request(batch_id)
+        self.reserve_pool.release(transaction_id)
 
     def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
         return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
@@ -85,7 +86,8 @@ def repair():
 def fin_repair():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id']
-    dispatcher.fin_repair_within_batch(batch_id)
+    transaction_id = data['transaction_id']
+    dispatcher.fin_repair_within_batch(batch_id, transaction_id)
     return json.dumps({'status': 'ok'})
 
 # a new request from outside
