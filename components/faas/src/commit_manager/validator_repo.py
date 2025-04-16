@@ -62,7 +62,7 @@ class Repository:
 
         for item in items:
             key = item['key']
-            value = item['value']
+            value = item['value']  # Ensure value is stored as a string
             # only flush the items func write.
             if not key.startswith('RET'):
                 data_db.update_item(
@@ -96,7 +96,7 @@ class Repository:
                 ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
                 ExpressionAttributeValues={
                     ':txid': transaction_id,
-                    ':none': 'None'
+                    ':none': None
                 },
                 ReturnValues="UPDATED_NEW"
             )

@@ -99,22 +99,20 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
+    transaction_id_list = data['transaction_id_list']
     if config.REMOTE_LOCK:
         abort = data.get('abort', False)
         if abort:
-            transaction_id = data['transaction_id']
             lock_set = data['lock_set']
-            repo.release_lock(transaction_id, lock_set)
-            txTable.notifyTX([transaction_id], 0, 0,abort)
+            repo.release_lock(transaction_id_list[0], lock_set)
+        txTable.notifyTX(transaction_id_list, 0, 0,abort)
     else:
-        transaction_id_list = data['transaction_id_list']
         success = data['success']
         start_time = data['start_time']
         validate_time_inside_validator = data['validate_time_inside_validator']
         end_time = time.time()
-        txTable.notifyTX(transaction_id_list, end_time - start_time, validate_time_inside_validator)
-        logging.info(f"Validated: transaction_ids: {transaction_id_list}, commited: {success}")
-        return json.dumps({"status": "notified"})
+        txTable.notifyTX(transaction_id_list, end_time - start_time, validate_time_inside_validator)  
+    return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])
 def clear_container():

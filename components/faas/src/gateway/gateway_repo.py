@@ -108,17 +108,28 @@ class Repository:
         info = self.get_function_info(end_func['name'], workflow_name + '_function_info')
         ip = extract_ip(info['ip'])
         output = end_func['output']
-        return self.fetch_result_from_mem(request_id, end_func_name, output, ip)
+        return self.fetch_result_from_shadow_table(request_id, end_func_name, output, ip)
 
-    def fetch_result_from_mem(self, transaction_id, func, output, redis_ip):
+    def fetch_result_from_shadow_table(self, transaction_id, func, output, redis_ip):
         keys = output.keys()
         result = {}
-        for k in keys:
-            redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
-            if output[k]["type"] == "int":
-                result[k] = int(self.redis[redis_ip][redis_key])
-            else:
-                result[k] = self.redis[redis_ip][redis_key]
+        if config.REMOTE_LOCK:
+            shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
+            for k in keys:
+                dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
+                print(f"fetching {dynamo_key} from {transaction_id}_shadow_table")
+                response = shadow_table.get_item(
+                    Key={
+                        'key': dynamo_key
+                    }
+                )
+            item = response.get('Item')
+            result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
+        else:
+            for k in keys:
+                redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
+                result[k] = int(self.redis[redis_ip][redis_key]) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key]
+             
         return result
     
     def release_lock(self, transaction_id, lock_set):
@@ -138,7 +149,7 @@ class Repository:
                 ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
                 ExpressionAttributeValues={
                     ':txid': transaction_id,
-                    ':none': 'None'
+                    ':none': None
                 },
                 ReturnValues="UPDATED_NEW"
             )

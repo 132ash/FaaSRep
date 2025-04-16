@@ -5,6 +5,15 @@ import container_config
 from botocore.exceptions import ClientError
 import redis
 import time
+import sys
+import logging
+logging.basicConfig(
+    level=logging.INFO,  # 设置日志级别为 INFO
+    format='%(asctime)s [%(levelname)s] %(message)s',  # 日志格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ]
+)
 
 class RedisShadowTable:
     def __init__(self, host_list, port, db):
@@ -17,11 +26,7 @@ class RedisShadowTable:
         self.redis[ip][key] = value
 
     def fetch(self, redis_key, ip):
-        res = ""
-        try:
-            res = self.redis[ip][redis_key].decode('utf-8')
-        except KeyError:
-            pass
+        res = self.redis[ip][redis_key].decode('utf-8')
         return res
     
 class BeldiStore:
@@ -30,7 +35,7 @@ class BeldiStore:
         self.db_server = db_server
         self.data_db = db_server.Table('data')
         self.lock_set = lock_set
-        self.shadow_table = self.create_shadow_table()
+        self.shadow_table = db_server.Table(f"{self.transaction_id}_shadow_table")
 
     def put(self, key, value, this_func="", upstream_func="", write_set={}, ret=False):
         success = False
@@ -44,7 +49,7 @@ class BeldiStore:
             self.shadow_table.put_item(
                 Item={
                     'key': key,
-                    'value': value
+                    'value': str(value)
                 }
             )
             if not ret:
@@ -62,6 +67,7 @@ class BeldiStore:
         lock_time = 0
         # RYW. not acquire lock, read from shadow table.
         if upstream_func:
+            logging.info(f"RYW: {key}, upstream_func: {upstream_func}")
             response = self.shadow_table.get_item(
                     Key={
                         'key': key
@@ -83,33 +89,6 @@ class BeldiStore:
             return lock_success, value, lock_time
         else:
             return False, "", 0
-    
-    def create_shadow_table(self):
-        table_name = f"{self.transaction_id}_shadow_table"
-        existing_tables = self.db_server.tables.all()
-        if table_name not in [table.name for table in existing_tables]:
-        # 创建表
-            table = self.db_server.create_table(
-                TableName=table_name,
-                KeySchema=[
-                    {
-                        'AttributeName': 'key',
-                        'KeyType': 'HASH'  # 主键
-                    }
-                ],
-                AttributeDefinitions=[
-                    {
-                        'AttributeName': 'key',
-                        'AttributeType': 'S'  # 字符串类型
-                    }
-                ],
-                ProvisionedThroughput={
-                    'ReadCapacityUnits': 100,
-                    'WriteCapacityUnits': 100
-                }
-            )
-            table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-        return self.db_server.Table(table_name)
 
     def acquire_lock(self, key):
         try:
@@ -127,13 +106,21 @@ class BeldiStore:
                     },
                     ExpressionAttributeValues={
                         ':txid': self.transaction_id,
-                        ':none': 'None'
+                        ':none': None
                     },
                     ReturnValues="UPDATED_NEW"
                 )
+                response = self.data_db.get_item(
+                    Key={
+                        'key': key
+                    }
+                )
+                item = response.get('Item')
                 end = time.time()
+                logging.info(f"acquire lock for {key},value:{item['value']}, lock:{item['lock']}")
                 return True, end - start      
-        except ClientError:
+        except ClientError as e:
+            logging.info(f"acquire lock for {key} failed, error: {e.response['Error']['Message']}")
             return False, 0 
         
 # data in cache: value and version 
@@ -171,7 +158,7 @@ class RedisCache:
 
 
 class Store:
-    def __init__(self, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False, fast_path_enabled=False, remote_lock_enabled=False, db_server=None, lock_set={}):
+    def __init__(self, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False, fast_path_enabled=False, remote_lock_enabled=False, db_server=None):
         self.fast_path_enabled = fast_path_enabled
         self.redis_shadow_table = redis_shadow_table
         self.redis_cache = cache
@@ -195,9 +182,9 @@ class Store:
         self.function_pos_whole_batch = TxMetaData['function_pos_whole_batch']
         self.dirty = TxMetaData['dirty']
         # BeldiStore: used for locking mode.
-        self.beldi_store = BeldiStore(self.transaction_id, db_server, lock_set)
+        self.lock_set = TxMetaData['lock_set'] 
+        self.beldi_store = BeldiStore(self.transaction_id, db_server,  self.lock_set )
         self.remote_lock_enabled = remote_lock_enabled
-        self.lock_set = lock_set
         self.lock_latency = 0
 
 
@@ -222,10 +209,11 @@ class Store:
             return self.function_pos[upstream]['ip']
 
 
-    def fetch_from_mem(self, k, param_key, ip, param_type):
+    def fetch_from_mem(self, k, param_key, upstream, param_type):
         if self.remote_lock_enabled:
-            value = self.beldi_store.get(param_key, self.function_name)
+            _, value, _ = self.beldi_store.get(param_key, self.function_name)
         else:
+            ip = self.get_redis_ip(upstream)
             value = self.redis_shadow_table.fetch(param_key, ip)
         if param_type == "int":
             value = int(value)
@@ -242,8 +230,7 @@ class Store:
             upstream = self.input[k]["from"]
             param_type =  self.input[k]["type"]
             param_key = self.param_wrapper(upstream, k, 'RET')
-            ip = self.get_redis_ip(upstream)
-            thread_ = threading.Thread(target=self.fetch_from_mem, args=(k, param_key, ip, param_type))
+            thread_ = threading.Thread(target=self.fetch_from_mem, args=(k, param_key, upstream, param_type))
             threads.append(thread_)
         for thread_ in threads:
             thread_.start()
@@ -252,25 +239,25 @@ class Store:
         return self.fetch_dict
 
     # return to local redis.
-    def put_to_mem(self, k, ip, mode, value=None):
+    def put_to_mem(self, k, target_func, mode, value=None):
         if not self.remote_lock_enabled:
+            ip = self.get_redis_ip(target_func)
             redis_key = self.param_wrapper(self.function_name, k, mode)
             if mode == 'RET':
                 self.redis_shadow_table.put(redis_key, ip, self.ret_dict[k])
             else:
                 self.redis_shadow_table.put(redis_key, ip, value)
         else:
-            dynamo_key = self.param_wrapper(self.function_name, k, mode)
+            dynamo_key = self.param_wrapper(target_func, k, mode)
             self.beldi_store.put(dynamo_key, self.ret_dict[k], "", self.function_name,{}, True)
 
 
     # output_result: {'k': 'value'}
     # output_content_type: default application/json, just specify one when you need to
     def ret(self, output_result):
-        ip = self.function_pos[self.function_name]['ip']
         for k, v in output_result.items():
             self.ret_dict[k] = v
-            self.put_to_mem(k, ip, 'RET')
+            self.put_to_mem(k, self.function_name, 'RET')
 
     def get(self, key):
         value = None
@@ -283,7 +270,7 @@ class Store:
                 raise KeyError(f"Failed to acquire lock for key {key}")
             else:
                 self.lock_latency += lock_time
-            end = time.time()  
+                end = time.time()  
         else: 
             RYW_sign=False
             upstream_func=''
@@ -325,7 +312,7 @@ class Store:
                 raise KeyError(f"Failed to acquire lock for key {key}")
             else:
                 self.lock_latency += lock_time
-            end = time.time()  
+                end = time.time()  
         else:       
             if key not in self.write_set:
                 self.write_set[key] = self.function_name

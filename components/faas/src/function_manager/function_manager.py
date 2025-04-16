@@ -42,10 +42,10 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_pos, function_name, transaction_id, input, output, write_set,RYW_upstream,is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution=False, lock_set=None):
+    def run(self, function_pos, function_name, transaction_id, input, output, write_set,RYW_upstream,is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, lock_set=None):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
         if is_repair:
             print(f"*******FUNCMANAGER: repairing {function_name}, transaction_id {transaction_id}, batch_id {batch_id}, function_pos {function_pos}, input {input}, output {output}, write_set {write_set}, RYW_upstream {RYW_upstream}, next_funcs {next_funcs}, parent_cnt {parent_cnt}, downstream_func_table {downstream_func_table}, lock_set:{lock_set}")
-        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set,RYW_upstream, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, no_parent_execution, lock_set)
+        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set,RYW_upstream, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, lock_set)

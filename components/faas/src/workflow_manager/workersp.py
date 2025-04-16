@@ -141,11 +141,11 @@ class WorkerSPManager:
         print(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, function_pos:{function_pos}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}")
         self.validation_queue.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set)
 
-    def abort_tx(self, transaction_id):
+    def abort_tx(self, transaction_id, lock_set):
         # abort the transaction, waiting for re-run
         url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        lock_set = self.states[transaction_id].lock_set
-        data = {"abort":True, 'transaction_id': transaction_id, 'lock_set': lock_set}
+        logging.info(f'abort transaction:{transaction_id}, lock_set: {lock_set}')
+        data = {"abort":True, 'transaction_id_list': [transaction_id], 'lock_set': lock_set}
         requests.post(url, json=data)
         # clear the state
         self.del_state(transaction_id)
@@ -298,14 +298,14 @@ class WorkerSPManager:
         if state.repair:
             next_funcs = {}
             print(f"REPAIR FUNC: repairing {name}, downstream_func_table:{downstream_table}")
-        print(f"running function {name}, transaction_id: {state.transaction_id}, batch_id: {state.batch_id}, function_pos: {state.function_pos}, input: {info['input']}, output: {info['output']}, write_set: {state.write_set}, next_funcs: {next_funcs}, parent_cnt: {info['parent_cnt']}")
+        print(f"running function {name}, transaction_id: {state.transaction_id}, batch_id: {state.batch_id}, function_pos: {state.function_pos}, input: {info['input']}, output: {info['output']}, write_set: {state.write_set}, next_funcs: {next_funcs}, parent_cnt: {info['parent_cnt']}, lock_set: {state.lock_set}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, state.RYW_subjection.get(name, {}).get("upstream", {}), state.repair, 
                              next_funcs, info['parent_cnt'], state.batch_id, downstream_table.get('upstream_keys', {}), state.lock_set)
         end = time.time()
+        # TODO: the error of catching locking fail acts unnormal. The transaction cannot abort. 
         if res.get("KeyError", False):
-            print(f"function {name} KeyError: {res['error']}")
-            self.abort_tx(state.transaction_id)
+            self.abort_tx(state.transaction_id, state.lock_set)
             return
             
         state.lock.acquire()
@@ -326,7 +326,7 @@ class WorkerSPManager:
         if config.REMOTE_LOCK:
             # update lock set for the function
             state.write_set.update(res["write_set"])
-            state.lock_set[name].update(res['lock_set'])
+            state.lock_set.update(res['lock_set'])
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         state.lock.release()
         print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")

@@ -13,12 +13,6 @@ from repair_engine import RepairEngine
 import json
 import sys
 
-def get_timestamp():
-    # 获取当前时间，并格式化为字符串，精确到微秒
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-    return timestamp
-
-
 sys.path.append('../../config')
 import config
 
@@ -61,6 +55,7 @@ class ValidateDispatcher:
             return
         data = self.rq.get()
         batch = data['batch']
+        commitTime = Timestamp_allocator.get_timestamp()
         version = BatchVersion(commitTime)
         batch_id = batch['batch_id']
         # in remote lock mode: flush shadow table, then release all locks.
