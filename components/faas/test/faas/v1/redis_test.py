@@ -13,7 +13,6 @@ def check_redis_data():
     if not keys:
         print("No keys found in Redis database.")
         return
-    
     # 打印每个键及其对应的值
     for key in keys:
         value = redis_client_shadow.get(key)

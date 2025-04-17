@@ -1,13 +1,24 @@
+import sys
+import logging
+
 import gevent
 import docker
-import os
 from function_info import parse
 from port_controller import PortController
 from function import Function
-import sys
 
 sys.path.append('../../config')
 import config
+
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
 
 
 repack_clean_interval = 5.000 # repack and clean every 5 seconds
@@ -46,6 +57,4 @@ class FunctionManager:
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
-        if is_repair:
-            print(f"*******FUNCMANAGER: repairing {function_name}, transaction_id {transaction_id}, batch_id {batch_id}, function_pos {function_pos}, input {input}, output {output}, write_set {write_set}, RYW_upstream {RYW_upstream}, next_funcs {next_funcs}, parent_cnt {parent_cnt}, downstream_func_table {downstream_func_table}, lock_set:{lock_set}")
         return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set,RYW_upstream, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, lock_set)

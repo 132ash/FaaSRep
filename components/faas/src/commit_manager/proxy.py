@@ -1,11 +1,23 @@
+import sys
+import logging
+# 配置日志记录
+logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
+
 from gevent import monkey
 monkey.patch_all()
-import sys
 import requests
 import gevent
 from gevent.queue import Queue
 import time 
-import datetime
 from repair_info import RepairInfo
 from validator import BatchValidator
 from TX_timestamp import TimeStampAllocator, BatchVersion
@@ -66,7 +78,6 @@ class ValidateDispatcher:
             validate_time_inside_validator = time.time() - start_time
             self.notify_gateway(TXid_list, True, start_time, validate_time_inside_validator)
         else:
-            logging.info(f"Start processing batch: {batch_id}")
             workflow_name_per_tx = batch['workflow_name']
             function_pos_per_tx = batch['function_pos']
             worker_ip_set = batch['worker_set'].keys()
@@ -83,6 +94,7 @@ class ValidateDispatcher:
             expired_keys, confilcted = Validator.validate(batch_id, workflow_name_per_tx, read_set, write_set, transaction_list, function_pos_per_tx, RYW_subjection)
 
             repair_successful = True
+            logging.info(f"batch {batch_id} finished validating.")
             validate_time_inside_validator = time.time() - start_time
             if confilcted:
                 logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}")

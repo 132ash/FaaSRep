@@ -2,7 +2,7 @@ from gevent import monkey
 monkey.patch_all()
 import gevent
 import requests
-from gevent.queue import Queue
+import logging
 from typing import Dict
 import sys
 import gevent.lock
@@ -77,6 +77,7 @@ class ValidationQueue:
             self.queue_lock.release()
             return
         batch = self.transform_batch(self.queue[:idx])
+        logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}")
         self.queue = self.queue[idx:]
         self.queue_lock.release()
         self.repairing_batch_table[batch["batch_id"]] = {"batch_size": idx, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}

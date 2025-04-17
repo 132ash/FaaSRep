@@ -24,8 +24,8 @@ class RunningTXTable:
         return False
     
     def resetTX(self, tx_id):
-        self.running_txs[tx_id]['finished'] = False
         self.running_txs[tx_id]['abort'] = False
+        self.running_txs[tx_id]['finished'] = False
         condition = self.running_txs[tx_id]['cond']
         condition.clear()
     
@@ -34,7 +34,7 @@ class RunningTXTable:
 
     def notifyTX(self, transaction_id_list, validate_latency, validate_time_inside_validator, abort = False):
         if abort:
-            self.running_txs[transaction_id_list[0]][abort] = True
+            self.running_txs[transaction_id_list[0]]['abort'] = True
             self.running_txs[transaction_id_list[0]]['finished'] = True
             self.running_txs[transaction_id_list[0]]['cond'].set()
         else:

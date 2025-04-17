@@ -80,11 +80,13 @@ class Function:
         req.result.set(res)
         
         # 3. in fastpath, reserve the container into reserve pool
+        # else, return the container to pool
         if config.REPAIR and config.FAST_PATH:
             # if the container is not used in fast path, reserve it into reserve pool
             self.reserve_pool.reserve(req.transaction_id, container)
+        else:
+            self.container_pool.put(container)
 
-        # self.container_pool.put(container)
 
     # create a new container
     def create_container(self):

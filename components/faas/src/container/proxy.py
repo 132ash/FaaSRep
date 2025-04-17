@@ -111,7 +111,10 @@ class Runner:
         if not self.repair_metadata_fetched:
             redis_key = f"{transaction_id}:REPAIR:{self.function}:" 
             self_ip = self.function_pos_inside_tx[self.function]['ip']
-            metadata_string = self.shadow_table.fetch(redis_key, self_ip)
+            try:
+                metadata_string = self.shadow_table.fetch(redis_key, self_ip)
+            except KeyError:
+                metadata_string = None
             if metadata_string:
                 repair_metadata = json.loads(metadata_string)
                 self.RYW_table = repair_metadata['RYW']
@@ -170,12 +173,7 @@ class Runner:
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
 
             # pre-exec
-            try:
-                exec(self.code, self.ctx)
-            except KeyError as e:
-                logging.error(f"KeyError: {e} in function: {self.function}, transaction_id: {transaction_id}")
-                raise e
-
+            exec(self.code, self.ctx)
             # run function
             out = eval('main()', self.ctx)
         # in repair mode and in fast-path: trigger next function inside the container.
@@ -249,10 +247,11 @@ def run():
 
     inp = request.get_json(force=True, silent=True)
     transaction_id = inp['transaction_id']
-    io_latency = 0
+    io_latency, lock_latency = 0, 0
     is_repair = inp.get('repair',False)
     no_parent_execution = False
     batch_id = ""
+    lock_set = {}
     rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
     if not is_repair or not runner.fast_path_enabled:
@@ -274,11 +273,15 @@ def run():
             runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
         
     # record the execution time
+    # only in remote lock mode, catch the runtime error(lock failed)
     if runner.check_runnable(is_repair, no_parent_execution):
-        try:
+        if runner.remote_lock_enabled:
+            try:
+                rs, ws, RYW_subjection, io_latency, lock_latency = runner.run(batch_id, transaction_id, is_repair)
+            except Exception as e:
+                return json.dumps({'Error':True, 'error': str(e), 'lock_set':runner.lock_set})
+        else:
             rs, ws, RYW_subjection, io_latency, lock_latency = runner.run(batch_id, transaction_id, is_repair)
-        except KeyError as e:
-            return json.dumps({'KeyError':True, 'error': str(e)})
 
     res = {
         "read_set": rs,

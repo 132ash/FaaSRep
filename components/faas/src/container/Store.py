@@ -38,32 +38,26 @@ class BeldiStore:
         self.shadow_table = db_server.Table(f"{self.transaction_id}_shadow_table")
 
     def put(self, key, value, this_func="", upstream_func="", write_set={}, ret=False):
-        success = False
         lock_time = 0
         # have upstream func: no need for lock. change the write func.
-        if upstream_func:
-            success = True
-        else:
-            success, lock_time = self.acquire_lock(key)
-        if success:
-            self.shadow_table.put_item(
-                Item={
-                    'key': key,
-                    'value': str(value)
-                }
-            )
-            if not ret:
-                write_set[key] = this_func
-            return True, lock_time
-        else:
-            return False, ""
+        if not upstream_func:
+            lock_time = self.acquire_lock(key)
+        self.shadow_table.put_item(
+            Item={
+                'key': key,
+                'value': str(value)
+            }
+        )
+        if not ret:
+            write_set[key] = this_func
+        return lock_time
+      
 
         
 
     def get(self, key, upstream_func):
         item = None
         value = None
-        lock_success = False
         lock_time = 0
         # RYW. not acquire lock, read from shadow table.
         if upstream_func:
@@ -74,54 +68,49 @@ class BeldiStore:
                     }
                 )
             item = response.get('Item')
-            lock_success = True
         else:
-            lock_success, lock_time = self.acquire_lock(key)
-            if lock_success:
-                response = self.data_db.get_item(
-                    Key={
-                        'key': key
-                    }
-                )
-                item = response.get('Item')
+            lock_time = self.acquire_lock(key)
+            response = self.data_db.get_item(
+                Key={
+                    'key': key
+                }
+            )
+            item = response.get('Item')
         value = item['value'] if item else None
-        if lock_success and item:
-            return lock_success, value, lock_time
+        if item:
+            return value, lock_time
         else:
-            return False, "", 0
+            return "", 0
 
     def acquire_lock(self, key):
-        try:
-            start = time.time()
-            if self.lock_set.get(key, False):
-                return True, time.time() - start
-            else:
-                self.lock_set[key] = True
-                self.data_db.update_item(
-                    Key={'key': key},
-                    UpdateExpression="SET #l = :txid",
-                    ConditionExpression="attribute_not_exists(#l) OR #l = :none OR #l = :txid",
-                    ExpressionAttributeNames={
-                        '#l': 'lock'
-                    },
-                    ExpressionAttributeValues={
-                        ':txid': self.transaction_id,
-                        ':none': None
-                    },
-                    ReturnValues="UPDATED_NEW"
-                )
-                response = self.data_db.get_item(
-                    Key={
-                        'key': key
-                    }
-                )
-                item = response.get('Item')
-                end = time.time()
-                logging.info(f"acquire lock for {key},value:{item['value']}, lock:{item['lock']}")
-                return True, end - start      
-        except ClientError as e:
-            logging.info(f"acquire lock for {key} failed, error: {e.response['Error']['Message']}")
-            return False, 0 
+        start = time.time()
+        if self.lock_set.get(key, False):
+            return time.time() - start
+        else:
+            self.data_db.update_item(
+                Key={'key': key},
+                UpdateExpression="SET #l = :txid",
+                ConditionExpression="attribute_not_exists(#l) OR #l = :none OR #l = :txid",
+                ExpressionAttributeNames={
+                    '#l': 'lock'
+                },
+                ExpressionAttributeValues={
+                    ':txid': self.transaction_id,
+                    ':none': None
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+            response = self.data_db.get_item(
+                Key={
+                    'key': key
+                }
+            )
+            item = response.get('Item')
+            end = time.time()
+            logging.info(f"acquire lock for {key},value:{item['value']}, lock:{item['lock']}")
+            self.lock_set[key] = True
+            return end - start      
+       
         
 # data in cache: value and version 
 class RedisCache:
@@ -211,7 +200,7 @@ class Store:
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
         if self.remote_lock_enabled:
-            _, value, _ = self.beldi_store.get(param_key, self.function_name)
+            value, _ = self.beldi_store.get(param_key, self.function_name)
         else:
             ip = self.get_redis_ip(upstream)
             value = self.redis_shadow_table.fetch(param_key, ip)
@@ -265,12 +254,9 @@ class Store:
         if self.remote_lock_enabled:
             # RYW. read from shadow table.
             upstream_func = self.write_set.get(key, "")
-            success, value, lock_time = self.beldi_store.get(key, upstream_func)
-            if not success:
-                raise KeyError(f"Failed to acquire lock for key {key}")
-            else:
-                self.lock_latency += lock_time
-                end = time.time()  
+            value, lock_time = self.beldi_store.get(key, upstream_func)
+            self.lock_latency += lock_time
+            end = time.time()  
         else: 
             RYW_sign=False
             upstream_func=''
@@ -307,16 +293,12 @@ class Store:
         start = time.time()
         if self.remote_lock_enabled:
             upstream_func = self.write_set.get(key, "")
-            success, lock_time = self.beldi_store.put(key, value, self.function_name, upstream_func, self.write_set)
-            if not success:
-                raise KeyError(f"Failed to acquire lock for key {key}")
-            else:
-                self.lock_latency += lock_time
-                end = time.time()  
+            lock_time = self.beldi_store.put(key, value, self.function_name, upstream_func, self.write_set)
+            self.lock_latency += lock_time
+            end = time.time()  
         else:       
-            if key not in self.write_set:
-                self.write_set[key] = self.function_name
-            self.put_to_mem(key, self.function_pos[self.function_name]['ip'], 'PUT', value)
+            self.put_to_mem(key, self.function_name, 'PUT', value)
+            self.write_set[key] = self.function_name
             end = time.time()
         self.io_latency += (end - start)
 

@@ -40,7 +40,6 @@ class DynamoDBClient:
             return None, None
 
     def store_data_to_db(self, key, version, value):
-        print(f"commit key:{key}, version:{version}")
         self.table.put_item(
             Item={
                 'key': key,
@@ -176,4 +175,4 @@ class Repository:
             else:
                 version = item['version']
             self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
-        print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}")
+        print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")

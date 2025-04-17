@@ -124,7 +124,7 @@ class BatchValidator:
                     self.acquired_locks[batch_id]["target"] += 1
                     self.lock_key_set_per_batch[batch_id].append(key)
 
-            logging.info(f"transaction {tx_id} finished asking for locks.")
+            logging.info(f"batch {batch_id} finished asking for locks.")
 
         # FINISHED ask for locks, notify the next tx.
         self.timestamp_allocator.notify_next_batch(batch_id)
@@ -133,6 +133,8 @@ class BatchValidator:
         while self.acquired_locks[batch_id]["acquired"] < self.acquired_locks[batch_id]["target"]:
             self.acquired_locks[batch_id]["cond"].wait()
             self.acquired_locks[batch_id]["cond"].clear()
+
+        logging.info(f"batch {batch_id} have its locks. ")
 
         # check the keys in read set, if the version is expired.
         # collect expired keys for each node and damaged functions.

@@ -29,7 +29,7 @@ DEFAULT_CONTAINER_NUM = 1
 
 # batch setting
 BATCH_SIZE = 2
-BATCH_INTERVAL = 1
+BATCH_INTERVAL = 0.05
 
 # Validate mode
 REPAIR = False

@@ -97,9 +97,9 @@ class Repository:
                 shadow_table.put_item(
                     Item={
                         'key': dynamo_key,
-                        'value': v
+                        'value': str(v)
                     }
-                 )
+                )
             
 
     def get_result(self, request_id: str, workflow_name) -> Any:

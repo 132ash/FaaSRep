@@ -2,14 +2,26 @@ import json
 import gevent
 from gevent import monkey
 import uuid
-monkey.patch_all()
 import sys
+import logging
+# 配置日志记录
+logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
+
+monkey.patch_all()
 from flask import Flask, request
 from gateway_repo import Repository
 from transaction_info import RunningTXTable
 import requests
 import time
-import logging
 
 sys.path.append('../../config')
 import config
@@ -65,7 +77,7 @@ def run():
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(transaction_id, parameters)
-    print('processing request ' + transaction_id + '...')
+    logging.info('processing request ' + transaction_id + '...')
     start = time.time()
     if config.REMOTE_LOCK:
         repo.create_shadow_table(transaction_id)
@@ -78,16 +90,16 @@ def run():
         if aborted:
             txTable.resetTX(transaction_id)
         retry = True
-    print(f"exec_first_latency: {exec_first_latency}")
+    logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
-    print(f"transaction_id: {transaction_id}, res: {res}, e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    logging.info(f"transaction {transaction_id} finished. res: {res}, e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
         jobs = []
-        print(f"clearing shadow table and transaction state on {worker_addrs}")
+        logging.info(f"clearing shadow table and transaction state on {worker_addrs}")
         for ip in worker_addrs:
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)

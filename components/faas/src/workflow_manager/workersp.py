@@ -1,7 +1,7 @@
+import logging
+import sys
 from gevent import monkey
 monkey.patch_all()
-import sys
-import logging
 import time
 import gevent.lock
 import workersp_repo
@@ -15,6 +15,8 @@ import config
 
 sys.path.append('../function_manager')
 from function_manager import FunctionManager
+
+
 
 repo = workersp_repo.Repository()
 
@@ -138,7 +140,7 @@ class WorkerSPManager:
         return self.function_info[function_name]
     
     def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set):
-        print(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, function_pos:{function_pos}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}")
+        logging.info(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}")
         self.validation_queue.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set)
 
     def abort_tx(self, transaction_id, lock_set):
@@ -198,7 +200,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        print(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        logging.info(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             # basic infomation
@@ -221,14 +223,13 @@ class WorkerSPManager:
         }
         requests.post(remote_url, json=data)
 
-    def trigger_function_cross_tx(self, transaction_id, workflow_name, function_name, ip, batch_id):
+    def trigger_function_cross_tx(self, transaction_id, function_name, ip, batch_id):
         if not ip.endswith(":7000"):
             url = 'http://{}:7000/request'.format(ip)
         else:
             url = 'http://{}/request'.format(ip)
         data = {
             'transaction_id': transaction_id,
-            'workflow_name': workflow_name,
             'function_name': function_name,
             'no_parent_execution': False,
             'repair': True,
@@ -248,7 +249,7 @@ class WorkerSPManager:
             upstream_cnt += up_cnt
             up_cnt = state.repair_states.get(function_name, {}).get("RYW", {}).get('up_cnt', 0)
             upstream_cnt += up_cnt
-            print(f"checking repairing {function_name}, executed:{state.parent_executed[function_name]}, upstream_cnt: {upstream_cnt}, origin parent_cnt: {info['parent_cnt']}")
+            logging.info(f"checking parents executed in repair. {function_name}, executed:{state.parent_executed[function_name]}, upstream_cnt: {upstream_cnt}, origin parent_cnt: {info['parent_cnt']}")
         # parent count: the sum of parents in workflow graph and parents in subject table
         return state.parent_executed[function_name] == info['parent_cnt'] + upstream_cnt and not state.executed[function_name] 
 
@@ -262,7 +263,10 @@ class WorkerSPManager:
         info = self.get_function_info(function_name)
         # if function in repair mode and not dirty, skip running
         if not state.repair or dirty:
-            self.run_normal(state, info)
+            successful, lock_set = self.run_normal(state, info)
+            if not successful:
+                self.abort_tx(state.transaction_id, lock_set)
+                return
 
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
         state.parent_executed[function_name] = 0
@@ -277,7 +281,7 @@ class WorkerSPManager:
         if state.repair:
             RYW_sub = repair_metadata.get("RYW", {})
             downstream_sub = repair_metadata.get("upstream", [])
-            print(f"REPAIR: RYW subjection table for func{function_name}: {RYW_sub}")
+            logging.info(f"{function_name} REPAIR: trigger RYW func {RYW_sub}, crosstx func {downstream_sub}.")
             for func in RYW_sub.get('down_funcs', {}):
                 print(f"function {function_name} RYW trigger downstream: {func}")
                 jobs.append(gevent.spawn(self.trigger_function, state, func))
@@ -285,28 +289,23 @@ class WorkerSPManager:
                 downstream_txid = downstream_func_info['transaction_id']
                 downstream_name = downstream_func_info['function_name']
                 downstream_ip = state.function_pos_whole_batch[downstream_txid][downstream_name]['ip']
-                workflow_name = downstream_func_info['workflow_name']
                 print(f"function {function_name} crossrx trigger downstream: {downstream_name}")
-                jobs.append(gevent.spawn(self.trigger_function_cross_tx, downstream_txid, workflow_name, downstream_name, downstream_ip, state.batch_id))
+                jobs.append(gevent.spawn(self.trigger_function_cross_tx, downstream_txid, downstream_name, downstream_ip, state.batch_id))
         gevent.joinall(jobs)
 
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        next_funcs = info['next']
+        next_funcs = {} if state.repair else info['next']
         downstream_table = state.repair_states.get(name, {}).get("downstream", {})
-        if state.repair:
-            next_funcs = {}
-            print(f"REPAIR FUNC: repairing {name}, downstream_func_table:{downstream_table}")
-        print(f"running function {name}, transaction_id: {state.transaction_id}, batch_id: {state.batch_id}, function_pos: {state.function_pos}, input: {info['input']}, output: {info['output']}, write_set: {state.write_set}, next_funcs: {next_funcs}, parent_cnt: {info['parent_cnt']}, lock_set: {state.lock_set}")
+        logging.info(f"running function {name},REPAIR:{state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}, downstream_table:{downstream_table}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, state.RYW_subjection.get(name, {}).get("upstream", {}), state.repair, 
                              next_funcs, info['parent_cnt'], state.batch_id, downstream_table.get('upstream_keys', {}), state.lock_set)
         end = time.time()
-        # TODO: the error of catching locking fail acts unnormal. The transaction cannot abort. 
-        if res.get("KeyError", False):
-            self.abort_tx(state.transaction_id, state.lock_set)
-            return
+        if res.get("Error", False):
+            logging.error(f"function {name} run error: {res['error']}")
+            return False, res['lock_set']
             
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
@@ -322,16 +321,18 @@ class WorkerSPManager:
                 upstream_func_table["down_funcs"][name] = True
                 downstream_RYW_func_table["up_cnt"] += 1
                 downstream_RYW_func_table["upstream"][key] = upstream_RYW_func
-                print(f"update RYW subjection table, now: {state.RYW_subjection}")
+                logging.info(f"FIRST RUN, update RYW subjection table, now: {state.RYW_subjection}")
         if config.REMOTE_LOCK:
             # update lock set for the function
             state.write_set.update(res["write_set"])
             state.lock_set.update(res['lock_set'])
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         state.lock.release()
-        print(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+        logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
+        return True, {}
 
     def clear_mem(self, transaction_id):
         repo.clear_mem(transaction_id)

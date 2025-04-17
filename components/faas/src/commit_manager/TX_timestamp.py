@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from gevent import monkey
 monkey.patch_all()
 import gevent.lock
@@ -31,7 +32,7 @@ class TimeStampAllocator:
         self.wait_condition.pop(batch_id)
         self.pending_batches.pop(0)
         if len(self.pending_batches) > 0:
-            print(f"notifying batch {self.pending_batches[0]}")
+            logging.info(f"finished adding lock. notifying batch {self.pending_batches[0]}")
             next_batch_id = self.pending_batches[0]
             condition = self.wait_condition[next_batch_id]
             condition.set()

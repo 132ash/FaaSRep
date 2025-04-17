@@ -1,3 +1,18 @@
+import sys
+import logging
+# 配置日志记录
+logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
+
+
 from gevent import monkey
 monkey.patch_all()
 import os
@@ -5,8 +20,6 @@ import gevent
 import requests
 import json
 from typing import Dict
-import sys
-import gevent.lock
 sys.path.append('../../config')
 import config
 import workersp_repo
@@ -79,6 +92,7 @@ def repair():
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
     port = data['port']
+    logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
     dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port)
     return json.dumps({'status': 'ok'})
 
@@ -120,7 +134,7 @@ def req():
     else:
         state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         
-    print(f"--------request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}")
+    logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -158,7 +172,7 @@ def commit():
     # release the containers reserved into container pool.
     for txid in tx_list:
         dispatcher.reserve_pool.release(txid)
-    print(f"commit_table: {commit_table}, version {version}")
+    logging.info(f"[{batch_id}] commit. all transactions:{tx_list} commit_table: {commit_table}, version {version}")
     repo.commit_tx_writes(commit_table, version)
     dispatcher.cache_updated_table.pop(batch_id, None)
     return json.dumps({'status': 'ok'})
