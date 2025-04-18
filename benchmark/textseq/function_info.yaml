@@ -1,0 +1,8 @@
+workflow: textseq
+functions:
+- {image: textseq_f1, name: f1}
+- {image: textseq_f2, name: f2}
+- {image: textseq_f3, name: f3}
+- {image: textseq_f4, name: f4}
+- {image: textseq_f5, name: f5}
+max_containers: 30

@@ -1,7 +1,0 @@
-workflow: testflow
-functions:
-- {image: simpleseq_func1, name: func1}
-- {image: simpleseq_func2, name: func2}
-- {image: simpleseq_func3, name: func3}
-- {image: simpleseq_func4, name: func4}
-max_containers: 30

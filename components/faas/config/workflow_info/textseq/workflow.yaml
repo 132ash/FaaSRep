@@ -1,0 +1,38 @@
+functions:
+  - name: f1
+    source: f1
+    input: 
+        chained_num_0:
+            from: GLOBAL
+            type: int
+    output:
+        chained_num_1:
+            type: int
+    next: 
+        type: pass
+        nodes:
+            - f2
+  - name: f2
+    source: f2
+    input: 
+        chained_num_1:
+            from: f1
+            type: int
+    output:
+        chained_num_2:
+            type: int
+    next: 
+        type: pass
+        nodes:
+            - f3
+  - name: f3
+    source: f3
+    input: 
+        chained_num_2:
+            from: f2
+            type: int
+    output:
+        chained_num_final:
+            type: int
+    next: 
+        type: FINISH

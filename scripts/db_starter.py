@@ -2,6 +2,10 @@ import couchdb
 import boto3
 import time
 from datetime import datetime
+import random
+import string
+
+TEXT_SIZE = 4 * 1024  # 1MB / 4KB
 
 time.sleep(2)
 couch_db = couchdb.Server('http://faasnap:faasnap@127.0.0.1:5984')
@@ -48,4 +52,18 @@ table.put_item(
         'value': '1'
     }
 )
+def generate_random_text(size):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
+
+keys = ['t0', 't1', 't2', 't5', 't8', 't11', 't14']
+for key in keys:
+    random_text = generate_random_text(TEXT_SIZE)
+    table.put_item(
+        Item={
+            'key': key,
+            'version': startup_version,
+            'value': random_text
+        }
+    )
+
 
