@@ -83,20 +83,18 @@ def analyze_workflow(workflow):
     func_exec_time = func_exec_time_test 
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
 
-    
-
 def analyze_all(_baseline, _mode):
     repo.flush_couchdb_workflow_latency()
 
         # 创建线程函数
     def thread_task():
-        for _ in range(10):  # 每个线程调用 10 次
+        for _ in range(5):  # 每个线程调用 5 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
             time.sleep(0.05)  # 每隔 50ms 调用一次
 
         # 创建三个线程
     threads = []
-    for _ in range(3):
+    for _ in range(2):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()
@@ -136,13 +134,17 @@ def analyze_all(_baseline, _mode):
     df.to_csv(f"{_baseline}_{_mode}" + '.csv')
    
 
+TESTRUN = False
 
 if __name__ == '__main__':
     _baseline = baseline[0]
     _mode = mode[0]
     if mode == "remote lock":
         release_lock()
-    analyze_all(_baseline, _mode)
+    if TESTRUN:
+        run_workflow("textseq", parameters_input["textseq"])
+    else:
+        analyze_all(_baseline, _mode)
 
 
 

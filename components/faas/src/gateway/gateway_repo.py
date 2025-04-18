@@ -88,7 +88,6 @@ class Repository:
             for k, v in input.items():
                 redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, False)
                 self.redis[extract_ip(ip)][redis_key] = v
-                print(self.redis[extract_ip(ip)][redis_key])
         # in remote lock mode. store input in shadow table. add prefix: RET:FUNC.
         else:
             shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
@@ -128,7 +127,7 @@ class Repository:
         else:
             for k in keys:
                 redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
-                result[k] = int(self.redis[redis_ip][redis_key]) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key]
+                result[k] = int(self.redis[redis_ip][redis_key].decode('utf-8')) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key].decode('utf-8')
              
         return result
     

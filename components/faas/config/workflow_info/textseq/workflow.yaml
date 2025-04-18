@@ -2,12 +2,12 @@ functions:
   - name: f1
     source: f1
     input: 
-        chained_num_0:
+        t0:
             from: GLOBAL
-            type: int
+            type: str
     output:
-        chained_num_1:
-            type: int
+        t4:
+            type: str
     next: 
         type: pass
         nodes:
@@ -15,12 +15,12 @@ functions:
   - name: f2
     source: f2
     input: 
-        chained_num_1:
+        t4:
             from: f1
-            type: int
+            type: str
     output:
-        chained_num_2:
-            type: int
+        t7:
+            type: str
     next: 
         type: pass
         nodes:
@@ -28,11 +28,37 @@ functions:
   - name: f3
     source: f3
     input: 
-        chained_num_2:
+        t7:
             from: f2
-            type: int
+            type: str
     output:
-        chained_num_final:
-            type: int
+        t10:
+            type: str
+    next: 
+        type: pass
+        nodes:
+            - f4
+  - name: f4
+    source: f4
+    input: 
+        t10:
+            from: f3
+            type: str
+    output:
+        t13:
+            type: str
+    next: 
+        type: pass
+        nodes:
+            - f5
+  - name: f5
+    source: f5
+    input: 
+        t13:
+            from: f4
+            type: str
+    output:
+        t16:
+            type: str
     next: 
         type: FINISH

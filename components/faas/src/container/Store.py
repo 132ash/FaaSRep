@@ -225,6 +225,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
+        logging.info(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
 
     # return to local redis.
@@ -280,7 +281,7 @@ class Store:
             if upstream_func:
                 value = self.redis_shadow_table.fetch(self.param_wrapper(upstream_func, key, 'PUT', upstream_txid), upstream_ip)
                 if not self.is_repair and RYW_sign and upstream_func != self.function_name:
-                    self.RYW_subjection[upstream_func] = True
+                    self.RYW_subjection[key] = upstream_func
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
                 self.read_set[key] = value_version_pair["version"]

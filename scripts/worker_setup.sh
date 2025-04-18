@@ -22,5 +22,5 @@
 
 docker build --no-cache -t workflow_base ../components/faas/src/container
 # ../benchmark/testflow/create_image.sh
-../benchmark/testflow/create_image.sh
-../benchmark/sectestflow/create_image.sh
+# ../benchmark/testflow/create_image.sh
+../benchmark/textseq/create_image.sh

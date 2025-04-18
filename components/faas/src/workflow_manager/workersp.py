@@ -324,7 +324,7 @@ class WorkerSPManager:
                 upstream_func_table["down_funcs"][name] = True
                 downstream_RYW_func_table["up_cnt"] += 1
                 downstream_RYW_func_table["upstream"][key] = upstream_RYW_func
-                logging.info(f"FIRST RUN, update RYW subjection table, now: {state.RYW_subjection}")
+                logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
         if config.REMOTE_LOCK:
             # update lock set for the function
             state.write_set.update(res["write_set"])

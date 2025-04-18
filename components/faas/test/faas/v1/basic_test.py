@@ -26,9 +26,7 @@ def process_and_create_new_files():
     random.shuffle(shuffled_content)
     shuffled_content = ''.join(shuffled_content)
 
-    s1 = str(shuffled_content)
-    print(type(s1))
-
+   
     # 截取两段4KB大小的文本并写入新文件
     os.makedirs("output_files", exist_ok=True)
     part_size = len(shuffled_content) // 3
