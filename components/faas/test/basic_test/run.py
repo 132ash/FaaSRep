@@ -1,6 +1,8 @@
-from gevent import monkey
-monkey.patch_all()
+import threading
 
+import boto3
+import random
+import string
 import sys
 import pandas as pd
 import requests
@@ -9,15 +11,50 @@ sys.path.append('..')
 sys.path.append('../../config')
 from repository import Repository
 import time
-
-
 import config
+
 repo = Repository()
+TEXT_SIZE = 4 * 1024 
+dynamodb  = boto3.resource('dynamodb', endpoint_url='http://192.168.162.132:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+# table_name = f"{transaction_id}_shadow_table"
+table_name = "data"
+# 创建名为data的表，以字符串key作为键，每个键对应version和value两个字段，都是字符串
+table = dynamodb.Table(table_name)
 
-workflow_pool = ["simpleseq"]
+def generate_random_text(size):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
 
-TEST_TIME = 1
+parameters_input = {
+    "textseq": {
+        "f1": {"t0": generate_random_text(TEXT_SIZE)}
+    },
+}
 
+baseline = ["repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
+mode = ["NOCACHE + SMALL", "CACHE + LARGE", "CACHE + SMALL","NOCACHE + LARGE"]
+
+result_dict = {}
+
+def release_lock():
+    table = dynamodb.Table("data")
+    # 使用 scan 获取所有项并更新 lock 属性为 none
+    response = table.scan()
+    for item in response.get('Items', []):
+        try:
+            table.update_item(
+                Key={'key': item['key']},
+                UpdateExpression="SET #l = :none",
+                ExpressionAttributeNames={
+                    '#l': 'lock'
+                },
+                ExpressionAttributeValues={
+                    ':none': None  # 使用 None 而不是字符串 'None'
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+        except Exception as e:
+            print(f"Failed to release lock for key {item['key']}: {e}")
+            
 
 def run_workflow(workflow_name, parameters = {}):
     url = 'http://' + config.GATEWAY_ADDR + '/run'
@@ -34,49 +71,78 @@ def get_function_latency(txid):
     return exec_time, io_time
 
 
-def analyze_workflow(workflow_name):
-    print(f'----analyzing {workflow_name}----')
+def analyze_workflow(workflow):
+    rep = run_workflow(workflow, parameters_input[workflow]) 
+    txid = rep['transaction_id']
+    validate_time_inside_validator = rep['validate_time_inside_validator']
+    validate_latency = rep['validate_latency'] 
+    e2e_latency = rep['e2e_latency']  
+    first_run_latency = rep['first_run_latency']
+    func_exec_time_test, func_io_time_test = get_function_latency(txid)
+    func_io_time = func_io_time_test
+    func_exec_time = func_exec_time_test 
+    result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
+
+    
+
+def analyze_all(_baseline, _mode):
     repo.flush_couchdb_workflow_latency()
 
-    tested = 0
-    validate_latency = 0
-    e2e_latency = 0
-    func_io_time = 0
-    func_exec_time = 0
-    while tested < TEST_TIME:
-        print(f"testing {workflow_name} {tested + 1} time")
-        rep = run_workflow(workflow_name)
-        txid = rep['transaction_id']
-        validate_latency += rep['validate_latency']
-        e2e_latency += rep['e2e_latency']
-        func_exec_time_test, func_io_time_test = get_function_latency(txid)
-        func_io_time += func_io_time_test
-        func_exec_time += func_exec_time_test
-        tested += 1
-    
-    return validate_latency / TEST_TIME, e2e_latency / TEST_TIME, func_io_time / TEST_TIME, func_exec_time / TEST_TIME
-    
+        # 创建线程函数
+    def thread_task():
+        for _ in range(10):  # 每个线程调用 10 次
+            analyze_workflow("textseq")  # 调用 analyze_workflow
+            time.sleep(0.05)  # 每隔 50ms 调用一次
 
-def analyze(mode):
-    validate_overall = []
-    e2e_overall = []
-    func_io_overall = []
-    func_exec_overall = []
-    for workflow in workflow_pool:
-        validate_latency, e2e_latency, func_io_time, func_exec_time = analyze_workflow(workflow)
-        validate_overall.append(validate_latency)
-        e2e_overall.append(e2e_latency)
-        func_io_overall.append(func_io_time)
-        func_exec_overall.append(func_exec_time)
-        print(f"workflow {workflow} finished with validate_latency {validate_latency}, e2e_latency {e2e_latency}, func_io_time {func_io_time}, func_exec_time {func_exec_time}")
-    df = pd.DataFrame({'workflow': workflow_pool, 'validate_latency': validate_overall, 'e2e_latency': e2e_overall, 'func_io_time': func_io_overall, 'func_exec_time': func_exec_overall})
-    df.to_csv(mode + '.csv')
+        # 创建三个线程
+    threads = []
+    for _ in range(3):
+        thread = threading.Thread(target=thread_task)
+        threads.append(thread)
+        thread.start()
+
+        # 等待所有线程运行结束
+    for thread in threads:
+        thread.join()
+    # 统计 result_dict 中的结果
+    validate_time_inside_validator = []
+    validate_latency = []
+    e2e_latency = []
+    first_run_latency = []
+    func_io_time = []
+    func_exec_time = []
+
+
+    for result in result_dict.values():
+        validate_time_inside_validator.append(result["validate_time_inside_validator"])
+        validate_latency.append(result["validate_latency"])
+        e2e_latency.append(result["e2e_latency"])
+        first_run_latency.append(result["first_run_latency"])
+        func_io_time.append(result["func_io_time"])
+        func_exec_time.append(result["func_exec_time"])
+
+    # 计算平均值
+    avg_results = {
+        "validator overhead": sum(validate_time_inside_validator) / len(validate_time_inside_validator),
+        "overall validate latency": sum(validate_latency) / len(validate_latency),
+        "e2e latency": sum(e2e_latency) / len(e2e_latency),
+        "workflow run latency": sum(first_run_latency) / len(first_run_latency),
+        "func io latency": sum(func_io_time) / len(func_io_time),
+        "func exec latency": sum(func_exec_time) / len(func_exec_time),
+    }
+
+    # 创建 DataFrame
+    df = pd.DataFrame([avg_results])
+    df.to_csv(f"{_baseline}_{_mode}" + '.csv')
    
 
 
 if __name__ == '__main__':
-    mode = sys.argv[1]
-    analyze(mode)
+    _baseline = baseline[0]
+    _mode = mode[0]
+    if mode == "remote lock":
+        release_lock()
+    analyze_all(_baseline, _mode)
 
 
 

@@ -92,8 +92,9 @@ def run():
         retry = True
     logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
-    validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
+    first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
+    first_run_latency = first_run_finish_time - start
     logging.info(f"transaction {transaction_id} finished. res: {res}, e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
@@ -104,7 +105,7 @@ def run():
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
     
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
+    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
 
 
 
@@ -121,9 +122,10 @@ def notify():
     else:
         success = data['success']
         start_time = data['start_time']
+        first_run_finish_time = data['first_run_finish_time']
         validate_time_inside_validator = data['validate_time_inside_validator']
         end_time = time.time()
-        txTable.notifyTX(transaction_id_list, end_time - start_time, validate_time_inside_validator)  
+        txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - start_time, validate_time_inside_validator)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

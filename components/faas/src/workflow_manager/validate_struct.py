@@ -5,6 +5,7 @@ import requests
 import logging
 from typing import Dict
 import sys
+import time
 import gevent.lock
 sys.path.append('../../config')
 import config
@@ -76,6 +77,7 @@ class ValidationQueue:
         if idx == 0:
             self.queue_lock.release()
             return
+        first_run_finish_time = time.time()
         batch = self.transform_batch(self.queue[:idx])
         logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}")
         self.queue = self.queue[idx:]
@@ -84,7 +86,8 @@ class ValidationQueue:
         remote_url = 'http://{}/validate'.format(config.VALIDATOR_ADDR)
         data = {
             "batch": batch,
-            "batch_id": batch["batch_id"]
+            "batch_id": batch["batch_id"],
+            "first_run_finish_time": first_run_finish_time
         }
         response = requests.post(remote_url, json=data)
         response.close()

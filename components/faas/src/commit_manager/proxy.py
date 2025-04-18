@@ -46,11 +46,12 @@ class ValidateDispatcher:
         self.rq = Queue()
         self._validate_loop()
     
-    def notify_gateway(self, transaction_id_list, success:bool, start_time, validate_time_inside_validator):
+    def notify_gateway(self, transaction_id_list, success:bool, first_run_finish_time, start_time, validate_time_inside_validator):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
         data = {
             'transaction_id_list': transaction_id_list,
             'success': success,
+            'first_run_finish_time':first_run_finish_time,
             "start_time": start_time,
             'validate_time_inside_validator':validate_time_inside_validator
         }
@@ -70,6 +71,7 @@ class ValidateDispatcher:
         commitTime = Timestamp_allocator.get_timestamp()
         version = BatchVersion(commitTime)
         batch_id = batch['batch_id']
+        first_run_finish_time = data['first_run_finish_time']
         # in remote lock mode: flush shadow table, then release all locks.
         # batch size must be 1, so batch_id is transaction_id
         if config.REMOTE_LOCK:
@@ -102,7 +104,7 @@ class ValidateDispatcher:
 
             if repair_successful:
                 TXid_list = Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx)
-                self.notify_gateway(TXid_list, True, start_time, validate_time_inside_validator)
+                self.notify_gateway(TXid_list, True, first_run_finish_time, start_time, validate_time_inside_validator)
             else:
                 logging.error(f"Validation failed for batch: {batch_id}")
 

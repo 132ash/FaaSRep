@@ -28,12 +28,12 @@ EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 1
 
 # batch setting
-BATCH_SIZE = 2
-BATCH_INTERVAL = 0.05
+BATCH_SIZE = 1
+BATCH_INTERVAL = 0.005
 
 # Validate mode
-REPAIR = False
-REMOTE_LOCK = True
+REPAIR = True
+REMOTE_LOCK = False
 
 # fast-path setting
 FAST_PATH = False

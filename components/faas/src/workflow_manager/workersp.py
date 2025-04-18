@@ -298,7 +298,7 @@ class WorkerSPManager:
         name = info['function_name']
         next_funcs = {} if state.repair else info['next']
         downstream_table = state.repair_states.get(name, {}).get("downstream", {})
-        logging.info(f"running function {name},REPAIR:{state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}, downstream_table:{downstream_table}")
+        logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}, downstream_table:{downstream_table}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, state.RYW_subjection.get(name, {}).get("upstream", {}), state.repair, 
                              next_funcs, info['parent_cnt'], state.batch_id, downstream_table.get('upstream_keys', {}), state.lock_set)
@@ -309,7 +309,10 @@ class WorkerSPManager:
             
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
+        # only count the function latency in first run.
         if config.REPAIR and not state.repair:
+            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
             state.function_pos[name]['port'] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
             state.write_set.update(res["write_set"])
@@ -330,8 +333,6 @@ class WorkerSPManager:
         state.lock.release()
         logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
-        repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-        repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
         return True, {}
 
     def clear_mem(self, transaction_id):
