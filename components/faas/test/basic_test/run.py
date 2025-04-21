@@ -30,8 +30,6 @@ parameters_input = {
     },
 }
 
-baseline = ["repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
-mode = ["NOCACHE + SMALL", "CACHE + LARGE", "CACHE + SMALL","NOCACHE + LARGE"]
 
 result_dict = {}
 
@@ -88,7 +86,7 @@ def analyze_all(_baseline, _mode):
 
         # 创建线程函数
     def thread_task():
-        for _ in range(5):  # 每个线程调用 5 次
+        for _ in range(1):  # 每个线程调用 2 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
             time.sleep(0.05)  # 每隔 50ms 调用一次
 
@@ -135,10 +133,12 @@ def analyze_all(_baseline, _mode):
    
 
 TESTRUN = False
+baseline = ["repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
+mode = ["NOCACHE + SMALL", "NOCACHE + LARGE", "CACHE + LARGE", "CACHE + SMALL"]
 
 if __name__ == '__main__':
     _baseline = baseline[0]
-    _mode = mode[0]
+    _mode = mode[3]
     if mode == "remote lock":
         release_lock()
     if TESTRUN:

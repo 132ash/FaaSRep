@@ -196,6 +196,7 @@ def get_container_names():
 
     
 # python proxy.py  192.168.162.130 7000
+# python3 proxy.py  192.168.162.131 7000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

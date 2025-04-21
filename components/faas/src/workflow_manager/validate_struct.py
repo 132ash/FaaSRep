@@ -74,15 +74,17 @@ class ValidationQueue:
     def send_validate_request(self):
         self.queue_lock.acquire()
         idx = min(self.batch_size, len(self.queue))
-        if idx == 0:
+        # MODIFY: must wait the batch to finish: if batch open, wait until the batch is full.
+        if (config.BATCH_SIZE == 1 and idx == 0) or (config.BATCH_SIZE != 1 and idx != config.BATCH_SIZE):
             self.queue_lock.release()
             return
         first_run_finish_time = time.time()
-        batch = self.transform_batch(self.queue[:idx])
-        logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}")
+        batch = self.queue[:idx]
         self.queue = self.queue[idx:]
         self.queue_lock.release()
+        batch = self.transform_batch(batch)
         self.repairing_batch_table[batch["batch_id"]] = {"batch_size": idx, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}
+        logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}, batch_size:{idx}")
         remote_url = 'http://{}/validate'.format(config.VALIDATOR_ADDR)
         data = {
             "batch": batch,
@@ -98,6 +100,7 @@ class ValidationQueue:
         self.repairing_batch_table[batch_id]['lock'].release()
         total = self.repairing_batch_table[batch_id]["batch_size"]
         finished = self.repairing_batch_table[batch_id]["finished"]
+        logging.info(f"a transaction in batch {batch_id} fin repair, finished: {finished}, total: {total}")
         if finished == total:
             remote_url = 'http://{}/fin_repair'.format(config.VALIDATOR_ADDR)
             data = {

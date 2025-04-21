@@ -62,7 +62,7 @@ class RepairInfo:
 
     def update_introtx_RYW_subjection_table(self, batch_id, ip, tx_id, write_func, RYW_subjection):
         func_dict = self.get_func_info_dict(batch_id, ip, tx_id, write_func)
-        func_dict['RYW'] = RYW_subjection
+        func_dict['RYW'] = RYW_subjection       
 
     def target_function_dirty(self, batch_id, ip, tx_id, func):
         func_dict = self.get_func_info_dict(batch_id, ip, tx_id, func)

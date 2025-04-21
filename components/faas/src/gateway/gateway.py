@@ -113,14 +113,12 @@ def run():
 def notify():
     data = request.get_json(force=True, silent=True)
     transaction_id_list = data['transaction_id_list']
-    if config.REMOTE_LOCK:
-        abort = data.get('abort', False)
-        if abort:
-            lock_set = data['lock_set']
-            repo.release_lock(transaction_id_list[0], lock_set)
-        txTable.notifyTX(transaction_id_list, 0, 0,abort)
+    if config.REMOTE_LOCK and data.get('abort', False):
+        lock_set = data['lock_set']
+        repo.release_lock(transaction_id_list[0], lock_set)
+        logging.info(f"transaction {transaction_id_list[0]} aborted. lock_set {lock_set} released")
+        txTable.notifyTX(transaction_id_list, 0,0, 0, True)
     else:
-        success = data['success']
         start_time = data['start_time']
         first_run_finish_time = data['first_run_finish_time']
         validate_time_inside_validator = data['validate_time_inside_validator']

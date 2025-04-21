@@ -149,8 +149,7 @@ class WorkerSPManager:
         logging.info(f'abort transaction:{transaction_id}, lock_set: {lock_set}')
         data = {"abort":True, 'transaction_id_list': [transaction_id], 'lock_set': lock_set}
         requests.post(url, json=data)
-        # clear the state
-        self.del_state(transaction_id)
+        return
 
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
         base_url = 'http://127.0.0.1:{}/{}'
@@ -265,6 +264,7 @@ class WorkerSPManager:
         if not state.repair or dirty:
             successful, lock_set = self.run_normal(state, info)
             if not successful:
+                self.del_state(state.transaction_id)
                 self.abort_tx(state.transaction_id, lock_set)
                 return
 
@@ -310,6 +310,7 @@ class WorkerSPManager:
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
+        
         if config.REPAIR and not state.repair:
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
@@ -327,6 +328,8 @@ class WorkerSPManager:
                 logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
         if config.REMOTE_LOCK:
             # update lock set for the function
+            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
             state.write_set.update(res["write_set"])
             state.lock_set.update(res['lock_set'])
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})

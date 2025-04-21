@@ -5,6 +5,7 @@ import gevent
 import sys
 from gevent import event
 import time
+import logging
 import validator_repo
 
 sys.path.append('../../config')
@@ -22,7 +23,8 @@ class RepairEngine:
         self.repairing_batches[batch_id] = {'cond': event.Event(), 'finished': False, "repaired":False}
         self.repairing_batches[batch_id]['cond'].clear()
         self.repair_batch(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set, fast_path_enabled)
-        self.repairing_batches[batch_id]['cond'].wait()
+        while not self.repairing_batches[batch_id]['finished']:
+            self.repairing_batches[batch_id]['cond'].wait()
         if self.repairing_batches[batch_id]['repaired']:
             return True
         else:
@@ -34,7 +36,7 @@ class RepairEngine:
             url = f'http://{ip}:7000/{route}'
         else:
             url = f'http://{ip}/{route}'
-        print(f"-----repair function: {function_name}, ip: {ip}, port: {port}, batch_id: {batch_id}, repair_states:{repair_metadata_per_tx}-----")
+        # print(f"-----repair function: {function_name}, ip: {ip}, port: {port}, batch_id: {batch_id}, repair_states:{repair_metadata_per_tx}-----")
         data = {
             'batch_id': batch_id,
             'transaction_id': transaction_id,
@@ -90,14 +92,14 @@ class RepairEngine:
                 repair_metadata_per_tx = {}
                 if not fast_path_enabled:
                     repair_metadata_per_tx = self.repair_info.get_repair_metadata(batch_id, "", tx_id)
-                print(f"start functions: {start_functions}, tx_id: {tx_id}, workflow_name: {workflow_name}, function: {n}, ip: {ip}")
                 trigger_jobs.append(gevent.spawn(self.trigger_function, fast_path_enabled, workflow_name, tx_id, n, ip, port,batch_id,repair_metadata_per_tx))
         gevent.joinall(trigger_jobs)   
         end = time.time()
         return end - start
 
     def notify_batch(self, batch_id, success):
+        self.repairing_batches[batch_id]['finished'] = True
         self.repairing_batches[batch_id]['repaired'] = success
         self.repairing_batches[batch_id]['cond'].set()
-        print(f"notified {batch_id}, repaired: {success}")
+        logging.info(f"notified {batch_id}, repaired: {success}")
 

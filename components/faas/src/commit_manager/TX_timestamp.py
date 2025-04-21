@@ -16,8 +16,8 @@ class TimeStampAllocator:
     def allocate_timestamp(self, batch_id:str):
         self.lock.acquire()
         timestamp = self.get_timestamp()
-        self.pending_batches.append(batch_id)
         self.wait_condition[batch_id] = event.Event()
+        self.pending_batches.append(batch_id)
         self.lock.release()
         return timestamp
     
@@ -34,8 +34,7 @@ class TimeStampAllocator:
         if len(self.pending_batches) > 0:
             logging.info(f"finished adding lock. notifying batch {self.pending_batches[0]}")
             next_batch_id = self.pending_batches[0]
-            condition = self.wait_condition[next_batch_id]
-            condition.set()
+            self.wait_condition[next_batch_id].set()
     
     def get_timestamp(self):
         # 获取当前时间，并格式化为字符串，精确到微秒

@@ -64,6 +64,12 @@ class BatchValidator:
                 lock["informed"] = False
         return already_waiting, prev_batch_id, upstream_tx_id, upstream_writer
 
+
+    def check_locks(self):
+        for key, lock in self.locks.items():
+            logging.info(f"Lock Key: {key}, Lock Details: {lock}")
+           
+
     def release_lock(self, batch_id, key):
         if self.locks[key]["waiters"][0] == batch_id:
             self.locks[key]["waiters"].pop(0)
@@ -114,17 +120,21 @@ class BatchValidator:
                         self.repair_info.update_crosstx_subjection_table(batch_id, workflow_name, upstream_tx_id, tx_id, upstream_writer, func, function_pos_per_tx[upstream_tx_id][upstream_writer]['ip'], function_pos_per_tx[tx_id][func]['ip'], key)
 
             # keys in write set:
-            # cover the last written sign.
+            # cover the last written sign. Update RYW table.
             for key, write_func in write_set.items():
                 ip = function_pos_per_tx[tx_id][func]['ip']
-                if write_func in RYW_subjection[tx_id] and self.repair_info.fast_path_enabled:
+                if write_func in RYW_subjection[tx_id]:
                     self.repair_info.update_introtx_RYW_subjection_table(batch_id, ip, tx_id, write_func, RYW_subjection[tx_id][write_func])
+                    for down_func in RYW_subjection[tx_id][write_func]['down_funcs']:
+                        downstream_func_ip = function_pos_per_tx[tx_id][down_func]['ip']
+                        self.repair_info.update_introtx_RYW_subjection_table(batch_id, downstream_func_ip, tx_id, down_func, RYW_subjection[tx_id][down_func])
                 already_waiting, _, _, _ = self.ask_for_lock(batch_id, tx_id , write_func, key, "write")
                 if not already_waiting:
                     self.acquired_locks[batch_id]["target"] += 1
                     self.lock_key_set_per_batch[batch_id].append(key)
 
             logging.info(f"batch {batch_id} finished asking for locks.")
+            self.check_locks()
 
         # FINISHED ask for locks, notify the next tx.
         self.timestamp_allocator.notify_next_batch(batch_id)

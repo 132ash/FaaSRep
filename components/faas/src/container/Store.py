@@ -107,7 +107,7 @@ class BeldiStore:
             )
             item = response.get('Item')
             end = time.time()
-            logging.info(f"acquire lock for {key},value:{item['value']}, lock:{item['lock']}")
+            logging.info(f"acquire lock for {key}, lock:{item['lock']}")
             self.lock_set[key] = True
             return end - start      
        
@@ -225,7 +225,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
-        logging.info(f"fetch input from mem: {self.fetch_dict}")
+        # logging.info(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
 
     # return to local redis.

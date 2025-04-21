@@ -78,7 +78,7 @@ class ValidateDispatcher:
             lock_set = batch['lock_set'][batch_id]
             TXid_list = Validator.commit_batch(batch_id, version.to_string(), {}, lock_set)
             validate_time_inside_validator = time.time() - start_time
-            self.notify_gateway(TXid_list, True, start_time, validate_time_inside_validator)
+            self.notify_gateway(TXid_list, True, first_run_finish_time, start_time, validate_time_inside_validator)
         else:
             workflow_name_per_tx = batch['workflow_name']
             function_pos_per_tx = batch['function_pos']
@@ -88,7 +88,7 @@ class ValidateDispatcher:
             write_set = batch['write_set']
             RYW_subjection = batch['RYW_subjection']
 
-            logging.info(f"received batch: {batch_id}, workflow_name_per_tx: {workflow_name_per_tx}, function_pos_per_tx: {function_pos_per_tx}, transaction_list: {transaction_list}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}")
+            logging.info(f"received batch: {batch_id}, workflow_name_per_tx: {workflow_name_per_tx}, RYW: {RYW_subjection}, write_set: {write_set}")
 
             commitTime = Timestamp_allocator.allocate_timestamp(batch_id)
 

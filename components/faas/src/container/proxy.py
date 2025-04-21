@@ -3,6 +3,7 @@ monkey.patch_all()
 import requests
 import os
 import gevent
+import gevent.lock
 import logging
 import json
 import sys
@@ -58,6 +59,7 @@ class Runner:
         self.parent_executed = 0
 
         # infomation fetched from Redis in repair
+        self.repair_metadata_lock = gevent.lock.BoundedSemaphore()
         self.repair_metadata_fetched = False
         self.RYW_table = {}
         self.downstream_func_table = {}
@@ -108,7 +110,9 @@ class Runner:
 
     def fetch_repair_metadata(self, batch_id, transaction_id, dirty):
         self.dirty = dirty
+        self.repair_metadata_lock.acquire()
         if not self.repair_metadata_fetched:
+            self.repair_metadata_fetched = True
             redis_key = f"{transaction_id}:REPAIR:{self.function}:" 
             self_ip = self.function_pos_inside_tx[self.function]['ip']
             try:
@@ -122,9 +126,10 @@ class Runner:
                 self.upstream_func_table = repair_metadata['upstream']
                 self.dirty = repair_metadata['dirty']
             self.function_pos_whole_batch = json.loads(self.shadow_table.fetch(f"{batch_id}:POS::", self_ip))
-            self.repair_metadata_fetched = True
+            logging.info(f"Fetched repair metadata: {self.RYW_table}, {self.downstream_func_table}, {self.upstream_func_table}, {self.function_pos_whole_batch}")
             # modify parent_cnt
             self.parent_cnt = self.downstream_func_table.get("up_cnt", 0) + self.RYW_table.get('up_cnt', 0) + self.parent_cnt
+            self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):
         # not in repair mode, check is finished outside the container.
@@ -132,6 +137,7 @@ class Runner:
             return True
         else:
             self.parent_executed += 1
+            logging.info(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}")
             return self.parent_executed == self.parent_cnt
         
     def trigger_next_function(self, batch_id, transaction_id, ip, port, dirty):
