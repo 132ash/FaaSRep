@@ -74,39 +74,47 @@ class ValidateDispatcher:
         first_run_finish_time = data['first_run_finish_time']
         # in remote lock mode: flush shadow table, then release all locks.
         # batch size must be 1, so batch_id is transaction_id
-        if config.REMOTE_LOCK:
-            lock_set = batch['lock_set'][batch_id]
-            TXid_list = Validator.commit_batch(batch_id, version.to_string(), {}, lock_set)
-            validate_time_inside_validator = time.time() - start_time
-            self.notify_gateway(TXid_list, True, first_run_finish_time, start_time, validate_time_inside_validator)
-        else:
-            workflow_name_per_tx = batch['workflow_name']
+        if config.BASIC:
             function_pos_per_tx = batch['function_pos']
-            worker_ip_set = batch['worker_set'].keys()
             transaction_list = batch['transaction_list']
-            read_set = batch['read_set']
             write_set = batch['write_set']
-            RYW_subjection = batch['RYW_subjection']
-
-            logging.info(f"received batch: {batch_id}, workflow_name_per_tx: {workflow_name_per_tx}, RYW: {RYW_subjection}, write_set: {write_set}")
-
-            commitTime = Timestamp_allocator.allocate_timestamp(batch_id)
-
-            repair_info.batch_init(batch_id)
-            expired_keys, confilcted = Validator.validate(batch_id, workflow_name_per_tx, read_set, write_set, transaction_list, function_pos_per_tx, RYW_subjection)
-
-            repair_successful = True
-            logging.info(f"batch {batch_id} finished validating.")
             validate_time_inside_validator = time.time() - start_time
-            if confilcted:
-                logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}")
-                repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set ,config.FAST_PATH)
-
-            if repair_successful:
-                TXid_list = Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx)
+            Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx, {}, transaction_list, write_set)
+            self.notify_gateway(transaction_list, True, first_run_finish_time, start_time, validate_time_inside_validator)
+        else:
+            if config.REMOTE_LOCK:
+                lock_set = batch['lock_set'][batch_id]
+                TXid_list = Validator.commit_batch(batch_id, version.to_string(), {}, lock_set)
+                validate_time_inside_validator = time.time() - start_time
                 self.notify_gateway(TXid_list, True, first_run_finish_time, start_time, validate_time_inside_validator)
             else:
-                logging.error(f"Validation failed for batch: {batch_id}")
+                workflow_name_per_tx = batch['workflow_name']
+                function_pos_per_tx = batch['function_pos']
+                worker_ip_set = batch['worker_set'].keys()
+                transaction_list = batch['transaction_list']
+                read_set = batch['read_set']
+                write_set = batch['write_set']
+                RYW_subjection = batch['RYW_subjection']
+
+                logging.info(f"received batch: {batch_id}, workflow_name_per_tx: {workflow_name_per_tx}, RYW: {RYW_subjection}, write_set: {write_set}")
+
+                commitTime = Timestamp_allocator.allocate_timestamp(batch_id)
+
+                repair_info.batch_init(batch_id)
+                expired_keys, confilcted = Validator.validate(batch_id, workflow_name_per_tx, read_set, write_set, transaction_list, function_pos_per_tx, RYW_subjection)
+
+                repair_successful = True
+                logging.info(f"batch {batch_id} finished validating.")
+                validate_time_inside_validator = time.time() - start_time
+                if confilcted:
+                    logging.info(f"trigger repair for batch: {batch_id}. expired_keys: {expired_keys}")
+                    repair_successful = repairer.trigger_repair(batch_id, transaction_list, workflow_name_per_tx, function_pos_per_tx, expired_keys, worker_ip_set ,config.FAST_PATH)
+
+                if repair_successful:
+                    TXid_list = Validator.commit_batch(batch_id, version.to_string(), function_pos_per_tx)
+                    self.notify_gateway(TXid_list, True, first_run_finish_time, start_time, validate_time_inside_validator)
+                else:
+                    logging.error(f"Validation failed for batch: {batch_id}")
 
 dispatcher = ValidateDispatcher()
 # receive a set of rw sets and validate them: lock, get delta set and send to gateway.

@@ -133,12 +133,12 @@ def analyze_all(_baseline, _mode):
    
 
 TESTRUN = False
-baseline = ["repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
+baseline = ["basic", "repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
 mode = ["NOCACHE + SMALL", "NOCACHE + LARGE", "CACHE + LARGE", "CACHE + SMALL"]
 
 if __name__ == '__main__':
     _baseline = baseline[0]
-    _mode = mode[3]
+    _mode = mode[1]
     if mode == "remote lock":
         release_lock()
     if TESTRUN:

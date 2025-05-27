@@ -188,7 +188,7 @@ class WorkerSPManager:
         # remember to release state.lock
         if runnable:
             state.executed[function_name] = True
-            if config.REPAIR and not state.repair:
+            if config.BASIC or (config.REPAIR and not state.repair):
                 ip = extract_ip(ip)
                 state.function_pos[function_name] = {'ip':ip, 'port':0}
                 state.worker_set[ip] = True
@@ -248,16 +248,13 @@ class WorkerSPManager:
             upstream_cnt += up_cnt
             up_cnt = state.repair_states.get(function_name, {}).get("RYW", {}).get('up_cnt', 0)
             upstream_cnt += up_cnt
-            logging.info(f"checking parents executed in repair. {function_name}, executed:{state.parent_executed[function_name]}, upstream_cnt: {upstream_cnt}, origin parent_cnt: {info['parent_cnt']}")
-        # parent count: the sum of parents in workflow graph and parents in subject table
+            # parent count: the sum of parents in workflow graph and parents in subject table
         return state.parent_executed[function_name] == info['parent_cnt'] + upstream_cnt and not state.executed[function_name] 
 
     # run a function on local
     def run_function(self, state: TransactionState, function_name: str) -> None:
-        logging.info('run function: %s of: %s', function_name, state.transaction_id)
         # if function in repair mode and not dirty, skip running
         repair_metadata = state.repair_states.get(function_name, {})
-
         dirty = repair_metadata.get("dirty", False)
         info = self.get_function_info(function_name)
         # if function in repair mode and not dirty, skip running
@@ -310,13 +307,15 @@ class WorkerSPManager:
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
-        
-        if config.REPAIR and not state.repair:
+
+        state.write_set.update(res["write_set"])
+        if not state.repair:
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
+            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
+   
+        if config.REPAIR and not state.repair:
             state.function_pos[name]['port'] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
-            state.write_set.update(res["write_set"])
             # set RYW subjection table for itself if not exist.
             downstream_RYW_func_table = state.RYW_subjection.setdefault(name, {"down_funcs":{}, "up_cnt":0, "upstream":{}})
             # update RYW subjection table for upstream functions.
@@ -328,8 +327,6 @@ class WorkerSPManager:
                 logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
         if config.REMOTE_LOCK:
             # update lock set for the function
-            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']})
             state.write_set.update(res["write_set"])
             state.lock_set.update(res['lock_set'])
             repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})

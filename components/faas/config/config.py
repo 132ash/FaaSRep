@@ -27,18 +27,16 @@ FUNCTION_INFO_ADDRS = {
 # cache setting
 CLEAR_MEM = False
 FILLUP_CACHE = True
-EXPIRED_CACHE = False
+EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 3
 
 # batch setting
 BATCH_SIZE = 1
 BATCH_INTERVAL = 0.005
 
-# Validate mode
-REPAIR = True
-# fast-path setting
+BASIC = True
+REPAIR = False
 FAST_PATH = False
-
 REMOTE_LOCK = False
 
 

@@ -164,19 +164,20 @@ class BatchValidator:
     
     # modify global table, and release locks.
     # need to know the whole write set and what ip whey are on.
-    def commit_batch(self, batch_id, version: str, function_pos_per_tx={}, lock_set={}):
+    def commit_batch(self, batch_id, version: str, function_pos_per_tx={}, lock_set={}, tx_list_per_batch = {}, write_set_per_batch={}):
         if config.REMOTE_LOCK:
             repo.sync_shadow_to_data_db_with_version(batch_id, version)
             repo.release_lock(batch_id, lock_set)
             return [batch_id]
         else:
-            tx_list = self.tx_list_per_batch[batch_id]
             keys_found = {}
             commit_table = {} # {ip:{tx_id:{key:True}}}
             ip_set = set()
+            tx_list = tx_list_per_batch if tx_list_per_batch else self.tx_list_per_batch[batch_id]
+            write_set = write_set_per_batch if write_set_per_batch else self.write_set_per_batch[batch_id]
 
             for tx_id in reversed(tx_list):
-                ws = self.write_set_per_batch[batch_id].get(tx_id, {})
+                ws = write_set.get(tx_id, {})
                 for key, func in ws.items():
                     if key in keys_found:
                         continue
@@ -196,13 +197,14 @@ class BatchValidator:
             ]
             gevent.joinall(jobs)
             
-            for key in self.lock_key_set_per_batch[batch_id]:
-                self.release_lock(batch_id, key)
-            self.acquired_locks.pop(batch_id)
-            self.lock_key_set_per_batch.pop(batch_id)
-            self.write_set_per_batch.pop(batch_id)
-            self.tx_list_per_batch.pop(batch_id)
-            self.repair_info.clean_table_of_batch(batch_id)
+            if config.REPAIR:
+                for key in self.lock_key_set_per_batch[batch_id]:
+                    self.release_lock(batch_id, key)
+                self.acquired_locks.pop(batch_id)
+                self.lock_key_set_per_batch.pop(batch_id)
+                self.write_set_per_batch.pop(batch_id)
+                self.tx_list_per_batch.pop(batch_id)
+                self.repair_info.clean_table_of_batch(batch_id)
             return tx_list
         
 

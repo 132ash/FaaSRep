@@ -17,7 +17,7 @@ from gevent import monkey
 monkey.patch_all()
 import os
 import gevent
-import requests
+import time
 import json
 from typing import Dict
 sys.path.append('../../config')
@@ -108,6 +108,7 @@ def fin_repair():
 # the previous function was done
 @app.route('/request', methods = ['POST'])
 def req():
+    start = time.time()
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
     workflow_name = data['workflow_name']
@@ -134,7 +135,7 @@ def req():
     else:
         state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         
-    logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}")
+    logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -201,8 +202,8 @@ from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    if not ((not config.REPAIR and config.REMOTE_LOCK) or (config.REPAIR and not config.REMOTE_LOCK)):
-        raise Exception("only onr in REPAIR and REMOTE_LOCK be true.")
+    if sum([int(config.BASIC), int(config.REPAIR), int(config.REMOTE_LOCK)]) != 1:
+        raise Exception("Exactly one of BASIC, REPAIR, or REMOTE_LOCK must be true.")
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()
    

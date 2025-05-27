@@ -15,8 +15,13 @@
 # pip3 install -r requirements.txt
 # install redis
 # # docker pull redis
-# docker run -itd -p 6379:6379 --name redis redis
-# # build docker images
+
+# Stop and remove the container named redis if it exists
+if [ "$(docker ps -aq -f name=redis)" ]; then
+    docker stop redis
+    docker rm redis
+fi
+docker run -itd -p 6379:6379 --name redis redis
 
 # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
 
