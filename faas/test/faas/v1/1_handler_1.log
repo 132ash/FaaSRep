@@ -1,6 +1,0 @@
-Handler 1 received task: ('c4dc14f9-e15d-4945-a66b-4721caf8f9d7', 'get', 'k1', 7)
-Pool 1 Handler 1 received response from serializer, time:0.000 
-Pool 1 Handler 1 processed request c4dc14f9-e15d-4945-a66b-4721caf8f9d7 , time taken: 3.704s
-Handler 1 received task: ('741f0886-6bb6-4f58-9c15-d00b38bf5703', 'get', 'k2', 11)
-Pool 1 Handler 1 received response from serializer, time:0.000 
-Pool 1 Handler 1 processed request 741f0886-6bb6-4f58-9c15-d00b38bf5703 , time taken: 2.064s
