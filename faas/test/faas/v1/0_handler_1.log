@@ -1,0 +1,12 @@
+Handler 1 received task: ('75bec7e3-156f-432d-9ac6-89afb1eab66d', 'get', 'k0', 3)
+Pool 0 Handler 1 received response from serializer, time:0.001 
+Pool 0 Handler 1 processed request 75bec7e3-156f-432d-9ac6-89afb1eab66d , time taken: 5.728s
+Handler 1 received task: ('ba9375b8-27cc-4cc8-9f79-ee4f730ee81a', 'get', 'k2', 5)
+Pool 0 Handler 1 received response from serializer, time:0.000 
+Pool 0 Handler 1 processed request ba9375b8-27cc-4cc8-9f79-ee4f730ee81a , time taken: 1.010s
+Handler 1 received task: ('14f98406-1d77-42a3-9d1d-dd068df4ab60', 'set', 'k2', 8)
+Pool 0 Handler 1 received response from serializer, time:0.001 
+Pool 0 Handler 1 processed request 14f98406-1d77-42a3-9d1d-dd068df4ab60 , time taken: 2.398s
+Handler 1 received task: ('124b75f0-a230-4d95-a89d-76f934a41d5f', 'set', 'k1', 10)
+Pool 0 Handler 1 received response from serializer, time:0.000 
+Pool 0 Handler 1 processed request 124b75f0-a230-4d95-a89d-76f934a41d5f , time taken: 1.014s

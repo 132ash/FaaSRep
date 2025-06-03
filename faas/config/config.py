@@ -30,6 +30,9 @@ FILLUP_CACHE = True
 EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 3
 
+# validator setting
+VALIDATORS_PER_POOL = 2
+
 # batch setting
 BATCH_SIZE = 1
 BATCH_INTERVAL = 0.005

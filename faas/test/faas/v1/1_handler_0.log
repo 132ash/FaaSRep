@@ -1,0 +1,6 @@
+Handler 0 received task: ('adea12c0-01a5-4c0b-afae-81e1a19f60e4', 'set', 'k0', 0)
+Pool 1 Handler 0 received response from serializer, time:0.001 
+Pool 1 Handler 0 processed request adea12c0-01a5-4c0b-afae-81e1a19f60e4 , time taken: 2.038s
+Handler 0 received task: ('e49871d7-a74a-4363-94b8-c62800604d32', 'set', 'k1', 4)
+Pool 1 Handler 0 received response from serializer, time:0.019 
+Pool 1 Handler 0 processed request e49871d7-a74a-4363-94b8-c62800604d32 , time taken: 1.741s

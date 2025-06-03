@@ -1,0 +1,26 @@
+Received request: (0, 'adea12c0-01a5-4c0b-afae-81e1a19f60e4', 'set', 'k0', 0)
+Serialized request adea12c0-01a5-4c0b-afae-81e1a19f60e4 with op set, key k0, value 0
+Received request: (0, 'f7636677-d136-4b64-ace7-9b3575522596', 'get', 'k1', 1)
+Serialized request f7636677-d136-4b64-ace7-9b3575522596 with op get, key k1, value 1
+Received request: (1, '75bec7e3-156f-432d-9ac6-89afb1eab66d', 'get', 'k0', 3)
+Serialized request 75bec7e3-156f-432d-9ac6-89afb1eab66d with op get, key k0, value 3
+Received request: (1, 'c4dc14f9-e15d-4945-a66b-4721caf8f9d7', 'get', 'k1', 7)
+Serialized request c4dc14f9-e15d-4945-a66b-4721caf8f9d7 with op get, key k1, value 7
+Received request: (0, 'e49871d7-a74a-4363-94b8-c62800604d32', 'set', 'k1', 4)
+Serialized request e49871d7-a74a-4363-94b8-c62800604d32 with op set, key k1, value 4
+Received request: (0, '4fbce9e6-5413-4cb3-8653-5d3fd8c269cf', 'set', 'k2', 2)
+Serialized request 4fbce9e6-5413-4cb3-8653-5d3fd8c269cf with op set, key k2, value 2
+Received request: (1, '741f0886-6bb6-4f58-9c15-d00b38bf5703', 'get', 'k2', 11)
+Serialized request 741f0886-6bb6-4f58-9c15-d00b38bf5703 with op get, key k2, value 11
+Received request: (0, '5ee16eeb-51e0-46e3-8071-50f97fd7bc5e', 'set', 'k0', 6)
+Serialized request 5ee16eeb-51e0-46e3-8071-50f97fd7bc5e with op set, key k0, value 6
+Received request: (0, 'ff22bd5a-3c59-4048-aab5-67c81626c48e', 'get', 'k0', 9)
+Serialized request ff22bd5a-3c59-4048-aab5-67c81626c48e with op get, key k0, value 9
+Received request: (1, 'ba9375b8-27cc-4cc8-9f79-ee4f730ee81a', 'get', 'k2', 5)
+Serialized request ba9375b8-27cc-4cc8-9f79-ee4f730ee81a with op get, key k2, value 5
+Received request: (1, '14f98406-1d77-42a3-9d1d-dd068df4ab60', 'set', 'k2', 8)
+Serialized request 14f98406-1d77-42a3-9d1d-dd068df4ab60 with op set, key k2, value 8
+Received request: (0, '3c5c3db2-6b3f-4997-935f-6d6407ccbe6c', 'set', 'k0', 12)
+Serialized request 3c5c3db2-6b3f-4997-935f-6d6407ccbe6c with op set, key k0, value 12
+Received request: (1, '124b75f0-a230-4d95-a89d-76f934a41d5f', 'set', 'k1', 10)
+Serialized request 124b75f0-a230-4d95-a89d-76f934a41d5f with op set, key k1, value 10

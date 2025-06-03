@@ -21,17 +21,17 @@ class Repository:
         self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
         
 
-    def get_initial_data_version(self):
+    def get_initial_global_table(self):
         table = self.dynamo.Table('data')
         response = table.scan()
         items = response.get('Items', [])
         try:
-            key_version_dict = {item['key']: item['version'] for item in items}
+            global_table_dict = {item['key']: {'version':item['version'], 'writers':[]} for item in items}
         except KeyError:
             for i in items:
                 print(i['key'])
                 print(i.keys())
-        return key_version_dict
+        return global_table_dict
 
     def get_start_functions(self, db_name) -> List[str]:
         db = self.couch[db_name]

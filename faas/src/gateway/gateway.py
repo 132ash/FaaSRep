@@ -112,18 +112,18 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id_list = data['transaction_id_list']
-    if config.REMOTE_LOCK and data.get('abort', False):
-        lock_set = data['lock_set']
-        repo.release_lock(transaction_id_list[0], lock_set)
-        logging.info(f"transaction {transaction_id_list[0]} aborted. lock_set {lock_set} released")
-        txTable.notifyTX(transaction_id_list, 0,0, 0, True)
-    else:
-        start_time = data['start_time']
-        first_run_finish_time = data['first_run_finish_time']
-        validate_time_inside_validator = data['validate_time_inside_validator']
-        end_time = time.time()
-        txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - start_time, validate_time_inside_validator)  
+    transaction_id_lists = data['transaction_id_list']
+    timestamps = data['timestamps']
+    for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
+        if config.REMOTE_LOCK and data.get('abort', False):
+            lock_set = data['lock_set']
+            repo.release_lock(transaction_id_list[0], lock_set)
+            logging.info(f"transaction {transaction_id_list[0]} aborted. lock_set {lock_set} released")
+            txTable.notifyTX(transaction_id_list, 0,0, 0, True)
+        else:
+            first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch
+            end_time = time.time()
+            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - start_time, validate_time_inside_validator)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

@@ -55,7 +55,7 @@ class ValidationQueue:
             "write_set": {},
             "RYW_subjection": {},
             "function_pos": {},
-            'worker_set':{},
+            'worker_set':{'batch':{}, 'transaction':{}},
             "transaction_list":[],
             "lock_set": {}
         }
@@ -66,7 +66,8 @@ class ValidationQueue:
             transformed_batch["write_set"][tx_id]=tx["write_set"]
             transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
             transformed_batch["function_pos"][tx_id] = tx["function_pos"]
-            transformed_batch["worker_set"].update(tx["worker_set"])
+            transformed_batch["worker_set"]['transaction'][tx_id] = tx["worker_set"].keys()
+            transformed_batch["worker_set"]['batch'].update(tx["worker_set"])
             transformed_batch["transaction_list"].append(tx_id)
             transformed_batch["lock_set"][tx_id] = tx["lock_set"]
         return transformed_batch
