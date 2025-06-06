@@ -13,7 +13,7 @@ from flask import Flask, request
 from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
-from Store import RedisShadowTable, RedisCache
+from redis_component import RedisShadowTable, RedisCache
 
 # 配置日志记录
 logging.basicConfig(
@@ -51,7 +51,6 @@ class Runner:
         self.output = {}
         self.function_pos_inside_tx = {}
         self.write_set = {}
-        self.RYW_upstream = {}
         self.is_repair = None
         self.next_functions = None
         self.parent_cnt = None
@@ -61,11 +60,11 @@ class Runner:
         # infomation fetched from Redis in repair
         self.repair_metadata_lock = gevent.lock.BoundedSemaphore()
         self.repair_metadata_fetched = False
-        self.RYW_table = {}
-        self.downstream_func_table = {}
-        self.upstream_func_table = {}
         self.dirty = False
         self.function_pos_whole_batch = {}
+        self.upstream_func_count = 0
+        self.upstream_fetched = 0
+        self.keys_from_upstream = {}
 
         # fast path enabled
         self.fast_path_enabled = False
@@ -84,7 +83,7 @@ class Runner:
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
+        self.shadow_table = RedisShadowTable(node_list, function, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
 
@@ -97,38 +96,34 @@ class Runner:
 
         print('init finished...')
 
-    def save(self, transaction_id, input, output, function_pos, write_set, RYW_upstream, next_functions, parent_cnt, lock_set):
+    def save(self, transaction_id, input, output, function_pos, write_set, next_functions, parent_cnt, lock_set):
         self.transaction_id = transaction_id
         self.input = input
         self.output = output
         self.function_pos_inside_tx = function_pos
         self.write_set = write_set
         self.next_functions = next_functions
-        self.RYW_upstream = RYW_upstream
         self.parent_cnt = parent_cnt
         self.lock_set = lock_set
 
-    def fetch_repair_metadata(self, batch_id, transaction_id, dirty):
-        self.dirty = dirty
+    def fetch_repair_metadata(self, batch_id, transaction_id):
         self.repair_metadata_lock.acquire()
         if not self.repair_metadata_fetched:
             self.repair_metadata_fetched = True
             redis_key = f"{transaction_id}:REPAIR:{self.function}:" 
             self_ip = self.function_pos_inside_tx[self.function]['ip']
             try:
-                metadata_string = self.shadow_table.fetch(redis_key, self_ip)
+                metadata_string = self.shadow_table.raw_fetch_data(redis_key, self_ip)
             except KeyError:
                 metadata_string = None
             if metadata_string:
                 repair_metadata = json.loads(metadata_string)
-                self.RYW_table = repair_metadata['RYW']
-                self.downstream_func_table = repair_metadata['downstream']
-                self.upstream_func_table = repair_metadata['upstream']
+                self.upstream_func_count = repair_metadata['key_subjection']['up_cnt']
+                self.keys_from_upstream = repair_metadata['key_subjection']['upstream_keys']
                 self.dirty = repair_metadata['dirty']
-            self.function_pos_whole_batch = json.loads(self.shadow_table.fetch(f"{batch_id}:POS::", self_ip))
-            logging.info(f"Fetched repair metadata: {self.RYW_table}, {self.downstream_func_table}, {self.upstream_func_table}, {self.function_pos_whole_batch}")
-            # modify parent_cnt
-            self.parent_cnt = self.downstream_func_table.get("up_cnt", 0) + self.RYW_table.get('up_cnt', 0) + self.parent_cnt
+            self.function_pos_whole_batch = json.loads(self.shadow_table.raw_fetch_data(f"{batch_id}:POS::", self_ip))
+            self.parent_cnt += self.upstream_func_count
+            logging.info(f"Fetched repair metadata:{self.function_pos_whole_batch}, upstream_func_count: {self.upstream_func_count}, keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}")
             self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):
@@ -165,10 +160,7 @@ class Runner:
                                 "read_set": {}, 
                                 "write_set": self.write_set, 
                                 "lock_set": self.lock_set,
-                                "RYW_upstream": self.RYW_upstream,
                                 "RYW_subjection": {},
-                                "RYW_table_fastpath": self.RYW_table,
-                                "downstream_func_table": self.downstream_func_table, 
                                 "function_pos_whole_batch":self.function_pos_whole_batch,
                                 "dirty": self.dirty,
                                }
@@ -183,7 +175,7 @@ class Runner:
             # run function
             out = eval('main()', self.ctx)
         # in repair mode and in fast-path: trigger next function inside the container.
-        logging.info(f"Trigger Next functions: {self.next_functions}, RYW:{self.RYW_table.get('down_funcs', [])}, crosstx:{self.upstream_func_table}")
+        logging.info(f"Trigger Next functions: {self.next_functions}")
         if self.fast_path_enabled and is_repair:
             next_trigger_tasks = []
             for next_func in self.next_functions:
@@ -195,18 +187,6 @@ class Runner:
                 port = self.function_pos_whole_batch[self.transaction_id][next_func]['port']
                 logging.info(f"Next function: {next_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
                 next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port, self.dirty))
-            for RYW_downstream_func in self.RYW_table.get('down_funcs', []):
-                ip = self.function_pos_whole_batch[self.transaction_id][RYW_downstream_func]['ip']
-                port = self.function_pos_whole_batch[self.transaction_id][RYW_downstream_func]['port']
-                logging.info(f"RYW Next function: {RYW_downstream_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
-                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port, self.dirty))
-            for downstream_func_info in self.upstream_func_table:
-                downstream_func = downstream_func_info['function_name']
-                downstream_transaction_id =  downstream_func_info['transaction_id']
-                ip = self.function_pos_whole_batch[downstream_transaction_id][downstream_func]['ip']
-                port = self.function_pos_whole_batch[downstream_transaction_id][downstream_func]['port']
-                logging.info(f"CrossTX Next function: {downstream_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
-                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, downstream_transaction_id, ip, port, True))
             gevent.joinall(next_trigger_tasks)
 
         io_latency = 0
@@ -268,15 +248,13 @@ def run():
         write_set = inp['write_set'] 
         next_functions = inp['next_functions']
         parent_cnt = inp['parent_cnt']
-        RYW_upstream = inp['RYW_upstream']
-        runner.save(transaction_id, input, output, function_pos, write_set, RYW_upstream, next_functions, parent_cnt, lock_set)
+        runner.save(transaction_id, input, output, function_pos, write_set, next_functions, parent_cnt, lock_set)
     else:
         batch_id = inp['batch_id']
         if runner.fast_path_enabled:
-            dirty = inp.get('dirty', False)
             no_parent_execution = inp.get('no_parent_execution', False)
             # get the info from redis
-            runner.fetch_repair_metadata(batch_id, transaction_id, dirty)
+            runner.fetch_repair_metadata(batch_id, transaction_id)
         
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)

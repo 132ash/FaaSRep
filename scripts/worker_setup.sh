@@ -22,6 +22,7 @@ if [ "$(docker ps -aq -f name=redis)" ]; then
     docker rm redis
 fi
 docker run -itd -p 6379:6379 --name redis redis
+# docker run -itd -p 3000:3000 --name redis_shadow_table redis_shadow_table
 
 # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
 
