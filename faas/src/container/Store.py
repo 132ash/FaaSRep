@@ -35,13 +35,12 @@ class Store:
         # collect message in first run
         self.read_set = TxMetaData['read_set']
         self.write_set = TxMetaData['write_set']
-        self.RYW_subjection = TxMetaData['RYW_subjection']
+        self.RYW_subjection_collect = TxMetaData['RYW_subjection']
         # metadata used in repair mode
         self.is_repair = is_repair
-        self.RYW_table_fastpath = TxMetaData['RYW_table_fastpath']
-        self.downstream_func_table = TxMetaData['downstream_func_table']
+        self.keys_from_RYW = TxMetaData['keys_from_RYW']
+        self.keys_from_upstream = TxMetaData['keys_from_upstream']
         self.function_pos_whole_batch = TxMetaData['function_pos_whole_batch']
-        self.dirty = TxMetaData['dirty']
         # BeldiStore: used for locking mode.
         self.lock_set = TxMetaData['lock_set'] 
         self.beldi_store = BeldiStore(self.transaction_id, db_server,  self.lock_set )
@@ -132,14 +131,23 @@ class Store:
             end = time.time()  
         else: 
             # first run, check RYW subjection.
-            if not self.is_repair:
+            if not self.is_repair or not self.fast_path_enabled:
                 upstream_func = self.write_set.get(key, "")
                 if upstream_func:
                     upstream_ip = self.function_pos[upstream_func]['ip']
-                    value = self.redis_shadow_table.fetch(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                    self.RYW_subjection[key] = upstream_func
-            # SECOND run or not RYW, read from cache.
+                    value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
+                    self.redis_shadow_table.self_put(self.param_wrapper(upstream_func, key, 'PUT'), value)
+                    self.RYW_subjection_collect[key] = upstream_func
+            # SECOND run or not RYW, read from cache or shadow table.
             else:
+                if self.keys_from_RYW.get(key, None):
+                    upstream_func = self.keys_from_RYW[key]
+                    value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
+                elif self.keys_from_upstream.get(key, None):
+                    upstream_txid = self.keys_from_upstream[key]['txid']
+                    upstream_func = self.keys_from_upstream[key]['func']
+                    upstream_ip = self.keys_from_upstream[key]['ip']
+                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, key, 'PUT', upstream_txid), upstream_ip)
                 value_version_pair =  self.redis_cache.cache_get(key)
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]

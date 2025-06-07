@@ -40,18 +40,18 @@ class RepairInfo:
 
         for tx_id, tx_info in RYW_subjection.items():
             for func, RYW_sub in tx_info.items():
-                ip = function_pos_per_tx[tx_id][func]['ip']
                 func_info_dict = self.get_info_dict(batch_id, ip, tx_id, func)
-                for key, upstream_func_inside_tx in RYW_sub.items():
-                   upstream_func_ip = function_pos_per_tx[tx_id][upstream_func_inside_tx]['ip']
-                   upstream_func_dict = self.get_info_dict(batch_id, upstream_func_ip, tx_id, upstream_func_inside_tx)
-                   # this key isn't considered in crosstx subjection, so it is a new key.
-                   if key not in func_info_dict['key_subjection']['upstream_keys']:
-                          func_info_dict['key_subjection']['up_cnt'] += 1
-                   func_info_dict['key_subjection']['upstream_keys'][key] = {'tx_id': tx_id, 'func': upstream_func_inside_tx}
-                   func_info_dict['dirty'] = upstream_func_dict.get('dirty', False) 
-                   # this key is RYW, remove from expired keys.
-                   expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
+                func_info_dict['RYW_keys'] = RYW_sub
+                for key, introtx_upstream_func in RYW_sub.items():
+                    # Remove keys from func_info_dict['upstream_keys'] if they appear in RYW_keys
+                    if key in func_info_dict['upstream_keys']:
+                        func_info_dict['upstream_keys'].pop(key)
+                        func_info_dict['up_cnt'] -= 1
+                    upstream_func_ip = function_pos_per_tx[tx_id][introtx_upstream_func]['ip']
+                    upstream_func_dict = self.get_info_dict(batch_id, upstream_func_ip, tx_id, introtx_upstream_func)
+                    func_info_dict['dirty'] = upstream_func_dict.get('dirty', False) 
+                    # this key is RYW, remove from expired keys.
+                    expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
 
         expired_keys_per_ip = {ip:set() for ip in worker_set}
 

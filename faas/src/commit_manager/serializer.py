@@ -67,7 +67,7 @@ class SerializerProcess(Process):
         return commit_list_for_current_handler
 
 
-    def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch):
+    def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch, function_pos_per_tx):
         expired_set = {}
         subjection_set = {}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
@@ -79,14 +79,14 @@ class SerializerProcess(Process):
             tx_need_repair = self.get_expired_set_and_subjection(tx_id, expired_set, subjection_set, rs)
             if tx_need_repair:
                 batch_need_repair = True
-            self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id])
+            self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id], function_pos_per_tx[tx_id])
         return batch_need_repair, expired_set, subjection_set
 
 
     def get_expired_set_and_subjection(self, tx_id, expired_set, subjection_set, read_set):
         need_repair = False
         for func, kv_pairs in read_set.items():
-            subjection_set[tx_id].setdefault(func, {"dirty":False, "key_subjection": {"up_cnt": 0, "subjection": {}}})
+            subjection_set[tx_id].setdefault(func, {"dirty":False, "up_cnt": 0, "upstream_keys": {}})
             expired_set[tx_id].setdefault(func, {})
             for key, version in kv_pairs.items():
                 # key not written by any transaction before, check if it is expired.
@@ -99,14 +99,14 @@ class SerializerProcess(Process):
                         subjection_set[tx_id][func]["dirty"] = True
                         need_repair = True
                 else:
-                    _,  prev_tx_id,  prev_func =prev_writer_tuple
+                    _,  prev_tx_id,  prev_func, prev_ip =prev_writer_tuple
                     if prev_tx_id != tx_id: # not in RYW set, subject to a previous tx.
                         subjection_set[tx_id][func]["dirty"] = True
                         need_repair = True
-                        subjection_set[tx_id][func]["key_subjection"]["subjection"][key] = {'tx_id': prev_tx_id, 'func': prev_func}
+                        subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip':prev_ip}
             return need_repair
 
-    def update_key_writers(self, batch_id, tx_id, write_set):
+    def update_key_writers(self, batch_id, tx_id, write_set, function_pos):
         for key, writer_func in write_set.items():
             self.key_writers.setdefault(key, [])
             # update transaction writer count. 
@@ -115,7 +115,7 @@ class SerializerProcess(Process):
                 self.batch_write_info[batch_id]['all_write_cnt'] += 1
                 if len(self.key_writers[key]) == 0:
                     self.batch_write_info[batch_id]['ready_write_cnt'] += 1
-                self.key_writers[key].append((batch_id, tx_id, writer_func))
+                self.key_writers[key].append((batch_id, tx_id, writer_func, function_pos[writer_func]['ip']))
 
     def prev_batch_committed(self, batch_id):
         # check if this batch is ready to commit.

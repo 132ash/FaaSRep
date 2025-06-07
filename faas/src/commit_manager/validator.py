@@ -143,7 +143,7 @@ class ValidatorProcess(Process):
             if not batch_need_repair:
                 expired_keys_per_ip = {}
             else:
-                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], batch['function_pos'],  batch['worker_set'].keys())
+                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.function_pos_per_batch,  batch['worker_set'].keys())
             return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time
 
     

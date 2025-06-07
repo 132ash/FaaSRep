@@ -1,36 +1,32 @@
+from gevent import monkey
+monkey.patch_all()
 import redis
 import container_config
 import json
+import threading
+
 
 class RedisShadowTable:
-    def __init__(self,function, host_list, port, db):
+    def __init__(self, host_list, port, db, ip):
         self.redis = {
                     host:redis.StrictRedis(host=host, port=port, db=db, decode_responses=True)
                         for host in host_list
                     }
-        self.function = function
+        self.ip = ip
         
     def put(self, key, ip, value):
         self.redis[ip][key] = value
 
+    def self_put(self, key, value):
+        self.redis[self.ip].set(key, value)
+
+    def self_get(self, key):
+        value = self.redis[self.ip].get(key)
+        return value
+
     def raw_fetch_data(self, redis_key, ip):
-        res = self.redis[ip][redis_key]
-        return res
-        
-    def fetch_upstream(self, upstream_txid, upstream_func, upstream_ip, self_tx_id, redis_data_key):
-        upstream_successors = f"{upstream_txid}:{upstream_func}:SUCCESSOR"
-        self_pos_info = f"{self_tx_id}:{self.function}"
-        upstream_func_state = f"{upstream_txid}:{upstream_func}:STATE"
-        upstream_redis_pipe = self.redis[upstream_ip].pipeline()
-        # start redis transaction: get upstream state, append self into successor list, and get data.
-        upstream_redis_pipe.multi()
-        upstream_redis_pipe.get(upstream_func_state)
-        upstream_redis_pipe.rpush(upstream_successors, self_pos_info)
-        upstream_redis_pipe.get(redis_data_key)
-        responses = upstream_redis_pipe.execute()
-        return responses
-    
-        
+        return self.redis[ip][redis_key]
+            
 # data in cache: value and version 
 class RedisCache:
     def __init__(self, port, db, db_server):
@@ -63,3 +59,56 @@ class RedisCache:
         data = {"value": value, "version": version}
         self.redis[key] = json.dumps(data)
         return data
+    
+class RepairSidecar:
+    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache):
+        self.shadow_table = shadow_table
+        self.cache = cache
+        self.function = function
+  
+    # fetch all upstream keys from redis, and append self function into the successor list.
+    def fetch_upstream_keys(self, upstream_keys_info, global_function_pos, self_tx_id):
+        upstream_redis_pipelines = {} # {ip: pipelines}
+        upstream_fetch_results = {} # {ip:{txid: {func: {state:xx, fetched_keys:{key: res}}}}}
+
+        for key, upstream_info in upstream_keys_info.items():
+            upstream_txid = upstream_info['txid']
+            upstream_func = upstream_info['func']
+            upstream_ip = upstream_info['ip']
+            upstream_fetch_results.setdefault(upstream_ip, {}).setdefault(upstream_txid, {}).setdefault(upstream_func, {'state':'', 'fetched_keys':{}})['fetched_keys'][key] = ''
+
+        for upstream_ip, upstream_tx_dict in upstream_fetch_results.items():
+            pipeline = self.shadow_table.redis[upstream_ip].pipeline()
+            pipeline.multi()
+            for upstream_txid, upstream_func_dict in upstream_tx_dict.items():
+                for upstream_func, func_result_info in upstream_func_dict.items():
+                    pipeline.get(f"{upstream_txid}:STATE:{upstream_func}")
+                    pipeline.rpush(f"{upstream_txid}:SUCCESSOR:{upstream_func}", f"{self_tx_id}:{self.function}")
+                    for key in func_result_info['fetched_keys']:
+                        redis_data_key = f"{upstream_txid}:PUT:{upstream_func}:{key}"
+                        pipeline.get(redis_data_key)
+            upstream_redis_pipelines[upstream_ip] = pipeline
+
+        def fetch_and_fill(ip):
+            responses = upstream_redis_pipelines[ip].execute()
+            idx = 0
+            for upstream_txid, upstream_func_dict in upstream_fetch_results[ip].items():
+                for upstream_func, func_result_info in upstream_func_dict.items():
+                    # 第一个是state
+                    func_result_info['state'] = responses[idx]
+                    idx += 1
+                    # 第二个是rpush的返回值（可以忽略或记录）
+                    idx += 1
+                    # 后面是各key
+                    for key in func_result_info['fetched_keys']:
+                        func_result_info['fetched_keys'][key] = responses[idx]
+                        idx += 1
+        threads = []
+        for ip in upstream_redis_pipelines:
+            t = threading.Thread(target=fetch_and_fill, args=(ip,))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+        return upstream_fetch_results

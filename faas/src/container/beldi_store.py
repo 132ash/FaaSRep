@@ -1,4 +1,5 @@
 import logging
+import time
 
 class BeldiStore:
     def __init__(self, transaction_id, db_server, lock_set):
@@ -21,10 +22,7 @@ class BeldiStore:
         )
         if not ret:
             write_set[key] = this_func
-        return lock_time
-      
-
-        
+        return lock_time    
 
     def get(self, key, upstream_func):
         item = None

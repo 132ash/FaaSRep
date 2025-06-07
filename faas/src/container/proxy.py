@@ -13,7 +13,7 @@ from flask import Flask, request
 from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
-from redis_component import RedisShadowTable, RedisCache
+from redis_component import RedisShadowTable, RedisCache, RepairSidecar
 
 # 配置日志记录
 logging.basicConfig(
@@ -41,6 +41,7 @@ class Runner:
         self.workflow = None
         self.function = None
         self.node_list = None
+        self.ip = None
         self.shadow_table = None
         self.cache = None
         self.ctx = {}
@@ -65,6 +66,7 @@ class Runner:
         self.upstream_func_count = 0
         self.upstream_fetched = 0
         self.keys_from_upstream = {}
+        self.keys_from_RYW = {}
 
         # fast path enabled
         self.fast_path_enabled = False
@@ -72,20 +74,25 @@ class Runner:
         self.remote_lock_enabled = False
         self.lock_set = {}
 
+        # function state: 
+        self.state = ''
 
-    def init(self, workflow, function, node_list, fast_path_enabled, remote_lock_enabled):
+
+    def init(self, workflow, function, node_list,self_ip, fast_path_enabled, remote_lock_enabled):
         print('init...')
 
         # update function status
         self.workflow = workflow
         self.function = function
+        self.ip = self_ip
         self.node_list = node_list
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, function, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
+        self.shadow_table = RedisShadowTable(node_list, self.ip, function, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
+        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache)
 
         os.chdir(work_dir)
 
@@ -106,6 +113,33 @@ class Runner:
         self.parent_cnt = parent_cnt
         self.lock_set = lock_set
 
+    def become_pessimistic(self, transaction_id):
+        pass
+
+    def prepair_subjection_before_repair(self, transaction_id):
+        upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, self.function_pos_whole_batch, transaction_id)
+        for _, upstream_tx_dict in upstream_fetch_results.items():
+            for upstream_txid, upstream_func_dict in upstream_tx_dict.items():
+                for upstream_func, func_result_info in upstream_func_dict.items():
+                    if func_result_info['state'] is None:
+                        # If the state is None, it means the function has been commited. trigger cache update.
+                        for key in func_result_info['fetched_keys'].keys():
+                            self.keys_from_upstream.pop(key)
+                            self.cache.update_and_fetch(key)
+                    elif func_result_info['state'] == 'RUNNING':
+                        # If the function is still running, we can skip it for now.
+                        pass
+                    elif func_result_info['state'] == 'REPAIRING':
+                        # update the fetched keys in shadow table. add fetch count.
+                        self.upstream_fetched += len(func_result_info['fetched_keys'])
+                        upstream_key_prefix = f"{transaction_id}:{self.function}:UPSTREAM:"
+                        for key, value in func_result_info['fetched_keys'].items():
+                            self.shadow_table.put(upstream_key_prefix+key, self.shadow_table.ip, value)
+                    elif func_result_info['state'] == 'ABORTED':
+                        self.become_pessimistic(transaction_id)
+                        # TODO: enter passimistic mode.
+                        pass
+
     def fetch_repair_metadata(self, batch_id, transaction_id):
         self.repair_metadata_lock.acquire()
         if not self.repair_metadata_fetched:
@@ -118,8 +152,9 @@ class Runner:
                 metadata_string = None
             if metadata_string:
                 repair_metadata = json.loads(metadata_string)
-                self.upstream_func_count = repair_metadata['key_subjection']['up_cnt']
-                self.keys_from_upstream = repair_metadata['key_subjection']['upstream_keys']
+                self.upstream_func_count = repair_metadata['up_cnt']
+                self.keys_from_upstream = repair_metadata['upstream_keys']
+                self.keys_from_RYW = repair_metadata['RYW_keys']
                 self.dirty = repair_metadata['dirty']
             self.function_pos_whole_batch = json.loads(self.shadow_table.raw_fetch_data(f"{batch_id}:POS::", self_ip))
             self.parent_cnt += self.upstream_func_count
@@ -161,15 +196,17 @@ class Runner:
                                 "write_set": self.write_set, 
                                 "lock_set": self.lock_set,
                                 "RYW_subjection": {},
+                                "keys_from_RYW": self.keys_from_RYW,
+                                "keys_from_upstream": self.keys_from_upstream,
                                 "function_pos_whole_batch":self.function_pos_whole_batch,
-                                "dirty": self.dirty,
                                }
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, function_pos_inside_tx: {self.function_pos_inside_tx}, write_set: {self.write_set}, RYW_upstream:{self.RYW_upstream}, next_functions: {self.next_functions}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
+        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, function_pos_inside_tx: {self.function_pos_inside_tx}, write_set: {self.write_set}, next_functions: {self.next_functions}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
+        if is_repair:
+            self.prepair_subjection_before_repair(transaction_id)
         if not self.fast_path_enabled or not is_repair or self.dirty:
-            store = Store(self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair, self.fast_path_enabled, self.remote_lock_enabled, db_server)
+            store = Store(self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair, self.fast_path_enabled, self.remote_lock_enabled, db_server)    
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
-
             # pre-exec
             exec(self.code, self.ctx)
             # run function

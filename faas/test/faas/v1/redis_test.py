@@ -25,7 +25,7 @@ def check_transaction_data():
 
     pipe = redis_client_shadow.pipeline()
     pipe.multi()
-    pipe.get("test_key1")
+    pipe.get("test_key")
     pipe.rpush("test_list", "value1")
     responses = pipe.execute()
     for i in range(len(responses)):
