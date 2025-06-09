@@ -154,11 +154,10 @@ def prepare():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id'] # {txid:{func:{ up_cnt:xxx, upstream_keys:{key: {txid:xx, func:xx, ip:xx}}}}}
     repair_metadata = data['repair_metadata'] # {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
-    function_pos = data['function_pos'] # {tx_id:{func: {ip:xx, port:xx}}}
     
     # update cache on this node.
     repo.update_cache(data['expired_keys'])
-    repo.fillup_repair_matadata(batch_id, repair_metadata, function_pos)
+    repo.fillup_repair_matadata(batch_id, repair_metadata)
 
     return json.dumps({'status': 'ok'})
 

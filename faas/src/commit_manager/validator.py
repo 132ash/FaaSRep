@@ -82,14 +82,16 @@ class ValidatorProcess(Process):
         super().__init__()
         self.validator_id = validator_id
         self.workflow_name = workflow_name
+        self.all_functions = repo.get_all_functions(workflow_name)
+        self.function_info = repo.get_function_info(self.all_functions, workflow_name)
         self.task_queue = task_queue
         self.serializer_req_queue = serializer_req_queue
         self.serializer_return_pipe = child_get
-        self.repair_info = RepairInfo()
+        self.repair_info = RepairInfo(self.function_info)
         self.repair_engine = RepairEngine(self.repair_info, self.workflow_name)
 
         self.tx_list_per_batch = {}
-        self.function_pos_per_batch = {}
+        self.function_pos_per_batch = {} 
         self.worker_ip_set_per_batch = {}
         self.time_tuple_per_batch = {}  # {batch_id: (first_run_finish_time, last_task_time)}
 
@@ -98,20 +100,21 @@ class ValidatorProcess(Process):
         while True:
             last_task_time = time.time()
             try:
-                msg = self.task_queue.get(timeout=1)
+                batch_id, op, data = self.task_queue.get(timeout=1)
                 last_task_time = time.time()
             except:
                 # 1秒无任务则休眠
                 if time.time() - last_task_time > 1:
                     gevent.sleep(0.1)
                 continue
-            batch_id, op, data = self.task_queue.get()
             if op == VALIDATE:
                 lock_set = data.get('lock_set', {})
+                self.tx_list_per_batch[batch_id] = data['transaction_list']
+                self.worker_ip_set_per_batch[batch_id] = data['worker_set']['transaction']
                 batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time = self.validate(batch_id, data, last_task_time)
                 self.time_tuple_per_batch[batch_id] = (data['first_run_finish_time'], last_task_time, inside_validator_time)
                 if batch_need_repair:
-                    self.repair_engine.repair_batch(batch_id, self.tx_list_per_batch[batch_id], self.function_pos_per_batch[batch_id],expired_keys_per_ip, data['worker_set']['batch_view'].keys())
+                    self.repair_engine.repair_batch(batch_id, data['transaction_list'], data['function_pos'], expired_keys_per_ip, data['worker_set']['batch'].keys())
                 else:
                     self.commit_batch_list(commit_list_for_current_handler,  lock_set)
             elif op == COMMIT:
@@ -132,8 +135,6 @@ class ValidatorProcess(Process):
 
     def validate(self, batch_id, batch, start_time):
         self.repair_info.batch_init(batch_id)
-        self.tx_list_per_batch[batch_id] = batch['transaction_list']
-        self.worker_ip_set_per_batch[batch_id] = batch['worker_set']['transaction_view']
         Fake_version = get_timestamp()
         if config.BASIC or config.REMOTE_LOCK:
             return False, {}, [(batch_id, Fake_version)], time.time() - start_time
@@ -143,7 +144,7 @@ class ValidatorProcess(Process):
             if not batch_need_repair:
                 expired_keys_per_ip = {}
             else:
-                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.function_pos_per_batch,  batch['worker_set'].keys())
+                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], batch['function_pos'],  batch['worker_set']['batch'].keys(), batch['transaction_list'])
             return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time
 
     
@@ -167,7 +168,6 @@ class ValidatorProcess(Process):
                 ]
                 gevent.joinall(jobs)
             self.tx_list_per_batch.pop(batch_id, None)
-            self.function_pos_per_batch.pop(batch_id, None)
             self.worker_ip_set_per_batch.pop(batch_id, None)
             self.time_tuple_per_batch.pop(batch_id, None)
             self.repair_info.clean_table_of_batch(batch_id, None)

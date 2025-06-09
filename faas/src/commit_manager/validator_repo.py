@@ -39,6 +39,21 @@ class Repository:
             doc = db[item]
             if 'start_functions' in doc:
                 return doc['start_functions']
+            
+    def get_all_functions(self, workflow_name) -> List[str]:
+        db = self.couch[workflow_name+ '_function_info']
+        functions = []
+        for item in db:
+            functions.append(db[item]['function_name'])
+        return functions
+            
+    def get_function_info(self, all_functions, workflow_name) -> Any:
+        db = self.couch[workflow_name + '_function_info']
+        function_info = {}
+        for function_name in all_functions:
+            for it in db.find({'selector': {'function_name': function_name}}):
+                function_info[function_name] = it
+        return function_info
 
     def get_all_addrs(self, db_name) -> List[str]:
         db = self.couch[db_name]

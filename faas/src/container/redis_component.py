@@ -67,7 +67,7 @@ class RepairSidecar:
         self.function = function
   
     # fetch all upstream keys from redis, and append self function into the successor list.
-    def fetch_upstream_keys(self, upstream_keys_info, global_function_pos, self_tx_id):
+    def fetch_upstream_keys(self, upstream_keys_info, self_tx_id):
         upstream_redis_pipelines = {} # {ip: pipelines}
         upstream_fetch_results = {} # {ip:{txid: {func: {state:xx, fetched_keys:{key: res}}}}}
 

@@ -137,12 +137,12 @@ class Repository:
             data = {"value": value, "version": version}
             self.cache_redis[key] = json.dumps(data)
 
-    def fillup_repair_matadata(self, batch_id, repair_metadata, function_pos):
-        func_pos_key =  self.param_wrapper(batch_id, 'POS')
-        self.shadowtable_redis[func_pos_key] = json.dumps(function_pos)
+    def fillup_repair_matadata(self, batch_id, repair_metadata):
         for txid in repair_metadata:
             for func in repair_metadata[txid]:
                 # fill up the repair metadata to redis
+                repair_info = repair_metadata[txid][func]
+                repair_info
                 redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
                 self.shadowtable_redis[redis_key] = json.dumps(repair_metadata[txid][func])
 

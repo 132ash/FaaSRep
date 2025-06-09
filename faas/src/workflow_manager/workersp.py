@@ -104,6 +104,7 @@ class WorkerSPManager:
             state = self.states[transaction_id]
             state.lock.acquire()
             if repair:
+                # TODO: remove.
                 state.function_pos_whole_batch = repo.get_global_function_pos(batch_id) if state.function_pos_whole_batch is None else state.function_pos_whole_batch
                 state.repair = repair
                 state.repair_states = repair_states 

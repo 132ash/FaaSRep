@@ -62,7 +62,6 @@ class Runner:
         self.repair_metadata_lock = gevent.lock.BoundedSemaphore()
         self.repair_metadata_fetched = False
         self.dirty = False
-        self.function_pos_whole_batch = {}
         self.upstream_func_count = 0
         self.upstream_fetched = 0
         self.keys_from_upstream = {}
@@ -117,7 +116,7 @@ class Runner:
         pass
 
     def prepair_subjection_before_repair(self, transaction_id):
-        upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, self.function_pos_whole_batch, transaction_id)
+        upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, transaction_id)
         for _, upstream_tx_dict in upstream_fetch_results.items():
             for upstream_txid, upstream_func_dict in upstream_tx_dict.items():
                 for upstream_func, func_result_info in upstream_func_dict.items():
@@ -140,26 +139,32 @@ class Runner:
                         # TODO: enter passimistic mode.
                         pass
 
-    def fetch_repair_metadata(self, batch_id, transaction_id):
+    def fetch_repair_metadata(self, batch_id, transaction_id, metadata_norepair={}):
         self.repair_metadata_lock.acquire()
         if not self.repair_metadata_fetched:
-            self.repair_metadata_fetched = True
-            redis_key = f"{transaction_id}:REPAIR:{self.function}:" 
-            self_ip = self.function_pos_inside_tx[self.function]['ip']
-            try:
-                metadata_string = self.shadow_table.raw_fetch_data(redis_key, self_ip)
-            except KeyError:
-                metadata_string = None
-            if metadata_string:
-                repair_metadata = json.loads(metadata_string)
-                self.upstream_func_count = repair_metadata['up_cnt']
-                self.keys_from_upstream = repair_metadata['upstream_keys']
-                self.keys_from_RYW = repair_metadata['RYW_keys']
-                self.dirty = repair_metadata['dirty']
-            self.function_pos_whole_batch = json.loads(self.shadow_table.raw_fetch_data(f"{batch_id}:POS::", self_ip))
-            self.parent_cnt += self.upstream_func_count
-            logging.info(f"Fetched repair metadata:{self.function_pos_whole_batch}, upstream_func_count: {self.upstream_func_count}, keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}")
-            self.repair_metadata_lock.release()
+            if not self.fast_path_enabled:
+                self.upstream_func_count = metadata_norepair['up_cnt']
+                self.keys_from_upstream = metadata_norepair['upstream_keys']
+                self.keys_from_RYW = metadata_norepair['RYW_keys']
+                self.successor_pos = metadata_norepair['successor_pos']
+                self.dirty = metadata_norepair['dirty']
+            else:
+                self.repair_metadata_fetched = True
+                self_ip = self.function_pos_inside_tx[self.function]['ip']
+                try:
+                    metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self_ip)
+                except KeyError:
+                    metadata_string = None
+                if metadata_string:
+                    repair_metadata = json.loads(metadata_string)
+                    self.upstream_func_count = repair_metadata['up_cnt']
+                    self.keys_from_upstream = repair_metadata['upstream_keys']
+                    self.keys_from_RYW = repair_metadata['RYW_keys']
+                    self.successor_pos = repair_metadata['successor_pos']
+                    self.dirty = repair_metadata['dirty']
+                self.parent_cnt += self.upstream_func_count
+                logging.info(f"Fetched repair metadata: upstream_func_count: {self.upstream_func_count}, keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}")
+        self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):
         # not in repair mode, check is finished outside the container.
@@ -198,7 +203,6 @@ class Runner:
                                 "RYW_subjection": {},
                                 "keys_from_RYW": self.keys_from_RYW,
                                 "keys_from_upstream": self.keys_from_upstream,
-                                "function_pos_whole_batch":self.function_pos_whole_batch,
                                }
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
         logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, function_pos_inside_tx: {self.function_pos_inside_tx}, write_set: {self.write_set}, next_functions: {self.next_functions}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
@@ -215,15 +219,13 @@ class Runner:
         logging.info(f"Trigger Next functions: {self.next_functions}")
         if self.fast_path_enabled and is_repair:
             next_trigger_tasks = []
-            for next_func in self.next_functions:
+            for next_func, pos in self.next_functions:
                 if next_func == 'END':
                     self_ip = self.function_pos_inside_tx[self.function]['ip']
                     next_trigger_tasks.append(gevent.spawn(self.fin_repair, batch_id, self.transaction_id, self_ip))
                     break
-                ip = self.function_pos_whole_batch[self.transaction_id][next_func]['ip']
-                port = self.function_pos_whole_batch[self.transaction_id][next_func]['port']
-                logging.info(f"Next function: {next_func}, batch_id: {batch_id}, ip: {ip}, port: {port}")
-                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, ip, port, self.dirty))
+                logging.info(f"Next function: {next_func}, batch_id: {batch_id}, pos: {pos}")
+                next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, pos['ip'], pos['port'], self.dirty))
             gevent.joinall(next_trigger_tasks)
 
         io_latency = 0
@@ -291,7 +293,7 @@ def run():
         if runner.fast_path_enabled:
             no_parent_execution = inp.get('no_parent_execution', False)
             # get the info from redis
-            runner.fetch_repair_metadata(batch_id, transaction_id)
+        runner.fetch_repair_metadata(batch_id, transaction_id, inp)
         
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)

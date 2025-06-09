@@ -21,6 +21,7 @@ class RepairEngine:
     def __init__(self, repair_info:RepairInfo, workflow_name):
         self.repair_info = repair_info
         self.workflow_name = workflow_name
+        self.start_functions = repo.get_start_functions(self.workflow_name + '_workflow_metadata')
 
     def repair_batch(self,batch_id, transaction_list, function_pos_per_tx, expired_keys, worker_ip_set):
         # allocate works
@@ -30,14 +31,13 @@ class RepairEngine:
             repair_metadata_local = {}
             if FAST_PATH_ENABLED:
                 repair_metadata_local = self.repair_info.get_repair_metadata(batch_id, ip)
-            repair_metadata_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, function_pos_per_tx, repair_metadata_local, expired_keys.get(ip, [])))
+            repair_metadata_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, [])))
         gevent.joinall(repair_metadata_jobs) 
         
         # metadata filled. Trigger start functions to repair workflow.
         trigger_jobs = []
         for tx_id in transaction_list:
-            start_functions = repo.get_start_functions(self.workflow_name + '_workflow_metadata')
-            for n in start_functions:
+            for n in self.start_functions:
                 ip = function_pos_per_tx[tx_id][n]['ip']
                 port = function_pos_per_tx[tx_id][n]['port']
                 repair_metadata_per_tx = self.repair_info.get_repair_metadata(batch_id, "", tx_id) if not FAST_PATH_ENABLED else {}
@@ -71,7 +71,7 @@ class RepairEngine:
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}
     # send metadata to the proxy on worker node.
     # all functions' ip and port need to be sent(?)
-    def prepare_repairing_on_worker(self, batch_id, worker_ip, function_pos_per_tx, repair_metadata, expired_keys):
+    def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys):
         if not worker_ip.endswith(":7000"):
             url = 'http://{}:7000/prepare'.format(worker_ip)
         else:
@@ -79,7 +79,6 @@ class RepairEngine:
         data = {
             'batch_id': batch_id,
             'repair_metadata': repair_metadata,
-            'function_pos': function_pos_per_tx,
             'expired_keys': expired_keys
         }
         print(f"fillup metadata on worker {worker_ip}, batch_id: {batch_id}, metadata: {repair_metadata}")
