@@ -113,8 +113,11 @@ class Container:
         return r.json()
 
     # initialize the container
-    def init(self, workflow_name, function_name, node_list, fast_path_enabled=False, remote_lock_enabled=False):
-        data = {'workflow': workflow_name, 'function': function_name , "node_list": node_list, "fast_path_enabled":fast_path_enabled, "remote_lock_enabled":remote_lock_enabled}
+    def init(self, workflow_name, function_name, node_list, input,output, ip, fast_path_enabled=False, remote_lock_enabled=False):
+        data = {'workflow': workflow_name, 'function': function_name , 
+                "node_list": node_list, "fast_path_enabled":fast_path_enabled,
+                  "remote_lock_enabled":remote_lock_enabled,
+                "input": input, "output": output, "ip": ip}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

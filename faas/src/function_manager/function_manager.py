@@ -10,6 +10,9 @@ from function import Function
 sys.path.append('../../config')
 import config
 
+sys.path.append('../workflow_manager')
+from workersp_repo import Repository
+
 logging.basicConfig(
     # 设置日志级别为 INFO
     format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
@@ -20,7 +23,7 @@ logging.basicConfig(
     force=True 
 )
 
-
+repo = Repository()
 repack_clean_interval = 5.000 # repack and clean every 5 seconds
 dispatch_interval = 0.005 # 200 qps at most
 
@@ -32,11 +35,11 @@ class FunctionManager:
         self.port_controller = PortController(min_port, min_port + 4999)
         self.client = docker.from_env()
         self.default_container_num = config.DEFAULT_CONTAINER_NUM
+        self.functions = {}
 
-        self.functions = {
-            x.function_name: Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool, config.FAST_PATH, config.REMOTE_LOCK)
-            for x in self.function_info
-        }
+        for x in self.function_info:
+            graph_info = repo.get_function_info(x.function_name)
+            self.functions[x] = Function(self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool, graph_info['input'], graph_info['output'],graph_info['ip'], config.FAST_PATH, config.REMOTE_LOCK)
         self.init()
        
     def init(self):
@@ -53,8 +56,8 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_pos, function_name, transaction_id, input, output, write_set,RYW_upstream,is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, lock_set=None):
+    def run(self, function_pos, function_name, transaction_id, input, output, write_set,is_repair, parent_cnt,batch_id, lock_set=None):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
-        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set,RYW_upstream, is_repair, next_funcs, parent_cnt,batch_id, downstream_func_table, lock_set)
+        return self.functions[function_name].send_request(transaction_id, function_pos, input, output, write_set, is_repair, parent_cnt,batch_id, lock_set)

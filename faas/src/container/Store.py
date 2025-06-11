@@ -20,37 +20,42 @@ logging.basicConfig(
 )
 
 class Store:
-    def __init__(self, function_name, transaction_id, input, output, function_pos, redis_shadow_table: RedisShadowTable, cache: RedisCache, TxMetaData:dict, is_repair=False, fast_path_enabled=False, remote_lock_enabled=False, db_server=None):
-        self.fast_path_enabled = fast_path_enabled
-        self.redis_shadow_table = redis_shadow_table
-        self.redis_cache = cache
+    def __init__(self):
         self.fetch_dict = {}
         self.ret_dict = {}
-        self.function_name = function_name
-        self.transaction_id = transaction_id
-        self.function_pos = function_pos
-        self.input = input
-        self.output = output
         self.io_latency = 0
-        # collect message in first run
-        self.read_set = TxMetaData['read_set']
-        self.write_set = TxMetaData['write_set']
-        self.RYW_subjection_collect = TxMetaData['RYW_subjection']
-        # metadata used in repair mode
-        self.is_repair = is_repair
-        self.keys_from_RYW = TxMetaData['keys_from_RYW']
-        self.keys_from_upstream = TxMetaData['keys_from_upstream']
-        self.function_pos_whole_batch = TxMetaData['function_pos_whole_batch']
-        # BeldiStore: used for locking mode.
-        self.lock_set = TxMetaData['lock_set'] 
-        self.beldi_store = BeldiStore(self.transaction_id, db_server,  self.lock_set )
-        self.remote_lock_enabled = remote_lock_enabled
+        self.redis_shadow_table: RedisShadowTable = None
+        self.redis_cache: RedisCache = None
         self.lock_latency = 0
 
 
         if os.path.exists('work'):
             os.system('rm -rf work')
         os.mkdir('work')
+
+    def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled):
+        self.function_name = function_name
+        self.redis_shadow_table = shadow_table
+        self.redis_cache = cache
+        self.fast_path_enabled = fast_path_enabled
+        self.remote_lock_enabled = remote_lock_enabled
+        self.db_server = db_server
+        self.beldi_store = BeldiStore(self.db_server)
+       
+
+    def runtime_init(self, input, output, is_repair, function_pos, transaction_id, metadata):
+        self.transaction_id = transaction_id
+        self.input = input
+        self.output = output
+        self.read_set = metadata['read_set']
+        self.write_set = metadata['write_set']
+        self.RYW_subjection_collect = metadata['RYW_subjection']
+        self.keys_from_RYW = metadata['keys_from_RYW']
+        self.keys_from_upstream = metadata['keys_from_upstream']
+        self.lock_set = metadata['lock_set']
+        self.is_repair = is_repair
+        self.function_pos = function_pos
+        self.beldi_store.runtime_init(transaction_id, self.lock_set)
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode, txid=None):
@@ -67,7 +72,9 @@ class Store:
             return self.function_pos[self.function_name]['ip']
         else:
             return self.function_pos[upstream]['ip']
-
+        
+    def abort_tx(self):
+        raise Exception("Transaction abort triggered by itself.")
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
         if self.remote_lock_enabled:

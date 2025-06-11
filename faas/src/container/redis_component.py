@@ -61,10 +61,16 @@ class RedisCache:
         return data
     
 class RepairSidecar:
-    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache):
+    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, ip):
         self.shadow_table = shadow_table
         self.cache = cache
+        self.ip = ip
         self.function = function
+
+    def state_change_and_nofify_downstream(self, tx_id, func, state):
+        downstream_redis_pipelines = {} # {ip: pipelines}
+        self_pipeline = self.shadow_table.redis[self.ip].pipeline()
+        # TODO: change state and notify downstream
   
     # fetch all upstream keys from redis, and append self function into the successor list.
     def fetch_upstream_keys(self, upstream_keys_info, self_tx_id):

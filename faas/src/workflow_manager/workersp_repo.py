@@ -137,7 +137,7 @@ class Repository:
             data = {"value": value, "version": version}
             self.cache_redis[key] = json.dumps(data)
 
-    def fillup_repair_matadata(self, batch_id, repair_metadata):
+    def fillup_repair_matadata(self, repair_metadata):
         for txid in repair_metadata:
             for func in repair_metadata[txid]:
                 # fill up the repair metadata to redis

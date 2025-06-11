@@ -129,11 +129,7 @@ def req():
     if config.REPAIR and not config.FAST_PATH:
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
-        state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states)
-        if data.get('crosstx', False):
-            state.crosstx_trigger_modify(function_name, no_parent_execution)
-    else:
-        state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
+    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         
     logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
@@ -152,12 +148,11 @@ def clear():
 @app.route('/prepare', methods = ['POST'])
 def prepare():
     data = request.get_json(force=True, silent=True)
-    batch_id = data['batch_id'] # {txid:{func:{ up_cnt:xxx, upstream_keys:{key: {txid:xx, func:xx, ip:xx}}}}}
     repair_metadata = data['repair_metadata'] # {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
     
     # update cache on this node.
     repo.update_cache(data['expired_keys'])
-    repo.fillup_repair_matadata(batch_id, repair_metadata)
+    repo.fillup_repair_matadata(repair_metadata)
 
     return json.dumps({'status': 'ok'})
 

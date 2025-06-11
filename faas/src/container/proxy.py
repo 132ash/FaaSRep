@@ -41,6 +41,8 @@ class Runner:
         self.workflow = None
         self.function = None
         self.node_list = None
+        self.input = None
+        self.output = None
         self.ip = None
         self.shadow_table = None
         self.cache = None
@@ -53,7 +55,6 @@ class Runner:
         self.function_pos_inside_tx = {}
         self.write_set = {}
         self.is_repair = None
-        self.next_functions = None
         self.parent_cnt = None
 
         self.parent_executed = 0
@@ -77,21 +78,23 @@ class Runner:
         self.state = ''
 
 
-    def init(self, workflow, function, node_list,self_ip, fast_path_enabled, remote_lock_enabled):
+    def init(self, workflow, function, node_list,input,output,ip, fast_path_enabled, remote_lock_enabled):
         print('init...')
 
         # update function status
         self.workflow = workflow
         self.function = function
-        self.ip = self_ip
         self.node_list = node_list
+        self.input = input
+        self.output = output
+        self.ip = ip
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, self.ip, function, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB)
+        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.ip)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
-        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache)
+        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.ip)
 
         os.chdir(work_dir)
 
@@ -99,16 +102,14 @@ class Runner:
         filename = os.path.join(work_dir, default_file)
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
+        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled)
 
         print('init finished...')
 
-    def save(self, transaction_id, input, output, function_pos, write_set, next_functions, parent_cnt, lock_set):
+    def save(self, transaction_id, function_pos, write_set, parent_cnt, lock_set):
         self.transaction_id = transaction_id
-        self.input = input
-        self.output = output
         self.function_pos_inside_tx = function_pos
         self.write_set = write_set
-        self.next_functions = next_functions
         self.parent_cnt = parent_cnt
         self.lock_set = lock_set
 
@@ -139,7 +140,7 @@ class Runner:
                         # TODO: enter passimistic mode.
                         pass
 
-    def fetch_repair_metadata(self, batch_id, transaction_id, metadata_norepair={}):
+    def fetch_repair_metadata(self, transaction_id, metadata_norepair={}):
         self.repair_metadata_lock.acquire()
         if not self.repair_metadata_fetched:
             if not self.fast_path_enabled:
@@ -150,9 +151,8 @@ class Runner:
                 self.dirty = metadata_norepair['dirty']
             else:
                 self.repair_metadata_fetched = True
-                self_ip = self.function_pos_inside_tx[self.function]['ip']
                 try:
-                    metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self_ip)
+                    metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.self_ip)
                 except KeyError:
                     metadata_string = None
                 if metadata_string:
@@ -203,30 +203,31 @@ class Runner:
                                 "RYW_subjection": {},
                                 "keys_from_RYW": self.keys_from_RYW,
                                 "keys_from_upstream": self.keys_from_upstream,
-                               }
+                              }
+        
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
         logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, function_pos_inside_tx: {self.function_pos_inside_tx}, write_set: {self.write_set}, next_functions: {self.next_functions}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
         if is_repair:
             self.prepair_subjection_before_repair(transaction_id)
         if not self.fast_path_enabled or not is_repair or self.dirty:
-            store = Store(self.function, transaction_id, self.input, self.output, self.function_pos_inside_tx, self.shadow_table, self.cache, TxMetaData_thisFunc, is_repair, self.fast_path_enabled, self.remote_lock_enabled, db_server)    
+            store.runtime_init(self.input, self.output, is_repair, self.function_pos_inside_tx, transaction_id, TxMetaData_thisFunc)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
             # pre-exec
             exec(self.code, self.ctx)
             # run function
             out = eval('main()', self.ctx)
         # in repair mode and in fast-path: trigger next function inside the container.
-        logging.info(f"Trigger Next functions: {self.next_functions}")
+        logging.info(f"Trigger Next functions: {self.successor_pos}")
         if self.fast_path_enabled and is_repair:
             next_trigger_tasks = []
-            for next_func, pos in self.next_functions:
+            for next_func, pos in self.successor_pos:
                 if next_func == 'END':
-                    self_ip = self.function_pos_inside_tx[self.function]['ip']
-                    next_trigger_tasks.append(gevent.spawn(self.fin_repair, batch_id, self.transaction_id, self_ip))
+                    next_trigger_tasks.append(gevent.spawn(self.fin_repair, batch_id, self.transaction_id, self.self_ip))
                     break
                 logging.info(f"Next function: {next_func}, batch_id: {batch_id}, pos: {pos}")
                 next_trigger_tasks.append(gevent.spawn(self.trigger_next_function, batch_id, self.transaction_id, pos['ip'], pos['port'], self.dirty))
             gevent.joinall(next_trigger_tasks)
+
 
         io_latency = 0
         lock_latency = 0
@@ -243,6 +244,7 @@ proxy = Flask(__name__)
 proxy.status = 'new'
 proxy.debug = False
 runner = Runner()
+store = Store()
 
 
 @proxy.route('/status', methods=['GET'])
@@ -260,7 +262,7 @@ def init():
     proxy.status = 'init'
 
     inp = request.get_json(force=True, silent=True)
-    runner.init(inp['workflow'], inp['function'],inp['node_list'], inp['fast_path_enabled'], inp['remote_lock_enabled'])
+    runner.init(inp['workflow'], inp['function'],inp['node_list'], inp['input'],inp['output'],inp['ip'],inp['fast_path_enabled'], inp['remote_lock_enabled'])
 
     proxy.status = 'ok'
     return ('OK', 200)
@@ -280,31 +282,26 @@ def run():
     rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
     if not is_repair or not runner.fast_path_enabled:
-        input = inp['input']
         lock_set = inp['lock_set']
-        output = inp['output']
-        function_pos = inp['function_pos']
-        write_set = inp['write_set'] 
-        next_functions = inp['next_functions']
+        function_pos = inp['function_pos'] # function pos up to this function
+        write_set = inp['write_set'] # upstream write set
         parent_cnt = inp['parent_cnt']
-        runner.save(transaction_id, input, output, function_pos, write_set, next_functions, parent_cnt, lock_set)
+        runner.save(transaction_id, function_pos, write_set, parent_cnt, lock_set)
     else:
         batch_id = inp['batch_id']
         if runner.fast_path_enabled:
             no_parent_execution = inp.get('no_parent_execution', False)
             # get the info from redis
-        runner.fetch_repair_metadata(batch_id, transaction_id, inp)
+        runner.fetch_repair_metadata(transaction_id, inp)
         
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
     if runner.check_runnable(is_repair, no_parent_execution):
-        if runner.remote_lock_enabled:
-            try:
-                rs, ws, RYW_subjection, io_latency, lock_latency = runner.run(batch_id, transaction_id, is_repair)
-            except Exception as e:
-                return json.dumps({'Error':True, 'error': str(e), 'lock_set':runner.lock_set})
-        else:
+        try:
             rs, ws, RYW_subjection, io_latency, lock_latency = runner.run(batch_id, transaction_id, is_repair)
+        except Exception as e:
+            return json.dumps({'Abort':True, 'error': str(e), 'lock_set':runner.lock_set})
+
 
     res = {
         "read_set": rs,

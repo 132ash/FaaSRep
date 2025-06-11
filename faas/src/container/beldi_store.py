@@ -2,12 +2,15 @@ import logging
 import time
 
 class BeldiStore:
-    def __init__(self, transaction_id, db_server, lock_set):
-        self.transaction_id = transaction_id
+    def __init__(self, db_server):
         self.db_server = db_server
         self.data_db = db_server.Table('data')
+
+    def runtime_init(self, transaction_id, lock_set):
+        self.transaction_id = transaction_id
         self.lock_set = lock_set
-        self.shadow_table = db_server.Table(f"{self.transaction_id}_shadow_table")
+        self.shadow_table = self.db_server.Table(f"{self.transaction_id}_shadow_table")
+
 
     def put(self, key, value, this_func="", upstream_func="", write_set={}, ret=False):
         lock_time = 0
