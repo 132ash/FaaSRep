@@ -61,17 +61,52 @@ class RedisCache:
         return data
     
 class RepairSidecar:
-    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, ip):
+    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, ip, port):
         self.shadow_table = shadow_table
         self.cache = cache
         self.ip = ip
+        self.port = port
         self.function = function
 
-    def state_change_and_nofify_downstream(self, tx_id, func, state):
-        downstream_redis_pipelines = {} # {ip: pipelines}
+    def set_state_and_get_waiting_downstream(self, tx_id, state):
         self_pipeline = self.shadow_table.redis[self.ip].pipeline()
-        # TODO: change state and notify downstream
-  
+        self_pipeline.multi()
+        self_pipeline.set(f"{tx_id}:STATE:{self.function}", state)
+        self_pipeline.lpop(f"{tx_id}:SUCCESSOR:{self.function}:INFO", 0, -1)
+        responses = self_pipeline.execute()
+        downstream_funcs = responses[1]  # This is the list of downstream functions waiting for this function's state
+        for i, info_str in enumerate(downstream_funcs):
+            downstream_funcs[i] = info_str.split(':')
+        return downstream_funcs
+    
+    def send_data_to_waiting_downstream(self, self_tx_id, downstream_funcs):
+        self_redis = self.shadow_table.redis[self.ip]
+        downstream_keys = {}  # {ip: [(tx_id, func, key), ...]}
+        # f"{transaction_id}:{self.function}:UPSTREAM:"
+        for info in downstream_funcs:
+            tx_id, func, ip = info[0], info[1], info[2]
+            keys = self_redis.lpop(f"{self_tx_id}:SUCCESSOR:{self.function}:KEYS:{tx_id}:{func}", 0, -1)
+            for key in keys:
+                downstream_keys.setdefault(ip, []).append((tx_id, func, key))
+        # 2. 多线程并发写入每个 ip 的 redis
+        def send_keys_to_ip(ip):
+            pipeline = self.shadow_table.redis[ip].pipeline()
+            pipeline.multi()
+            for tx_id, func, key in downstream_keys[ip]:
+                # 获取本地 redis 中的数据
+                value = self.shadow_table.redis[self.ip].get(f"{self_tx_id}:PUT:{self.function}:{key}")
+                # 写入目标 redis
+                pipeline.set(f"{tx_id}:{func}:UPSTREAM:{key}", value)
+            pipeline.execute()
+
+        threads = []
+        for ip in downstream_keys:
+            t = threading.Thread(target=send_keys_to_ip, args=(ip,))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
     # fetch all upstream keys from redis, and append self function into the successor list.
     def fetch_upstream_keys(self, upstream_keys_info, self_tx_id):
         upstream_redis_pipelines = {} # {ip: pipelines}
@@ -89,8 +124,9 @@ class RepairSidecar:
             for upstream_txid, upstream_func_dict in upstream_tx_dict.items():
                 for upstream_func, func_result_info in upstream_func_dict.items():
                     pipeline.get(f"{upstream_txid}:STATE:{upstream_func}")
-                    pipeline.rpush(f"{upstream_txid}:SUCCESSOR:{upstream_func}", f"{self_tx_id}:{self.function}")
+                    pipeline.rpush(f"{upstream_txid}:SUCCESSOR:{upstream_func}:INFO", f"{self_tx_id}:{self.function}:{self.ip}:{self.port}")
                     for key in func_result_info['fetched_keys']:
+                        pipeline.rpush(f"{upstream_txid}:SUCCESSOR:{upstream_func}:KEYS:{self_tx_id}:{self.function}", key)
                         redis_data_key = f"{upstream_txid}:PUT:{upstream_func}:{key}"
                         pipeline.get(redis_data_key)
             upstream_redis_pipelines[upstream_ip] = pipeline
