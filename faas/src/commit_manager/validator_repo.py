@@ -40,6 +40,14 @@ class Repository:
             if 'start_functions' in doc:
                 return doc['start_functions']
             
+    def get_end_function(self, workflow_name) -> str:
+        db = self.couch[workflow_name+ '_workflow_metadata']
+        for item in db:
+            doc = db[item]
+            if 'end_function' in doc:
+                return doc['end_function']['name']
+        
+            
     def get_all_functions(self, workflow_name) -> List[str]:
         db = self.couch[workflow_name+ '_function_info']
         functions = []

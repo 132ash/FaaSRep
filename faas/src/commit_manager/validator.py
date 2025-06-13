@@ -84,6 +84,7 @@ class ValidatorProcess(Process):
         self.workflow_name = workflow_name
         self.all_functions = repo.get_all_functions(workflow_name)
         self.function_info = repo.get_function_info(self.all_functions, workflow_name)
+        self.tx_sink_addr =  self.function_info[repo.get_end_function(workflow_name)]['ip']
         self.task_queue = task_queue
         self.serializer_req_queue = serializer_req_queue
         self.serializer_return_pipe = child_get

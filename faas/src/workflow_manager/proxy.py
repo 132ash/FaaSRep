@@ -30,7 +30,7 @@ app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
-from validate_struct import ValidationQueue, ReservePool
+from validate_struct import TransactionSink, ReservePool
 
 sys.path.append('../../config')
 import config
@@ -44,14 +44,17 @@ class Dispatcher:
        repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.cache_updated_table = {}
-       self.reserve_pool = ReservePool()
-       self.validation_queue = ValidationQueue(config.BATCH_SIZE)
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.validation_queue, self.reserve_pool) for name, addr in info_addrs.items()}
+       self.reserve_pools =  {name: ReservePool() for name in info_addrs}
+       self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
+       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name]) for name, addr in info_addrs.items()}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
-    def fin_repair_within_batch(self, batch_id, transaction_id):
-        self.validation_queue.send_fin_repair_request(batch_id)
-        self.reserve_pool.release(transaction_id)
+    def fin_repair_within_batch(self, workflow_name, batch_id, transaction_id):
+        self.sinks[workflow_name].send_fin_repair_request(batch_id)
+        self.reserve_pools[workflow_name].release(transaction_id)
+
+    def sink_prepare(self,workflow_name, batch_id, prev_batch_info, current_batch_info):
+        self.sinks[workflow_name].update_batch_info(batch_id, prev_batch_info, current_batch_info)
 
     def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
         return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
@@ -100,8 +103,9 @@ def repair():
 def fin_repair():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id']
+    workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.fin_repair_within_batch(batch_id, transaction_id)
+    dispatcher.fin_repair_within_batch(workflow_name, batch_id, transaction_id)
     return json.dumps({'status': 'ok'})
 
 # a new request from outside
@@ -144,6 +148,16 @@ def clear():
     dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
+
+@app.route('/prepare_on_sink', methods = ['POST'])
+def prepare_on_sink():
+    data = request.get_json(force=True, silent=True)
+    workflow_name = data['workflow_name']
+    batch_id = data['batch_id']
+    prev_batch_info = data['prev_batch_info']  # {batch_id:{txid:[successor_txid]}}
+    current_batch_info = data['current_batch_info']
+    dispatcher.sink_prepare(workflow_name, batch_id, prev_batch_info, current_batch_info)
+
 
 @app.route('/prepare', methods = ['POST'])
 def prepare():

@@ -7,7 +7,7 @@ import gevent.lock
 import workersp_repo
 from typing import Any, Dict, List
 import requests
-from validate_struct import ValidationQueue
+from validate_struct import TransactionSink
 import re
 
 sys.path.append('../../config')
@@ -61,7 +61,7 @@ min_port = 20000
 
 # mode: 'optimized' vs 'normal'
 class WorkerSPManager:
-    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, validation_queue: ValidationQueue, reserve_pool:Dict) -> None:
+    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, transaction_sink: TransactionSink, reserve_pool:Dict) -> None:
         global min_port
 
         self.lock = gevent.lock.BoundedSemaphore() # guard self.states
@@ -73,7 +73,7 @@ class WorkerSPManager:
         self.info_db = workflow_name + '_function_info'
         self.common_db = 'common'
         self.meta_db = workflow_name + '_workflow_metadata'
-        self.validation_queue = validation_queue
+        self.transaction_sink = transaction_sink
 
         self.func = repo.get_current_node_functions(self.host_addr, self.info_db)
         self.node_list = repo.get_all_addrs(self.common_db)
@@ -125,7 +125,7 @@ class WorkerSPManager:
     
     def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set):
         logging.info(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}")
-        self.validation_queue.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set)
+        self.transaction_sink.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set)
 
     def abort_tx(self, transaction_id, lock_set):
         # abort the transaction, waiting for re-run
@@ -154,7 +154,7 @@ class WorkerSPManager:
             if not state.repair:
                 self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.function_pos, state.worker_set, state.RYW_subjection, state.lock_set)
             else:
-                self.validation_queue.send_fin_repair_request(state.batch_id)
+                self.transaction_sink.send_fin_repair_request(state.batch_id)
             return
         func_info = self.get_function_info(function_name)
         if func_info['ip'] == self.host_addr:

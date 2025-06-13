@@ -10,6 +10,10 @@ import gevent.lock
 sys.path.append('../../config')
 import config
 
+WAITING = 1
+REPAIRED = 2
+ABORTED = 3
+
 
 # reserve the containers after the first run, and return to the container pool after repairing.
 class ReservePool:
@@ -32,12 +36,49 @@ class ReservePool:
             container.return_to_pool()
         self.pool.pop(transaction_id, None)
 
-class ValidationQueue:
-    def __init__(self, batch_size):
+class RepairingBatchState:
+    def __init__(self):
+        self.batch_state = {}
+        self.state_pessimistic = {}
+        self.batch_info = {}  # {batch_id: {txs: [tx_id1, tx_id2, ...], batch_size:xx}}
+
+    def register_batch(self, batch_id, tx_list, batch_size):
+        if config.OPTIMISTIC_REPAIR:
+            self.batch_state[batch_id] = {'txs':tx_list, 'total':batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}
+        else:
+            self.batch_state[batch_id] = {'aborted_tx':[], 'transaction_info':{txid:{'self_state':WAITING, 'next_txs':[], 'up_cnt':0, 'fin_cnt':0} for txid in tx_list}, 'txs':tx_list,'total': batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}
+            
+
+    def update_batch_info(self, batch_id, previous_subjection_info: Dict[str, dict], subjection_info: Dict[str, dict]):
+        # TODO: update the subjection info of the batch, and the transaction info.
+        for txid in self.batch_state[batch_id]['txs']:
+            successors = subjection_info.get(txid, {}).get('successors', [])
+            for succsessor_txid in successors:
+                self.batch_state[batch_id]['transaction_info'][succsessor_txid]['up_cnt'] += 1 
+
+
+
+        for prev_batch_id, prev_batch_info in previous_subjection_info.items():
+            for prev_tx_id, succsessors in prev_batch_info.items():
+                if not self.batch_state.get(prev_batch_id, {}).get('transaction_info', {}):
+                    for succsessor_tx in succsessors:
+                        self.batch_state[batch_id].setdefault(succsessor_tx, {'self_state':WAITING, 'next_txs':[], 'up_cnt':0, 'all_cnt':0})
+
+
+        self.batch_state[batch_id]['previous_subjection_info'] = previous_subjection_info
+        self.batch_state[batch_id]['subjection_info'] = subjection_info
+
+        
+
+class TransactionSink:
+    def __init__(self, workflow_name, batch_size, host_addr):
         self.queue = []
+        self.host_addr = host_addr
+        self.workflow_name = workflow_name
         self.queue_lock = gevent.lock.BoundedSemaphore()
         self.batch_size = batch_size
-        self.repairing_batch_table: Dict[str, Dict] = {}
+        self.repairing_batch_state:RepairingBatchState= RepairingBatchState() 
+
 
     def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos: Dict[str, str], worker_set: Dict[str, str], RYW_subjection:Dict[str, dict], lock_set:Dict[str, bool]):
         self.queue_lock.acquire()
@@ -57,7 +98,8 @@ class ValidationQueue:
             "function_pos": {},
             'worker_set':{'batch':{}, 'transaction':{}},
             "transaction_list":[],
-            "lock_set": {}
+            "lock_set": {},
+            'sink_addr': self.host_addr 
         }
         for tx in batch:
             tx_id = tx["transaction_id"]
@@ -84,6 +126,7 @@ class ValidationQueue:
         self.queue = self.queue[idx:]
         self.queue_lock.release()
         batch = self.transform_batch(batch)
+        self.repairing_batch_state.register_batch(batch['batch_id'], batch["transaction_list"], idx)
         self.repairing_batch_table[batch["batch_id"]] = {"batch_size": idx, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}
         logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}, batch_size:{idx}")
         remote_url = 'http://{}/validate'.format(config.VALIDATOR_ADDR)
@@ -105,8 +148,13 @@ class ValidationQueue:
         if finished == total:
             remote_url = 'http://{}/fin_repair'.format(config.VALIDATOR_ADDR)
             data = {
+                'workflow_name': self.workflow_name,
                 "batch_id": batch_id
             }
             response = requests.post(remote_url, json=data)
             response.close()
             self.repairing_batch_table.pop(batch_id, None)
+
+    # called only in pessimistic repair, to update the subjection info of the batch.
+    def update_batch_info(self, batch_id, previous_subjection_info: Dict[str, dict], subjection_info: Dict[str, dict]):
+        self.repairing_batch_state.update_batch_info(batch_id, previous_subjection_info, subjection_info)
