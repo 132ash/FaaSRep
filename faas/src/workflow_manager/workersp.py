@@ -17,6 +17,8 @@ sys.path.append('../function_manager')
 from function_manager import FunctionManager
 
 
+REPAIRED = 1
+ABORTED = 2
 
 repo = workersp_repo.Repository()
 
@@ -127,13 +129,20 @@ class WorkerSPManager:
         logging.info(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, worker_set:{worker_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}")
         self.transaction_sink.append(transaction_id, workflow_name, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set)
 
-    def abort_tx(self, transaction_id, lock_set):
-        # abort the transaction, waiting for re-run
-        url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        logging.info(f'abort transaction:{transaction_id}, lock_set: {lock_set}')
-        data = {"abort":True, 'transaction_id_list': [transaction_id], 'lock_set': lock_set}
-        requests.post(url, json=data)
-        return
+    def abort_tx(self, state:TransactionState, lock_set):
+        # trigger next run of the transaction under pessimistic repair mode
+        trigger_jobs = []
+        if state.repair and config.PESSIMISTIC_REPAIR:
+            self.transaction_sink.abort_during_repair(state.batch_id, state.transaction_id, trigger_jobs)
+
+        def abort_notify_gateway():
+            # notify gateway to abort the transaction
+            url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
+            logging.info(f'abort transaction:{state.transaction_id}, lock_set: {lock_set}')
+            data = {"abort":True, 'transaction_id_list': [state.transaction_id], 'lock_set': lock_set}
+            requests.post(url, json=data)
+        trigger_jobs.append(gevent.spawn(abort_notify_gateway))
+        gevent.joinall(trigger_jobs)
 
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
         base_url = 'http://127.0.0.1:{}/{}'
@@ -226,7 +235,7 @@ class WorkerSPManager:
         if not state.repair or dirty:
             successful, lock_set = self.run_normal(state, info)
             if not successful:
-                self.abort_tx(state.transaction_id, lock_set)
+                self.abort_tx(state, lock_set)
                 return
 
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.

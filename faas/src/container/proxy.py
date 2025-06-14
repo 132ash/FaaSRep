@@ -126,7 +126,8 @@ class Runner:
             self.become_pessimistic()
 
     def become_pessimistic(self):
-        # TODO: ABORT and re run: now in pessimistic mode.
+        # TODO: jobs when visit aborted function, and what workersp do under different situations.
+        # fetch remote state and share between different containers? 
         pass
 
     def prepair_subjection_before_repair(self, transaction_id):

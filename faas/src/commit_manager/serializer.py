@@ -1,12 +1,17 @@
 from gevent import monkey
 import gevent
+
+import config.config
 monkey.patch_all()
 from multiprocessing import Process, Queue, Pipe
 import time
+import sys
 import validator_repo
 from datetime import datetime
 
 repo = validator_repo.Repository()
+sys.path.append('../../config')
+import config
 VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
@@ -46,10 +51,10 @@ class SerializerProcess(Process):
             if op == VALIDATE:
                 self.batch_validator_assignment[batch_id] = handler_id
                 version = get_timestamp()
-                batch_need_repair, expired_set, subjection_set = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'], data['function_pos'])
+                batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'], data['function_pos'])
                 if not batch_need_repair:
                     commit_list_for_current_handler = self.commit_all_ready_batches(batch_id)
-                self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler))
+                self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info))
             elif op == COMMIT:
                 commit_list_for_current_handler = self.commit_all_ready_batches(batch_id)
                 self.result_pipes[handler_id].put(commit_list_for_current_handler)
@@ -70,21 +75,23 @@ class SerializerProcess(Process):
     def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch, function_pos_per_tx):
         expired_set = {}
         subjection_set = {}
+        pessi_sink_info = {}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
         batch_need_repair = False
         for tx_id in transaction_list:
             expired_set[tx_id] = {}
             subjection_set[tx_id] = {}
             rs = read_set_per_batch[tx_id]
-            tx_need_repair = self.get_expired_set_and_subjection(tx_id, expired_set, subjection_set, rs)
+            tx_need_repair = self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info)
             if tx_need_repair:
                 batch_need_repair = True
             self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id], function_pos_per_tx[tx_id])
-        return batch_need_repair, expired_set, subjection_set
+        return batch_need_repair, expired_set, subjection_set, pessi_sink_info
 
 
-    def get_expired_set_and_subjection(self, tx_id, expired_set, subjection_set, read_set):
+    def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info):
         need_repair = False
+        pessimistic_repair = config.PESSIMISTIC_REPAIR
         for func, kv_pairs in read_set.items():
             subjection_set[tx_id].setdefault(func, {"dirty":False, "up_cnt": 0, "upstream_keys": {}})
             expired_set[tx_id].setdefault(func, {})
@@ -99,7 +106,14 @@ class SerializerProcess(Process):
                         subjection_set[tx_id][func]["dirty"] = True
                         need_repair = True
                 else:
-                    _,  prev_tx_id,  prev_func, prev_ip =prev_writer_tuple
+                    prev_batch_id,  prev_tx_id,  prev_func, prev_ip =prev_writer_tuple
+                    if pessimistic_repair:
+                        # add to prev info.
+                        if batch_id != prev_batch_id:
+                            pessi_sink_info.setdefault("prev_info",{}).setdefault(prev_batch_id, {}).setdefault(prev_tx_id, []).append(tx_id)
+                        else:
+                            pessi_sink_info.setdefault("current_info",{}).setdefault(prev_tx_id, {'cnt':0, 'successors':[], 'start_func':{}, 'repair_states':{}})['successors'].append(tx_id)
+                        pessi_sink_info.setdefault("current_info",{}).setdefault(tx_id, {'cnt':0, 'successors':[], 'start_func':{}, 'repair_states':{}})['cnt'] += 1
                     if prev_tx_id != tx_id: # not in RYW set, subject to a previous tx.
                         subjection_set[tx_id][func]["dirty"] = True
                         need_repair = True

@@ -50,11 +50,11 @@ class Dispatcher:
        gevent.spawn_later(validate_interval, self._validate_loop)
 
     def fin_repair_within_batch(self, workflow_name, batch_id, transaction_id):
-        self.sinks[workflow_name].send_fin_repair_request(batch_id)
+        self.sinks[workflow_name].fin_repair(batch_id, transaction_id)
         self.reserve_pools[workflow_name].release(transaction_id)
 
-    def sink_prepare(self,workflow_name, batch_id, prev_batch_info, current_batch_info):
-        self.sinks[workflow_name].update_batch_info(batch_id, prev_batch_info, current_batch_info)
+    def repair_pessimistic(self,workflow_name, batch_id, prev_batch_info, current_batch_info):
+        self.sinks[workflow_name].repair_pessimistic(batch_id, prev_batch_info, current_batch_info)
 
     def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
         return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
@@ -76,7 +76,8 @@ class Dispatcher:
     
     def _validate_loop(self):
         gevent.spawn_later(validate_interval, self._validate_loop)
-        gevent.spawn(self.validation_queue.send_validate_request)
+        for sink in self.sinks.values():
+            gevent.spawn(sink.send_validate_request)
 
 
 
@@ -149,14 +150,14 @@ def clear():
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
-@app.route('/prepare_on_sink', methods = ['POST'])
-def prepare_on_sink():
+@app.route('/repair_pessi', methods = ['POST'])
+def repair_pessimistic():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     batch_id = data['batch_id']
     prev_batch_info = data['prev_batch_info']  # {batch_id:{txid:[successor_txid]}}
-    current_batch_info = data['current_batch_info']
-    dispatcher.sink_prepare(workflow_name, batch_id, prev_batch_info, current_batch_info)
+    current_batch_info = data['current_batch_info']  # {txid: [successor_txid]}
+    dispatcher.repair_pessimistic(workflow_name, batch_id, prev_batch_info, current_batch_info)
 
 
 @app.route('/prepare', methods = ['POST'])

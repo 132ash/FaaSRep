@@ -89,7 +89,7 @@ class ValidatorProcess(Process):
         self.serializer_req_queue = serializer_req_queue
         self.serializer_return_pipe = child_get
         self.repair_info = RepairInfo(self.function_info)
-        self.repair_engine = RepairEngine(self.repair_info, self.workflow_name)
+        self.repair_engine = RepairEngine(self.repair_info, self.workflow_name, self.tx_sink_addr)
 
         self.tx_list_per_batch = {}
         self.function_pos_per_batch = {} 
@@ -112,10 +112,10 @@ class ValidatorProcess(Process):
                 lock_set = data.get('lock_set', {})
                 self.tx_list_per_batch[batch_id] = data['transaction_list']
                 self.worker_ip_set_per_batch[batch_id] = data['worker_set']['transaction']
-                batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time = self.validate(batch_id, data, last_task_time)
+                batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time, pessi_sink_info = self.validate(batch_id, data, last_task_time)
                 self.time_tuple_per_batch[batch_id] = (data['first_run_finish_time'], last_task_time, inside_validator_time)
                 if batch_need_repair:
-                    self.repair_engine.repair_batch(batch_id, data['transaction_list'], data['function_pos'], expired_keys_per_ip, data['worker_set']['batch'].keys())
+                    self.repair_engine.repair_batch(batch_id, data['transaction_list'], data['function_pos'], expired_keys_per_ip, data['worker_set']['batch'].keys(), pessi_sink_info)
                 else:
                     self.commit_batch_list(commit_list_for_current_handler,  lock_set)
             elif op == COMMIT:
@@ -141,12 +141,12 @@ class ValidatorProcess(Process):
             return False, {}, [(batch_id, Fake_version)], time.time() - start_time
         else:
             serializer_input = {'function_pos':batch['function_pos'], 'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
-            batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler = self.serializer_request(batch_id, VALIDATE, serializer_input)
+            batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
             if not batch_need_repair:
                 expired_keys_per_ip = {}
             else:
                 expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], batch['function_pos'],  batch['worker_set']['batch'].keys(), batch['transaction_list'])
-            return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time
+            return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time, pessi_sink_info
 
     
     # commit_batch_list : [(batch_id, version), ...]
