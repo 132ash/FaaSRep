@@ -75,23 +75,26 @@ class SerializerProcess(Process):
     def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch, function_pos_per_tx):
         expired_set = {}
         subjection_set = {}
-        pessi_sink_info = {}
+        pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
         batch_need_repair = False
+        tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)} if config.PESSIMISTIC_REPAIR else None
         for tx_id in transaction_list:
             expired_set[tx_id] = {}
             subjection_set[tx_id] = {}
             rs = read_set_per_batch[tx_id]
-            tx_need_repair = self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info)
+            tx_need_repair = self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info, tx_index_inside_batch)
             if tx_need_repair:
                 batch_need_repair = True
             self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id], function_pos_per_tx[tx_id])
         return batch_need_repair, expired_set, subjection_set, pessi_sink_info
 
 
-    def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info):
+    def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info, tx_index_inside_batch:dict):
         need_repair = False
         pessimistic_repair = config.PESSIMISTIC_REPAIR
+        pessi_nearest_writer = {'batch':(None, None), 'tx':None} # nearest writer info for pessimistic repair.
+            
         for func, kv_pairs in read_set.items():
             subjection_set[tx_id].setdefault(func, {"dirty":False, "up_cnt": 0, "upstream_keys": {}})
             expired_set[tx_id].setdefault(func, {})
@@ -106,18 +109,22 @@ class SerializerProcess(Process):
                         subjection_set[tx_id][func]["dirty"] = True
                         need_repair = True
                 else:
-                    prev_batch_id,  prev_tx_id,  prev_func, prev_ip =prev_writer_tuple
+                    need_repair = True
+                    subjection_set[tx_id][func]["dirty"] = True
+                    prev_batch_id,  prev_tx_id,  prev_func, prev_ip = prev_writer_tuple
                     if pessimistic_repair:
                         # add to prev info.
                         if batch_id != prev_batch_id:
-                            pessi_sink_info.setdefault("prev_info",{}).setdefault(prev_batch_id, {}).setdefault(prev_tx_id, []).append(tx_id)
+                            expired_set[tx_id][func][key] = True
+                            if pessi_nearest_writer['batch'][0] is None or pessi_nearest_writer['batch'][1] < self.batch_write_info[prev_batch_id]['version']:
+                                pessi_nearest_writer['batch'] = (prev_batch_id, self.batch_write_info[prev_batch_id]['version'])
                         else:
-                            pessi_sink_info.setdefault("current_info",{}).setdefault(prev_tx_id, {'cnt':0, 'successors':[], 'start_func':{}, 'repair_states':{}})['successors'].append(tx_id)
-                        pessi_sink_info.setdefault("current_info",{}).setdefault(tx_id, {'cnt':0, 'successors':[], 'start_func':{}, 'repair_states':{}})['cnt'] += 1
-                    if prev_tx_id != tx_id: # not in RYW set, subject to a previous tx.
-                        subjection_set[tx_id][func]["dirty"] = True
-                        need_repair = True
+                            if pessi_nearest_writer['tx'] is None or pessi_nearest_writer['tx'] < tx_index_inside_batch(prev_tx_id):
+                                pessi_nearest_writer['tx'] = prev_tx_id    
+                    else: 
                         subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip':prev_ip}
+            pessi_sink_info['batch_sub'].setdefault(pessi_nearest_writer['batch'][0], []).append(tx_id)
+            pessi_sink_info['tx_sub'].setdefault(pessi_nearest_writer['tx'], []).append(tx_id)
             return need_repair
 
     def update_key_writers(self, batch_id, tx_id, write_set, function_pos):

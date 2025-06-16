@@ -149,7 +149,7 @@ class Store:
             else:
                 if self.keys_from_RYW.get(key, None):
                     upstream_func = self.keys_from_RYW[key]
-                    value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
+                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, key, 'PUT'))
                 elif self.keys_from_upstream.get(key, None):
                     upstream_txid = self.keys_from_upstream[key]['txid']
                     upstream_func = self.keys_from_upstream[key]['func']

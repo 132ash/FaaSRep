@@ -175,7 +175,7 @@ class Runner:
                     self.successor_pos = repair_metadata['successor_pos']
                     self.dirty = repair_metadata['dirty']
                 self.parent_cnt += self.upstream_func_count
-                logging.info(f"Fetched repair metadata: upstream_func_count: {self.upstream_func_count}, keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}")
+            logging.info(f"Fetched repair metadata: upstream_func_count: {self.upstream_func_count}, keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}")
         self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):

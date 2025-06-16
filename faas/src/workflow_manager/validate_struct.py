@@ -3,6 +3,7 @@ monkey.patch_all()
 import gevent
 import requests
 import logging
+from workersp_repo import Repository
 from typing import Dict
 import sys
 import time
@@ -38,16 +39,23 @@ class ReservePool:
 class RepairingBatchState:
     def __init__(self, workflow_name):
         self.batch_state = {}
+        self.pessi_transaction_info = {}
+        self.batch_subjection_table = {}
         self.workflow_name = workflow_name
 
     def release_batch_info(self, batch_id):
         self.batch_state.pop(batch_id, None)
 
-    def register_batch(self, batch_id, tx_list, batch_size):
+    def register_batch(self, batch_id, batch, batch_size):
+        tx_list = batch['tx_list']
         if config.OPTIMISTIC_REPAIR:
             self.batch_state[batch_id] = {'txs':tx_list, 'total':batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}
         else:
-            self.batch_state[batch_id] = {'aborted_tx':[], 'transaction_info':{txid:{'start_functions':{}, 'self_state':WAITING, 'next_txs':[], 'up_cnt':0, 'fin_cnt':0, "tx_lock": gevent.lock.BoundedSemaphore()} for txid in tx_list}, 'txs':tx_list,'total': batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}
+            self.pessi_transaction_info[batch_id] = {txid:{'rs':{}, 'ws':{}, 'self_state':WAITING, 
+                                                    'next_txs':[], 'up_cnt':0, 'fin_cnt':0, 
+                                                    "tx_lock": gevent.lock.BoundedSemaphore()} for txid in tx_list}
+            self.batch_state[batch_id] = {'aborted_tx':[], 'txs':tx_list,'total': batch_size, "finished": 0, 
+                                          "lock": gevent.lock.BoundedSemaphore(), 'sub_table':{}}
 
     def reminder_successor_tx(self, batch_id, tx_id, trigger_jobs:list):
         for succsessor_batch_id, succsessor_txid in self.batch_state[batch_id]['transaction_info'][tx_id]['next_txs']:
@@ -86,7 +94,7 @@ class RepairingBatchState:
         ready_txs = []
         for txid, tx_info in batch_subjection_info.items():
             for key, info in tx_info.items():   
-                self.batch_state[batch_id]['transaction_info'][txid][key] = info # up_cnt, next_txs, start_functions, repair_states 
+                self.pessi_transaction_info[batch_id]['transaction_info'][txid][key] = info # up_cnt, next_txs 
 
         # check previous subjection: the tx may be finished already, or the batch may be commited. 
         for prev_batch_id, prev_batch_info in previous_subjection_info.items():
@@ -140,10 +148,11 @@ class RepairingBatchState:
         requests.post(url, json=data)
     
 class TransactionSink:
-    def __init__(self, workflow_name, batch_size, host_addr):
+    def __init__(self, workflow_name, batch_size, host_addr, repo: Repository):
         self.queue = []
         self.host_addr = host_addr
         self.workflow_name = workflow_name
+        self.start_functions = repo.get_start_functions(self.workflow_name + '_workflow_metadata')
         self.queue_lock = gevent.lock.BoundedSemaphore()
         self.batch_size = batch_size
         self.repairing_batch_state:RepairingBatchState= RepairingBatchState(workflow_name) 
@@ -160,7 +169,6 @@ class TransactionSink:
     def transform_batch(self, batch):
         transformed_batch = {
             "batch_id": batch[0]["transaction_id"],
-            "workflow_name": {},
             "read_set": {},
             "write_set": {},
             "RYW_subjection": {},
@@ -172,7 +180,6 @@ class TransactionSink:
         }
         for tx in batch:
             tx_id = tx["transaction_id"]
-            transformed_batch["workflow_name"][tx_id] = tx["workflow_name"]
             transformed_batch["read_set"][tx_id]=tx["read_set"]
             transformed_batch["write_set"][tx_id]=tx["write_set"]
             transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
@@ -195,7 +202,7 @@ class TransactionSink:
         self.queue = self.queue[idx:]
         self.queue_lock.release()
         batch = self.transform_batch(batch)
-        self.repairing_batch_state.register_batch(batch['batch_id'], batch["transaction_list"], idx)
+        self.repairing_batch_state.register_batch(batch['batch_id'], batch, idx)
         logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}, batch_size:{idx}")
         remote_url = 'http://{}/validate'.format(config.VALIDATOR_ADDR)
         data = {

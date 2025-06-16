@@ -2,6 +2,8 @@ import sys
 sys.path.append('../../config')
 import config
 
+PESSIMISTIC_REPAIR_ENABLED = config.PESSIMISTIC_REPAIR and config.REPAIR
+
 class RepairInfo:
     def __init__(self, function_info):
         self.function_info = function_info
@@ -39,8 +41,11 @@ class RepairInfo:
                 tx_dict = self.get_info_dict(batch_id, func_ip, tx_id)
                 crosstx_info = crosstx_subjection.get(tx_id, {}).get(func, {})
                 tx_dict[func] = crosstx_info if crosstx_info else {}
+                if PESSIMISTIC_REPAIR_ENABLED:
+                    expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
+                    expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
+                    continue
                 func_info_dict = tx_dict[func]
-
                 # RYW info
                 RYW_sub = RYW_subjection.get(tx_id, {}).get(func, {})
                 if RYW_sub:
@@ -61,7 +66,6 @@ class RepairInfo:
                 else:
                     func_info_dict['successor_pos'] = {f:{function_pos_per_tx[tx_id][f]} for f in self.function_info[func]['next']}
                 
-
                 expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
                 expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
         return expired_keys_per_ip

@@ -45,8 +45,8 @@ class Dispatcher:
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.cache_updated_table = {}
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
-       self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name]) for name, addr in info_addrs.items()}
+       self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
+       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo) for name, addr in info_addrs.items()}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
     def fin_repair_within_batch(self, workflow_name, batch_id, transaction_id):
@@ -155,8 +155,8 @@ def repair_pessimistic():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     batch_id = data['batch_id']
-    prev_batch_info = data['prev_batch_info']  # {batch_id:{txid:[successor_txid]}}
-    current_batch_info = data['current_batch_info']  # {txid: [successor_txid]}
+    prev_batch_info = data['prev_batch_info']  # {batch_id:[successor_txid]}
+    current_batch_info = data['current_batch_info']  # {txid:{successors:[successor_txid], cnt:xx}}
     dispatcher.repair_pessimistic(workflow_name, batch_id, prev_batch_info, current_batch_info)
 
 

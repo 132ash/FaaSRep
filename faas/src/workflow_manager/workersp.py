@@ -4,7 +4,7 @@ from gevent import monkey
 monkey.patch_all()
 import time
 import gevent.lock
-import workersp_repo
+from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
 from validate_struct import TransactionSink
@@ -19,8 +19,6 @@ from function_manager import FunctionManager
 
 REPAIRED = 1
 ABORTED = 2
-
-repo = workersp_repo.Repository()
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -63,7 +61,7 @@ min_port = 20000
 
 # mode: 'optimized' vs 'normal'
 class WorkerSPManager:
-    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, transaction_sink: TransactionSink, reserve_pool:Dict) -> None:
+    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, transaction_sink: TransactionSink, reserve_pool:Dict, repo:Repository) -> None:
         global min_port
 
         self.lock = gevent.lock.BoundedSemaphore() # guard self.states
@@ -76,9 +74,10 @@ class WorkerSPManager:
         self.common_db = 'common'
         self.meta_db = workflow_name + '_workflow_metadata'
         self.transaction_sink = transaction_sink
+        self.repo = repo
 
-        self.func = repo.get_current_node_functions(self.host_addr, self.info_db)
-        self.node_list = repo.get_all_addrs(self.common_db)
+        self.func = self.repo.get_current_node_functions(self.host_addr, self.info_db)
+        self.node_list = self.repo.get_all_addrs(self.common_db)
         
         self.function_manager = FunctionManager(function_info_addr, min_port, self.node_list, reserve_pool)
         # repairing batches and finished transactions
@@ -122,7 +121,7 @@ class WorkerSPManager:
     # the result is cached
     def get_function_info(self, function_name: str) -> Any:
         if function_name not in self.function_info:
-            self.function_info[function_name] = repo.get_function_info(function_name, self.info_db)
+            self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
         return self.function_info[function_name]
     
     def validate_tx(self, workflow_name, transaction_id, read_set, write_set, function_pos, worker_set, RYW_subjection, lock_set):
@@ -268,8 +267,8 @@ class WorkerSPManager:
 
         state.write_set.update(res["write_set"])
         if not state.repair:
-            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
+            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
    
         if config.REPAIR and not state.repair:
             state.function_pos[name]['port'] = res['port']
@@ -281,14 +280,14 @@ class WorkerSPManager:
             # update lock set for the function
             state.write_set.update(res["write_set"])
             state.lock_set.update(res['lock_set'])
-            repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
+            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         state.lock.release()
         logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
         return True, {}
 
     def clear_mem(self, transaction_id):
-        repo.clear_mem(transaction_id)
+        self.repo.clear_mem(transaction_id)
     
     def clear_db(self, transaction_id):
-        repo.clear_db(transaction_id)
+        self.repo.clear_db(transaction_id)

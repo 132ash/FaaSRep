@@ -1,6 +1,4 @@
-d1 = {'k1':{'f1':2}, 'k2':{'f2':2}}
-d2 = {'k1':{'f1':3}, 'k3':{'f3':2}}
-
-self_d = d1
-d1.update(d2)
-print(d1)
+if {}:
+    print("This is a placeholder for the code that would be executed if the condition were true.")
+else:
+    print("This is a placeholder for the code that would be executed if the condition were false.")
