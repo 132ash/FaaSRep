@@ -27,8 +27,6 @@ PESSIMISTIC_REPAIR_FINISH = 4
 GATEWAY_ADDR = config.GATEWAY_ADDR
 DISPATCH_INTERVAL = 0.005 
 
-REPAIRED = 1
-ABORTED = 2
 
 class ValidatorPool:
     def __init__(self, num_validators, workflow_name=None):
