@@ -33,21 +33,24 @@ class RepairInfo:
         # self.upstream_func_table[batch_id] = {"next_func":{}, "next_dict":{}}
 
     def construct_repair_metadata(self, batch_id, expired_keys, crosstx_subjection, RYW_subjection, function_pos_per_tx, worker_set, txid_list):
-        
+        '''
+        Construct the repair metadata for the given batch. Only add RYW info and expired keys to the metadata when pessimistic repair is enabled.        
+        '''
         expired_keys_per_ip = {ip:set() for ip in worker_set}
         for tx_id in txid_list:
             for func in self.function_info:
                 func_ip = function_pos_per_tx[tx_id][func]['ip']
+                RYW_sub = RYW_subjection.get(tx_id, {}).get(func, {})
                 tx_dict = self.get_info_dict(batch_id, func_ip, tx_id)
                 crosstx_info = crosstx_subjection.get(tx_id, {}).get(func, {})
                 tx_dict[func] = crosstx_info if crosstx_info else {}
+                func_info_dict = tx_dict[func]
                 if PESSIMISTIC_REPAIR_ENABLED:
+                    func_info_dict['RYW_keys'] = RYW_sub
                     expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
                     expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
                     continue
-                func_info_dict = tx_dict[func]
-                # RYW info
-                RYW_sub = RYW_subjection.get(tx_id, {}).get(func, {})
+                # RYW info: merged with crosstx subjection info. when optimistic repair is enabled
                 if RYW_sub:
                     func_info_dict['RYW_keys'] = RYW_sub
                     for key, introtx_upstream_func in RYW_sub.items():
@@ -71,6 +74,49 @@ class RepairInfo:
         return expired_keys_per_ip
 
 
+    def update_pessimistic_repair_metadata(self, batch_id, tx_id, tx_dependency, function_pos_tx, expired_keys):
+        """
+        Update the repair metadata for the given transaction in the batch.
+        and update the expired keys due to abort of previous transactions.
+        """
+        for func, func_dependency in tx_dependency.items():
+            func_ip = function_pos_tx[func]['ip']
+            func_info_dict = self.get_info_dict(batch_id, func_ip, tx_id, func)
+            RYW_info = func_info_dict.get('RYW_keys', {})
+            for key, dependency in func_dependency.items():
+                # this key is RYW, already be included
+                if key in RYW_info:
+                    continue
+                # this key isn't from its batch, is expired.
+                elif dependency is None:
+                    expired_keys.setdefault(func_ip, set()).add(key)
+                else:
+                    func_info_dict['upstream_keys'][key] = dependency
+                    func_info_dict['up_cnt'] += 1 
+
+        if self.fast_path_enabled:
+            for ip, tx_dict in self.repair_metadata_per_batch_by_ip[batch_id].items():
+                tx_info = tx_dict.setdefault(tx_id, {})
+                for func, keys in tx_dependency.items():
+                    func_info = tx_info.setdefault(func, {})
+                    for key, dependency in keys.items():
+                        if dependency:
+                            prev_tx_id, prev_func, prev_ip = dependency
+                            func_info.setdefault('upstream_keys', {})[key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip': prev_ip}
+                            func_info['up_cnt'] = func_info.get('up_cnt', 0) + 1
+                        else:
+                            func_info.setdefault('RYW_keys', {})[key] = True
+        else:
+            tx_dict = self.repair_metadata_per_batch_by_txid[batch_id].setdefault(tx_id, {})
+            for func, keys in tx_dependency.items():
+                func_info = tx_dict.setdefault(func, {})
+                for key, dependency in keys.items():
+                    if dependency:
+                        prev_tx_id, prev_func, prev_ip = dependency
+                        func_info.setdefault('upstream_keys', {})[key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip': prev_ip}
+                        func_info['up_cnt'] = func_info.get('up_cnt', 0) + 1
+                    else:
+                        func_info.setdefault('RYW_keys', {})[key] = True
 
     
     def get_info_dict(self, batch_id, ip, tx_id, func=''):

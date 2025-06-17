@@ -12,6 +12,7 @@ import config
 GATEWAY_ADDR = config.GATEWAY_ADDR
 VALIDATE = 1
 COMMIT = 2
+PESSIMISTIC_REPAIR_FINISH = 4
 
 workflows = config.FUNCTION_INFO_ADDRS.keys()
 validator_pools = {workflow: ValidatorPool(config.VALIDATORS_PER_POOL) for workflow in workflows}
@@ -25,13 +26,22 @@ def validate_tx():
     batch_id = data['batch_id']
     validator_pools[workflow].submit(batch_id, VALIDATE, data)
     return json.dumps({'status': 'processing'})  
+
+@app.route('/pessi_fin', methods=['POST'])
+def pessi_finish():
+    data = request.get_json(force=True, silent=True)
+    workflow = data['workflow_name']
+    batch_id = data['batch_id']
+    validator_pools[workflow].submit(batch_id, PESSIMISTIC_REPAIR_FINISH, data)
+    return json.dumps({'status': 'successed'})
     
 @app.route('/commit', methods = ['POST'])
 def repair_finish():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow_name']
     batch_id = data['batch_id']
-    validator_pools[workflow].submit(batch_id, COMMIT)
+    pessimistic_info = data.get('pessimistic_info', {})
+    validator_pools[workflow].submit(batch_id, COMMIT, pessimistic_info)
     return json.dumps({'status': 'successed'})
 
 # python3 proxy.py 192.168.162.132 9000

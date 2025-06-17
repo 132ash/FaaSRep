@@ -37,6 +37,10 @@ import config
 
 validate_interval = 0.005 # 200 qps at most
 
+
+REPAIRED = 1
+ABORTED = 2
+
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        print("Clearing previous containers.")
@@ -49,12 +53,12 @@ class Dispatcher:
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo) for name, addr in info_addrs.items()}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
-    def fin_repair_within_batch(self, workflow_name, batch_id, transaction_id):
-        self.sinks[workflow_name].fin_repair(batch_id, transaction_id)
+    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id, state):
+        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, state)
         self.reserve_pools[workflow_name].release(transaction_id)
 
-    def repair_pessimistic(self,workflow_name, batch_id, prev_batch_info, current_batch_info):
-        self.sinks[workflow_name].repair_pessimistic(batch_id, prev_batch_info, current_batch_info)
+    def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
+        return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
 
     def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
         return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
@@ -106,7 +110,16 @@ def fin_repair():
     batch_id = data['batch_id']
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.fin_repair_within_batch(workflow_name, batch_id, transaction_id)
+    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, REPAIRED)
+    return json.dumps({'status': 'ok'})
+
+@app.route('/abort', methods = ['POST'])
+def fin_repair():
+    data = request.get_json(force=True, silent=True)
+    batch_id = data['batch_id']
+    workflow_name = data['workflow_name']
+    transaction_id = data['transaction_id']
+    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, ABORTED)
     return json.dumps({'status': 'ok'})
 
 # a new request from outside
@@ -155,9 +168,9 @@ def repair_pessimistic():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     batch_id = data['batch_id']
-    prev_batch_info = data['prev_batch_info']  # {batch_id:[successor_txid]}
-    current_batch_info = data['current_batch_info']  # {txid:{successors:[successor_txid], cnt:xx}}
-    dispatcher.repair_pessimistic(workflow_name, batch_id, prev_batch_info, current_batch_info)
+    batch_sub =  data['batch_sub']
+    tx_sub =  data['tx_sub']  
+    return json.dumps(dispatcher.register_pessimistic_info(workflow_name, batch_id, batch_sub, tx_sub))
 
 
 @app.route('/prepare', methods = ['POST'])

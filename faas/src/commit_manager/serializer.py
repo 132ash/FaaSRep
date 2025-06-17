@@ -125,6 +125,7 @@ class SerializerProcess(Process):
                         subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip':prev_ip}
             pessi_sink_info['batch_sub'].setdefault(pessi_nearest_writer['batch'][0], []).append(tx_id)
             pessi_sink_info['tx_sub'].setdefault(pessi_nearest_writer['tx'], []).append(tx_id)
+            pessi_sink_info['last_tx'][tx_id] = pessi_nearest_writer['tx']
             return need_repair
 
     def update_key_writers(self, batch_id, tx_id, write_set, function_pos):

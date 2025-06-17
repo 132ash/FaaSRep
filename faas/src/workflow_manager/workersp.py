@@ -132,7 +132,7 @@ class WorkerSPManager:
         # trigger next run of the transaction under pessimistic repair mode
         trigger_jobs = []
         if state.repair and config.PESSIMISTIC_REPAIR:
-            self.transaction_sink.abort_during_repair(state.batch_id, state.transaction_id, trigger_jobs)
+            self.transaction_sink.fin_repair_or_abort(state.batch_id, state.transaction_id, ABORTED)
 
         def abort_notify_gateway():
             # notify gateway to abort the transaction
@@ -162,7 +162,7 @@ class WorkerSPManager:
             if not state.repair:
                 self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.function_pos, state.worker_set, state.RYW_subjection, state.lock_set)
             else:
-                self.transaction_sink.send_fin_repair_request(state.batch_id)
+                self.transaction_sink.fin_repair_or_abort(state.batch_id, state.transaction_id, REPAIRED)
             return
         func_info = self.get_function_info(function_name)
         if func_info['ip'] == self.host_addr:
