@@ -114,7 +114,7 @@ def fin_repair():
     return json.dumps({'status': 'ok'})
 
 @app.route('/abort', methods = ['POST'])
-def fin_repair():
+def abort():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id']
     workflow_name = data['workflow_name']

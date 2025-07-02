@@ -45,5 +45,11 @@ REMOTE_LOCK = False
 OPTIMISTIC_REPAIR = True
 PESSIMISTIC_REPAIR = False
 
+# repair setting
+RUNNING = 1
+REPAIRED = 2
+ABORTED = 3
+
+
 
 
