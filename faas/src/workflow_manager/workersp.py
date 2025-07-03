@@ -174,17 +174,19 @@ class WorkerSPManager:
             # function runs on remote machine
             self.trigger_function_remote(state, function_name, func_info['ip'], no_parent_execution)
 
+    def crosstx_trigger_function(self, transaction_id: str, function_name: str) -> None:
+        state = self.states[transaction_id]
+        func_info = self.get_function_info(function_name)
+        self.trigger_function_local(state, function_name, func_info['ip'])
+
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str, ip:str, no_parent_execution = False) -> None:
-        fetch_subjection = False
         state.lock.acquire()
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         if state.repair and not state.subjection_fetched.get(function_name, False):
             # fetch subjection from redis, used in optimistic repair mode
             state.subjection_fetched[function_name] = True
-            fetch_subjection = True
-        if fetch_subjection:
             upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(state.repair_states[function_name]["upstream_keys"], state.transaction_id, function_name) 
             upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info ) 
             state.repair_states[function_name]["up_cnt"] = upstream_waiting_count     
@@ -232,9 +234,9 @@ class WorkerSPManager:
         data = {
             'transaction_id': downstream_tx_id,
             'function_name': function_name,
+            'workflow_name': self.workflow_name
         }
         requests.post(remote_url, json=data)
-        
     
     # check if a function's parents are all finished
     # If in repair mode, add upstream parents 
@@ -282,15 +284,14 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        downstream_table = state.repair_states.get(name, {}).get("downstream", {})
-        logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}, downstream_table:{downstream_table}")
+        logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(state.function_pos, name, state.transaction_id,
                              info['input'], info['output'], state.write_set, state.repair, 
-                             info['parent_cnt'], state.batch_id, state.lock_set, state.repair_states[name])
+                             info['parent_cnt'], state.batch_id, state.lock_set, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")
-            return False, res['lock_set'], {}
+            return False, res['lock_set']
             
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
@@ -313,7 +314,7 @@ class WorkerSPManager:
         state.lock.release()
         logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
-        return True, {}, res['lock_set']
+        return True, res['lock_set']
 
     def clear_mem(self, transaction_id):
         self.repo.clear_mem(transaction_id)

@@ -87,7 +87,7 @@ class PessimisticBatchState:
 
 class RepairingBatchState:
     def __init__(self, workflow_name):
-        self.pessimistic_state_per_batch:Dict[str:PessimisticBatchState] = {}
+        self.pessimistic_state_per_batch:Dict[str, PessimisticBatchState] = {}
         self.transaction_list_per_batch = {}
         self.tx_finished_table_per_batch = {}
         self.pessimistic_state_lock = None
@@ -243,7 +243,7 @@ class TransactionSink:
     def fin_repair_or_abort(self, batch_id, transaction_id, state):
         trigger_jobs = []
         batch_finished, ready_successors = self.repairing_batch_state.after_transaction_finish(batch_id, transaction_id, state)
-        if config.PESSIMISTIC_REPAIR and state == REPAIRED:
+        if config.PESSIMISTIC_REPAIR:
             trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,transaction_id, state, ready_successors))
         if batch_finished:
             trigger_jobs.append(gevent.spawn(self.send_fin_repair_request, batch_id))

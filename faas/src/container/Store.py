@@ -152,12 +152,10 @@ class Store:
             else:
                 if self.keys_from_RYW.get(key, None):
                     upstream_func = self.keys_from_RYW[key]
-                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, key, 'PUT'))
+                    upstream_ip = self.function_pos[upstream_func]['ip']
+                    value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
                 elif self.keys_from_upstream.get(key, None):
-                    upstream_txid = self.keys_from_upstream[key]['txid']
-                    upstream_func = self.keys_from_upstream[key]['func']
-                    upstream_ip = self.keys_from_upstream[key]['ip']
-                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, key, 'PUT', upstream_txid), upstream_ip)
+                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, self.function_name, 'UPSTREAM'))
                 else:
                     value_version_pair =  self.redis_cache.cache_get(key)
                     self.read_set[key] = value_version_pair["version"]

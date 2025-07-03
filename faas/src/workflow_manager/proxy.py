@@ -66,6 +66,9 @@ class Dispatcher:
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
 
+    def trigger_crosstx_function(self, workflow_name, function_name, transaction_id):
+        self.managers[workflow_name].crosstx_trigger_function(transaction_id, function_name)
+   
     def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port):
         self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port)
     
@@ -121,6 +124,15 @@ def abort():
     transaction_id = data['transaction_id']
     dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, ABORTED)
     return json.dumps({'status': 'ok'})
+
+@app.route('/crosstx_req', methods = ['GET'])
+def crosstx_req():
+    data = request.get_json(force=True, silent=True)
+    function_name = data['function_name']
+    transaction_id = data['transaction_id']
+    workflow_name = data['workflow_name']
+    dispatcher.trigger_crosstx_function(workflow_name, function_name, transaction_id)
+
 
 # a new request from outside
 # the previous function was done
