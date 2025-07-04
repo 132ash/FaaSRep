@@ -152,11 +152,20 @@ class Repository:
                 result[k] = self.shadowtable_redis_all_addr[self.ip][redis_key]
         return result
 
-    def update_cache(self, keys):
-        for key in keys:
-            version, value = self.data_db.get_data_from_db(key)
-            data = {"value": value, "version": version}
-            self.cache_redis[key] = json.dumps(data)
+    def update_cache(self, keys, version='', from_db=True):
+        if from_db:
+            for key in keys:
+                version, value = self.data_db.get_data_from_db(key)
+                data = {"value": value, "version": version}
+                self.cache_redis[key] = json.dumps(data)
+        else:
+            pipe = self.cache_redis.pipeline()
+            for key in keys:
+                value = self.shadowtable_redis_all_addr[self.ip].get(key)
+                if value:
+                    data = {"value": value, "version": version}
+                    pipe.set(key, json.dumps(data))
+            pipe.execute()
 
     def fillup_repair_matadata(self, repair_metadata):
         for txid in repair_metadata:
@@ -173,17 +182,24 @@ class Repository:
         func_pos = json.loads(self.shadowtable_redis_all_addr[self.ip][func_pos_key])
         return func_pos
 
-    # commit_table: {tx_id:{key:True}}
-    def commit_tx_writes(self, commit_table, version):
-        for transaction_id, keys_dict in commit_table.items():  
-            redis_keys_all = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:PUT*")   
-            redis_keys_target = [key for key in redis_keys_all if self.param_decode(key.decode('utf-8')) in keys_dict]
-            for redis_key in redis_keys_target:
-                # 获取键对应的版本和值
-                key = self.param_decode(redis_key.decode('utf-8'))
-                value = self.shadowtable_redis_all_addr[self.ip].get(redis_key).decode('utf-8')
-                # 调用 store_key_to_db 存储到数据库中
-                self.data_db.store_data_to_db(key, version, value)
+    # commit keys to DB, flush cache, and delete shadow table entries.
+    def commit_tx_writes(self, commit_key_list, tx_list, version):
+        cache_pipe = self.cache_redis.pipeline()
+        shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+        cache_pipe.multi()
+        for redis_key in commit_key_list:
+            key = self.param_decode(redis_key.decode('utf-8'))
+            value = self.shadowtable_redis_all_addr[self.ip].get(redis_key).decode('utf-8')
+            cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
+            # 调用 store_key_to_db 存储到数据库中
+            self.data_db.store_data_to_db(key, version, value)
+        cache_pipe.execute()
+        shadow_table_pipe.multi()
+        for transaction_id in tx_list:  
+            redis_keys_all = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")   
+            for redis_key in redis_keys_all:
+                shadow_table_pipe.delete(redis_key)
+        shadow_table_pipe.execute()
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()

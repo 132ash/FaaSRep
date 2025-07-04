@@ -132,7 +132,6 @@ class RepairingBatchState:
             self.pessimistic_state_lock().release()
         else:
             self.pessimistic_state_per_batch[batch_id].transaction_finish(tx_id, ready_txs)
-
         return ready_txs 
        
     def after_transaction_finish(self, batch_id, tx_id):
@@ -176,8 +175,7 @@ class TransactionSink:
             "function_pos": {},
             'worker_set':{},
             "transaction_list":[],
-            "lock_set": {},
-            'sink_addr': self.host_addr 
+            "lock_set": {}
         }
 
         for tx in batch:
@@ -232,8 +230,8 @@ class TransactionSink:
         response.close() 
         
 
-    def send_fin_repair_request(self, batch_id):
-        remote_url = 'http://{}/fin_repair'.format(config.VALIDATOR_ADDR)
+    def commit_batch(self, batch_id):
+        remote_url = 'http://{}/commit'.format(config.VALIDATOR_ADDR)
         data = {
                 'workflow_name': self.workflow_name,
                 "batch_id": batch_id
@@ -246,7 +244,7 @@ class TransactionSink:
         if config.PESSIMISTIC_REPAIR:
             trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,transaction_id, state, ready_successors))
         if batch_finished:
-            trigger_jobs.append(gevent.spawn(self.send_fin_repair_request, batch_id))
+            trigger_jobs.append(gevent.spawn(self.commit_batch, batch_id))
         gevent.joinall(trigger_jobs)
 
     # called only in pessimistic repair, to update the subjection info of the batch.

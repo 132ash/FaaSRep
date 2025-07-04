@@ -134,7 +134,7 @@ class ValidatorProcess(Process):
                 else:
                     self.commit_batch_list(commit_list_for_current_handler,  lock_set)
             elif op == COMMIT:
-                ready_batch_list = self.serializer_request(batch_id, COMMIT, {}) if not PESSIMISTIC_REPAIR_ENABLED else [batch_id]
+                ready_batch_list = self.serializer_request(batch_id, COMMIT, {})
                 self.commit_batch_list(ready_batch_list)
             elif op == CASCADED_COMMIT:
                 self.commit_batch_list(data)
@@ -169,21 +169,27 @@ class ValidatorProcess(Process):
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, lock_set = {}):
         txid_lists, timestamps = [], []
-        for batch_id, version in commit_batch_list:
+        for batch_id, version, keys_for_commit_per_ip in commit_batch_list:
             timestamps.append(self.time_tuple_per_batch[batch_id])
-            successed_tx_list = self.successed_tx_list_per_batch[batch_id] if PESSIMISTIC_REPAIR_ENABLED else self.tx_list_per_batch[batch_id]
+            if PESSIMISTIC_REPAIR_ENABLED:
+                successed_tx_list = self.successed_tx_list_per_batch[batch_id]
+                keys_for_commit_per_ip = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys_per_ip(batch_id)
+            else:
+                successed_tx_list = self.tx_list_per_batch[batch_id]
             txid_lists.append(successed_tx_list)
             if config.REMOTE_LOCK:
                 self.repo.sync_shadow_to_data_db_with_version(batch_id, version)
                 self.repo.release_lock(batch_id, lock_set)
             else:
-                worker_tx_set = defaultdict(list)
+                worker_commit_set = {}
                 for tx_id, worker_ip_list in self.tx_ip_set_per_batch[batch_id].items():
                     for ip in worker_ip_list:
-                        worker_tx_set[ip].append(tx_id)
+                        worker_commit_set.setdefault(ip, {"txs":[]})['txs'].append(tx_id)
+                for ip, keys_for_commit in keys_for_commit_per_ip.items():
+                    worker_commit_set[ip]['keys'] = keys_for_commit
                 jobs = [
-                    gevent.spawn(self.trigger_worker_commit, batch_id, ip, version, worker_tx_set[ip])
-                    for ip in worker_tx_set
+                    gevent.spawn(self.trigger_worker_commit, batch_id, ip, version, worker_commit_set[ip])
+                    for ip in worker_commit_set
                 ]
                 gevent.joinall(jobs)
             self.tx_list_per_batch.pop(batch_id, None)
@@ -195,10 +201,9 @@ class ValidatorProcess(Process):
             self.write_set_per_batch.pop(batch_id, None)
             self.repair_engine.clean_table_of_batch(batch_id)
         self.notify_gateway(txid_lists, True, timestamps)
-                
-        
+                     
 
-    def trigger_worker_commit(self,batch_id, ip, version, tx_list):
+    def trigger_worker_commit(self,batch_id, ip, version, commit_info):
         if not ip.endswith(":7000"):
             url = f"http://{ip}:7000/commit"
         else:
@@ -206,9 +211,11 @@ class ValidatorProcess(Process):
         
         print(f"triggering batch_id {batch_id} commit, sending req to {ip}")
         data = {
+            'workflow_name': self.workflow_name,
             'batch_id':batch_id,
             "version": version,
-            "tx_list": tx_list
+            "tx_list": commit_info['txs'],
+            'key_list': commit_info['keys']
         }
         requests.post(url, json=data)
 

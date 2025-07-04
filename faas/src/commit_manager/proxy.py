@@ -40,8 +40,7 @@ def repair_finish():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow_name']
     batch_id = data['batch_id']
-    pessimistic_info = data.get('pessimistic_info', {})
-    validator_pools[workflow].submit(batch_id, COMMIT, pessimistic_info)
+    validator_pools[workflow].submit(batch_id, COMMIT, {})
     return json.dumps({'status': 'successed'})
 
 # python3 proxy.py 192.168.162.132 9000
