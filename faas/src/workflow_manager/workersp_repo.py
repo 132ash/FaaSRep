@@ -1,10 +1,11 @@
 from gevent import monkey
 monkey.patch_all()
-from typing import Any, List
+from typing import Dict, List, Any
 import couchdb
 import redis
 import boto3
 from datetime import datetime
+from subjection_collector import SubjectionCollector, RedisShadowTable
 import sys
 import json
 
@@ -52,9 +53,22 @@ class Repository:
     def __init__(self):
         self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.CACHE_DB)
         self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)
-        self.shadowtable_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB)
         self.couch = couchdb.Server(couchdb_url)
+        self.shadowtable_redis_all_addr:Dict[str, redis.StrictRedis] =  {
+                    host:redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
+                    for host in self.get_all_addrs('common')
+                    }
+        self.subjection_collector:SubjectionCollector = None
 
+    def shadowtable_init(self, ip):
+        self.ip = ip
+        self.subjection_collector = SubjectionCollector(
+            shadow_table=self.shadowtable_redis_all_addr[self.ip], 
+            ip=self.ip,
+            cache_redis = self.cache_redis,
+            db_server = self.data_db
+        )
+        
     # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
     def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
         db = self.couch[mode]
@@ -69,6 +83,13 @@ class Repository:
             doc = db[item]
             if 'start_functions' in doc:
                 return doc['start_functions'] 
+            
+    def get_end_function(self, db_name) -> str:
+        db = self.couch[db_name]
+        for item in db:
+            doc = db[item]
+            if 'end_function' in doc:
+                return doc['end_function']['name']
             
 
     def get_all_addrs(self, db_name) -> List[str]:
@@ -86,14 +107,14 @@ class Repository:
     def clear_mem(self, transaction_id=""):
         if transaction_id:
             print(f"clearing shadow table for {transaction_id}")
-            keys = self.shadowtable_redis.keys()
+            keys = self.shadowtable_redis_all_addr[self.ip].keys()
             for key in keys:
                 key_str = key.decode()
                 if key_str.startswith(transaction_id):
-                    self.shadowtable_redis.delete(key)
+                    self.shadowtable_redis_all_addr[self.ip].delete(key)
         else:
             print("clearing all shadow tables")
-            self.shadowtable_redis.flushall(True)
+            self.shadowtable_redis_all_addr[self.ip].flushall(True)
         self.cache_redis.flushall(True)
         remain_keys_len = len(self.cache_redis.keys("*")) 
         print(f"clearing caches, remaining:{remain_keys_len}")
@@ -126,16 +147,25 @@ class Repository:
         for k in keys:
             redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
             if output[k]["type"] == "int":
-                result[k] = int(self.shadowtable_redis[redis_key])
+                result[k] = int(self.shadowtable_redis_all_addr[self.ip][redis_key])
             else:
-                result[k] = self.shadowtable_redis[redis_key]
+                result[k] = self.shadowtable_redis_all_addr[self.ip][redis_key]
         return result
 
-    def update_cache(self, keys):
-        for key in keys:
-            version, value = self.data_db.get_data_from_db(key)
-            data = {"value": value, "version": version}
-            self.cache_redis[key] = json.dumps(data)
+    def update_cache(self, keys, version='', from_db=True):
+        if from_db:
+            for key in keys:
+                version, value = self.data_db.get_data_from_db(key)
+                data = {"value": value, "version": version}
+                self.cache_redis[key] = json.dumps(data)
+        else:
+            pipe = self.cache_redis.pipeline()
+            for key in keys:
+                value = self.shadowtable_redis_all_addr[self.ip].get(key)
+                if value:
+                    data = {"value": value, "version": version}
+                    pipe.set(key, json.dumps(data))
+            pipe.execute()
 
     def fillup_repair_matadata(self, repair_metadata):
         for txid in repair_metadata:
@@ -144,25 +174,32 @@ class Repository:
                 repair_info = repair_metadata[txid][func]
                 repair_info
                 redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
-                self.shadowtable_redis[redis_key] = json.dumps(repair_metadata[txid][func])
+                self.shadowtable_redis_all_addr[self.ip][redis_key] = json.dumps(repair_metadata[txid][func])
 
     def get_global_function_pos(self, batch_id):
         func_pos_key =  self.param_wrapper(batch_id, 'POS')
         # get the function position from redis
-        func_pos = json.loads(self.shadowtable_redis[func_pos_key])
+        func_pos = json.loads(self.shadowtable_redis_all_addr[self.ip][func_pos_key])
         return func_pos
 
-    # commit_table: {tx_id:{key:True}}
-    def commit_tx_writes(self, commit_table, version):
-        for transaction_id, keys_dict in commit_table.items():  
-            redis_keys_all = self.shadowtable_redis.keys(f"{transaction_id}:PUT*")   
-            redis_keys_target = [key for key in redis_keys_all if self.param_decode(key.decode('utf-8')) in keys_dict]
-            for redis_key in redis_keys_target:
-                # 获取键对应的版本和值
-                key = self.param_decode(redis_key.decode('utf-8'))
-                value = self.shadowtable_redis.get(redis_key).decode('utf-8')
-                # 调用 store_key_to_db 存储到数据库中
-                self.data_db.store_data_to_db(key, version, value)
+    # commit keys to DB, flush cache, and delete shadow table entries.
+    def commit_tx_writes(self, commit_key_list, tx_list, version):
+        cache_pipe = self.cache_redis.pipeline()
+        shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+        cache_pipe.multi()
+        for redis_key in commit_key_list:
+            key = self.param_decode(redis_key.decode('utf-8'))
+            value = self.shadowtable_redis_all_addr[self.ip].get(redis_key).decode('utf-8')
+            cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
+            # 调用 store_key_to_db 存储到数据库中
+            self.data_db.store_data_to_db(key, version, value)
+        cache_pipe.execute()
+        shadow_table_pipe.multi()
+        for transaction_id in tx_list:  
+            redis_keys_all = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")   
+            for redis_key in redis_keys_all:
+                shadow_table_pipe.delete(redis_key)
+        shadow_table_pipe.execute()
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()

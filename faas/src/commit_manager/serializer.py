@@ -1,17 +1,18 @@
 from gevent import monkey
 import gevent
 
-import config.config
 monkey.patch_all()
 from multiprocessing import Process, Queue, Pipe
 import time
 import sys
 import validator_repo
+from collections import defaultdict
 from datetime import datetime
 
 repo = validator_repo.Repository()
 sys.path.append('../../config')
 import config
+PESSIMISTIC_REPAIR = config.PESSIMISTIC_REPAIR
 VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
@@ -56,19 +57,20 @@ class SerializerProcess(Process):
                     commit_list_for_current_handler = self.commit_all_ready_batches(batch_id)
                 self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info))
             elif op == COMMIT:
-                commit_list_for_current_handler = self.commit_all_ready_batches(batch_id)
+                commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
                 self.result_pipes[handler_id].put(commit_list_for_current_handler)
 
     # check if this batch is ready to commit.
     # if not, suspend this batch, and wait for its ancestors to finish.
-    def commit_all_ready_batches(self, current_batch_id):
+    # in pessimistic mode, the batch is ready for sure: only flush the ready writes.
+    def commit_all_ready_batches(self, current_handler_id, current_batch_id):
         ready, commit_list_per_handler = self.get_commitable_batches(current_batch_id)
-        commit_list_for_current_handler = commit_list_per_handler.pop(current_batch_id, [])
+        commit_list_for_current_handler = commit_list_per_handler.pop(current_handler_id, [])
         if ready:
             for handler_id, commit_batch_list in commit_list_per_handler.items():
                 self.handler_task_queues[handler_id].put(('', CASCADED_COMMIT, commit_batch_list))
         else:
-            self.commit_suspended_batches[current_batch_id] = handler_id 
+            self.commit_suspended_batches[current_batch_id] = current_handler_id 
         return commit_list_for_current_handler
 
 
@@ -92,7 +94,6 @@ class SerializerProcess(Process):
 
     def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info, tx_index_inside_batch:dict):
         need_repair = False
-        pessimistic_repair = config.PESSIMISTIC_REPAIR
         pessi_nearest_writer = {'batch':(None, None), 'tx':None} # nearest writer info for pessimistic repair.
             
         for func, kv_pairs in read_set.items():
@@ -112,7 +113,7 @@ class SerializerProcess(Process):
                     need_repair = True
                     subjection_set[tx_id][func]["dirty"] = True
                     prev_batch_id,  prev_tx_id,  prev_func, prev_ip = prev_writer_tuple
-                    if pessimistic_repair:
+                    if PESSIMISTIC_REPAIR:
                         # add to prev info.
                         if batch_id != prev_batch_id:
                             expired_set[tx_id][func][key] = True
@@ -153,21 +154,25 @@ class SerializerProcess(Process):
             # add the first ready batch to commit list.
             current_batch_id = batches_ready_for_committing.pop(0)   
             current_batch_write_info = self.batch_write_info.pop(current_batch_id)
-            current_handler_id = self.batch_validator_assignment.pop(current_batch_id)    
-            commit_list_per_handler.setdefault(current_handler_id, []).append((current_batch_id, current_batch_write_info['version']))
+            current_handler_id = self.batch_validator_assignment.pop(current_batch_id) 
+            keys_for_commit_per_ip = defaultdict(list)   
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
                 current_key_writers = self.key_writers[key]
-                current_key_writers.pop(0)
+                _,  writer_tx_id,  writer_func, writer_ip = current_key_writers.pop(0)
                 self.key_version_table[key] = current_batch_write_info['version']
-                if len(current_key_writers) > 0:
-                    cascaded_batch_id, _, _ = current_key_writers[0]
-                    self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
-                    # only suspended batches are ready to commit cascaded.
-                    if self.prev_batch_committed(cascaded_batch_id) and cascaded_batch_id in self.commit_suspended_batches:    
-                        self.commit_suspended_batches.pop(cascaded_batch_id)         
-                        batches_ready_for_committing.append(cascaded_batch_id)
+                if not PESSIMISTIC_REPAIR:
+                    keys_for_commit_per_ip[writer_ip].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
+                    if len(current_key_writers) > 0:
+                        cascaded_batch_id, _, _ = current_key_writers[0]
+                        self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
+                        # only suspended batches are ready to commit cascaded.
+                        if self.prev_batch_committed(cascaded_batch_id) and cascaded_batch_id in self.commit_suspended_batches:    
+                            self.commit_suspended_batches.pop(cascaded_batch_id)         
+                            batches_ready_for_committing.append(cascaded_batch_id)
+            commit_list_per_handler.setdefault(current_handler_id, []).append((current_batch_id, current_batch_write_info['version'], keys_for_commit_per_ip))
         return True, commit_list_per_handler
+
 
         
 

@@ -47,7 +47,6 @@ class Dispatcher:
        os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
        repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
-       self.cache_updated_table = {}
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo) for name, addr in info_addrs.items()}
@@ -66,6 +65,9 @@ class Dispatcher:
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
 
+    def trigger_crosstx_function(self, workflow_name, function_name, transaction_id):
+        self.managers[workflow_name].crosstx_trigger_function(transaction_id, function_name)
+   
     def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port):
         self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port)
     
@@ -114,13 +116,22 @@ def fin_repair():
     return json.dumps({'status': 'ok'})
 
 @app.route('/abort', methods = ['POST'])
-def fin_repair():
+def abort():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id']
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, ABORTED)
     return json.dumps({'status': 'ok'})
+
+@app.route('/crosstx_req', methods = ['GET'])
+def crosstx_req():
+    data = request.get_json(force=True, silent=True)
+    function_name = data['function_name']
+    transaction_id = data['transaction_id']
+    workflow_name = data['workflow_name']
+    dispatcher.trigger_crosstx_function(workflow_name, function_name, transaction_id)
+
 
 # a new request from outside
 # the previous function was done
@@ -147,6 +158,7 @@ def req():
     if config.REPAIR and not config.FAST_PATH:
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
+
     state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         
     logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
@@ -180,7 +192,8 @@ def prepare():
     
     # update cache on this node.
     repo.update_cache(data['expired_keys'])
-    repo.fillup_repair_matadata(repair_metadata)
+    if repair_metadata:
+        repo.fillup_repair_matadata(repair_metadata)
 
     return json.dumps({'status': 'ok'})
 
@@ -188,16 +201,16 @@ def prepare():
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
+    workflow_name = data['workflow_name']
     batch_id = data['batch_id']
-    commit_table = data['commit_table']
     version = data['version']
-    tx_list = data['tx_list']
+    tx_list = data['txs']
+    commit_key_list = data['keys']
     # release the containers reserved into container pool.
     for txid in tx_list:
-        dispatcher.reserve_pool.release(txid)
-    logging.info(f"[{batch_id}] commit. all transactions:{tx_list} commit_table: {commit_table}, version {version}")
-    repo.commit_tx_writes(commit_table, version)
-    dispatcher.cache_updated_table.pop(batch_id, None)
+        dispatcher.reserve_pools[workflow_name].release(txid)
+    logging.info(f"[{batch_id}] commit. all transactions:{tx_list} commit_key_list: {commit_key_list}, version {version}")
+    repo.commit_tx_writes(commit_key_list, tx_list, version)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

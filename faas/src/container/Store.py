@@ -138,26 +138,28 @@ class Store:
             end = time.time()  
         else: 
             # first run, check RYW subjection.
-            if not self.is_repair or not self.fast_path_enabled:
+            if not self.is_repair:
                 upstream_func = self.write_set.get(key, "")
                 if upstream_func:
                     upstream_ip = self.function_pos[upstream_func]['ip']
                     value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                    self.redis_shadow_table.self_put(self.param_wrapper(upstream_func, key, 'PUT'), value)
                     self.RYW_subjection_collect[key] = upstream_func
+                else:
+                    value_version_pair =  self.redis_cache.cache_get(key)
+                    self.read_set[key] = value_version_pair["version"]
+                    value = value_version_pair["value"]
             # SECOND run or not RYW, read from cache or shadow table.
             else:
                 if self.keys_from_RYW.get(key, None):
                     upstream_func = self.keys_from_RYW[key]
-                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, key, 'PUT'))
+                    upstream_ip = self.function_pos[upstream_func]['ip']
+                    value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
                 elif self.keys_from_upstream.get(key, None):
-                    upstream_txid = self.keys_from_upstream[key]['txid']
-                    upstream_func = self.keys_from_upstream[key]['func']
-                    upstream_ip = self.keys_from_upstream[key]['ip']
-                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, key, 'PUT', upstream_txid), upstream_ip)
-                value_version_pair =  self.redis_cache.cache_get(key)
-                self.read_set[key] = value_version_pair["version"]
-                value = value_version_pair["value"]
+                    value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, self.function_name, 'UPSTREAM'))
+                else:
+                    value_version_pair =  self.redis_cache.cache_get(key)
+                    self.read_set[key] = value_version_pair["version"]
+                    value = value_version_pair["value"]
             end = time.time()
         self.io_latency += (end - start)
         return value

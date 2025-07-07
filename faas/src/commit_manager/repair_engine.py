@@ -57,13 +57,12 @@ class RepairEngine:
         self.repair_transactions(batch_id, cascaded_ready_txs, worker_ip_set, func_pos, expired_keys)     
             
     def repair_transactions(self, batch_id, ready_transactions, worker_ip_set, function_pos_per_tx, expired_keys):
-        repair_metadata_jobs = []
+        repair_prepare_jobs = []
         trigger_jobs = []
-        if FAST_PATH_ENABLED:
-            for ip in worker_ip_set:
-                repair_metadata_local = self.repair_info.get_repair_metadata(batch_id, ip)
-                repair_metadata_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set())))
-            gevent.joinall(repair_metadata_jobs) 
+        for ip in worker_ip_set:
+            repair_metadata_local = self.repair_info.get_repair_metadata(batch_id, ip) if FAST_PATH_ENABLED else {}
+            repair_prepare_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set())))
+        gevent.joinall(repair_prepare_jobs) 
             # metadata filled. Trigger start functions to repair workflow.
         repair_metadata_no_fast = {}
         for tx_id in ready_transactions:
@@ -93,7 +92,6 @@ class RepairEngine:
             'port': port,
             'repair': True,
             'repair_states':repair_metadata_per_tx
-            
         }
         print(f"triggering {function_name}, sending req to {url}, batch_id: {batch_id}")
         requests.post(url, json=data)
@@ -119,6 +117,7 @@ class RepairEngine:
     def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set):
         if not repair_metadata and not expired_keys:
             logging.info(f"no repair metadata for batch {batch_id} on worker {worker_ip}, skip preparing.")
+            return
         if not worker_ip.endswith(":7000"):
             url = 'http://{}:7000/prepare'.format(worker_ip)
         else:

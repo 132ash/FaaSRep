@@ -17,9 +17,10 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info, port_controller, node_list, default_container_num, reserve_pool, input, output,ip, fast_path_enabled, remote_lock_enabled):
+    def __init__(self, client, transaction_sink_addr, function_info, port_controller, node_list, default_container_num, reserve_pool, input, output,ip, fast_path_enabled, remote_lock_enabled, optimistic_repair):
         self.client = client
         self.info = function_info
+        self.transaction_sink_addr = transaction_sink_addr
         self.port_controller = port_controller
         self.node_list = node_list
         self.default_container_num = default_container_num
@@ -29,6 +30,7 @@ class Function:
         self.ip = ip
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
+        self.optimistic_repair = optimistic_repair
         
         self.num_processing = 0
         self.rq = []
@@ -42,13 +44,11 @@ class Function:
                 raise Exception("Container creation failed")
             self.container_pool.put(container)
         print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
-        
-
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, parent_cnt,batch_id,lock_set):
+    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, parent_cnt,batch_id,lock_set, repair_states):
         data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'repair': is_repair, 'batch_id':batch_id,
-                 'output': output, 'write_set':write_set, "parent_cnt":parent_cnt,"lock_set":lock_set}
+                 'output': output, 'write_set':write_set, "parent_cnt":parent_cnt,"lock_set":lock_set, 'repair_states':repair_states}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()
@@ -118,7 +118,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container):
-        container.init(self.info.workflow_name, self.info.function_name, self.node_list, self.input,self.output, self.ip, container.port, self.fast_path_enabled, self.remote_lock_enabled)
+        container.init(self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.node_list, self.input,self.output, self.ip, container.port, self.fast_path_enabled, self.remote_lock_enabled, self.optimistic_repair)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):
