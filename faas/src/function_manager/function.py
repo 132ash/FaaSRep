@@ -17,7 +17,7 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, transaction_sink_addr, function_info, port_controller, node_list, default_container_num, reserve_pool, input, output,ip, fast_path_enabled, remote_lock_enabled, optimistic_repair):
+    def __init__(self, client, transaction_sink_addr, function_info, port_controller, node_list, default_container_num, reserve_pool, input, output,function_pos, fast_path_enabled, remote_lock_enabled, optimistic_repair):
         self.client = client
         self.info = function_info
         self.transaction_sink_addr = transaction_sink_addr
@@ -27,7 +27,7 @@ class Function:
         self.reserve_pool = reserve_pool
         self.input = input
         self.output = output    
-        self.ip = ip
+        self.function_pos = function_pos
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         self.optimistic_repair = optimistic_repair
@@ -117,8 +117,8 @@ class Function:
         self.port_controller.put(container.port)
 
     # do the function specific initialization work
-    def init_container(self, container):
-        container.init(self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.node_list, self.input,self.output, self.ip, container.port, self.fast_path_enabled, self.remote_lock_enabled, self.optimistic_repair)
+    def init_container(self, container: Container):
+        container.init(self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.node_list, self.input,self.output, self.function_pos, container.port, self.fast_path_enabled, self.remote_lock_enabled, self.optimistic_repair)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

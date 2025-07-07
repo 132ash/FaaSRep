@@ -77,5 +77,5 @@ class FaaSTCC_StorageLayer:
         }
         requests.post(url, json=data)
 
-    # TODO: FaaSTCC behavior on worker and container, don't send function pos between workers. Keep position infomation on validator.
+    # TODO: FaaSTCC behavior on worker and container, Concord.
             

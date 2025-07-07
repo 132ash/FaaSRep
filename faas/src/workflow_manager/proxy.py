@@ -59,8 +59,8 @@ class Dispatcher:
     def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
         return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
 
-    def get_state(self, workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
+    def get_state(self, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -144,10 +144,9 @@ def req():
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
     # sent from the previous function
-    function_pos = data.get('function_pos', {})
+    container_port = data.get('container_port', {})
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
-    worker_set = data.get('worker_set', {})
     RYW_subjection = data.get('RYW_subjection', {})
     # data for repair
     batch_id = data.get('batch_id', "")
@@ -159,7 +158,7 @@ def req():
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
 
-    state = dispatcher.get_state(workflow_name, transaction_id, function_pos, read_set, write_set, worker_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
+    state = dispatcher.get_state(workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
         
     logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function

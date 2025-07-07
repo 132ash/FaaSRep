@@ -23,7 +23,7 @@ def get_timestamp():
     return timestamp
 
 class SerializerProcess(Process):
-    def __init__(self, req_queue, result_pipes, handler_task_queues):
+    def __init__(self, req_queue, result_pipes, handler_task_queues, function_pos):
         super().__init__()
         self.req_queue = req_queue
         self.result_pipes = result_pipes 
@@ -34,6 +34,7 @@ class SerializerProcess(Process):
         self.batch_write_info = {} # {batch_id: {version, ready_write_cnt, all_write_cnt, writes:{key: False}}}, used for commit
         self.batch_validator_assignment = {}  # {batch_id: validator_worker_number}
         self.commit_suspended_batches = {} # {batch_id: validator_worker_number}
+        self.function_pos = function_pos  # {func_name: {'ip': ip, 'port': port}}, used to get the ip of the function for commit.
         
     def run(self):
         last_task_time = time.time()
@@ -52,7 +53,7 @@ class SerializerProcess(Process):
             if op == VALIDATE:
                 self.batch_validator_assignment[batch_id] = handler_id
                 version = get_timestamp()
-                batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'], data['function_pos'])
+                batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
                 if not batch_need_repair:
                     commit_list_for_current_handler = self.commit_all_ready_batches(batch_id)
                 self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info))
@@ -74,7 +75,7 @@ class SerializerProcess(Process):
         return commit_list_for_current_handler
 
 
-    def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch, function_pos_per_tx):
+    def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch):
         expired_set = {}
         subjection_set = {}
         pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
@@ -88,7 +89,7 @@ class SerializerProcess(Process):
             tx_need_repair = self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info, tx_index_inside_batch)
             if tx_need_repair:
                 batch_need_repair = True
-            self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id], function_pos_per_tx[tx_id])
+            self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id])
         return batch_need_repair, expired_set, subjection_set, pessi_sink_info
 
 
@@ -129,7 +130,7 @@ class SerializerProcess(Process):
             pessi_sink_info['last_tx'][tx_id] = pessi_nearest_writer['tx']
             return need_repair
 
-    def update_key_writers(self, batch_id, tx_id, write_set, function_pos):
+    def update_key_writers(self, batch_id, tx_id, write_set):
         for key, writer_func in write_set.items():
             self.key_writers.setdefault(key, [])
             # update transaction writer count. 
@@ -138,7 +139,7 @@ class SerializerProcess(Process):
                 self.batch_write_info[batch_id]['all_write_cnt'] += 1
                 if len(self.key_writers[key]) == 0:
                     self.batch_write_info[batch_id]['ready_write_cnt'] += 1
-                self.key_writers[key].append((batch_id, tx_id, writer_func, function_pos[writer_func]['ip']))
+                self.key_writers[key].append((batch_id, tx_id, writer_func, self.function_pos[writer_func]))
 
     def prev_batch_committed(self, batch_id):
         # check if this batch is ready to commit.

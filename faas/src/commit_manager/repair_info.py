@@ -5,9 +5,11 @@ import config
 PESSIMISTIC_REPAIR_ENABLED = config.PESSIMISTIC_REPAIR and config.REPAIR
 
 class RepairInfo:
-    def __init__(self, function_info):
-        self.function_info = function_info
+    def __init__(self, workflow_graph_topo, function_pos):
+        self.workflow_graph_topo = workflow_graph_topo
+        self.function_pos = function_pos
         self.fast_path_enabled = config.REPAIR and config.FAST_PATH
+
         # downstream function table: {txid:{func: {cnt, key:{upstream_func；xx, upstream_ip:xx}}}}, cnt is the number of functions it subject to.
 
         # upstream function table: {txid: {func:{key:[(func,ip)]}}, for each key it writes, recording the functions subject to it.
@@ -32,55 +34,52 @@ class RepairInfo:
         # self.downstream_func_table[batch_id] = {}
         # self.upstream_func_table[batch_id] = {"next_func":{}, "next_dict":{}}
 
-    def construct_repair_metadata(self, batch_id, expired_keys, crosstx_subjection, RYW_subjection, function_pos_per_tx, worker_set, txid_list):
+    def construct_repair_metadata(self, batch_id, expired_keys, crosstx_subjection, RYW_subjection, worker_set, txid_list, container_port):
         '''
         Construct the repair metadata for the given batch. Only add RYW info and expired keys to the metadata when pessimistic repair is enabled.        
         '''
         expired_keys_per_ip = {ip:set() for ip in worker_set}
         for tx_id in txid_list:
-            for func in self.function_info:
-                func_ip = function_pos_per_tx[tx_id][func]['ip']
+            for func, next_funcs in self.workflow_graph_topo:
+                func_ip = self.function_pos[func]
                 RYW_sub = RYW_subjection.get(tx_id, {}).get(func, {})
                 tx_dict = self.get_info_dict(batch_id, func_ip, tx_id)
                 crosstx_info = crosstx_subjection.get(tx_id, {}).get(func, {})
                 tx_dict[func] = crosstx_info if crosstx_info else {}
                 func_info_dict = tx_dict[func]
+                func_info_dict['RYW_keys'] = RYW_sub
+                if next_funcs[0] == 'END':
+                    func_info_dict['successor_port'] = {'END':{}}
+                else:
+                    func_info_dict['successor_port'] = {f:{container_port[f]} for f in next_funcs}
                 if PESSIMISTIC_REPAIR_ENABLED:
-                    func_info_dict['RYW_keys'] = RYW_sub
                     expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
                     expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
                     continue
                 # RYW info: merged with crosstx subjection info. when optimistic repair is enabled
                 if RYW_sub:
-                    func_info_dict['RYW_keys'] = RYW_sub
                     for key, introtx_upstream_func in RYW_sub.items():
                         # Remove keys from func_info_dict['upstream_keys'] if they appear in RYW_keys
                         if key in func_info_dict['upstream_keys']:
                             func_info_dict['upstream_keys'].pop(key)
                             func_info_dict['up_cnt'] -= 1
-                        upstream_func_ip = function_pos_per_tx[tx_id][introtx_upstream_func]['ip']
+                        upstream_func_ip = self.function_pos[introtx_upstream_func]
                         upstream_func_dict = self.get_info_dict(batch_id, upstream_func_ip, tx_id, introtx_upstream_func)
                         func_info_dict['dirty'] = upstream_func_dict.get('dirty', False) 
                         # this key is RYW, remove from expired keys.
                         expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
-
-                if self.function_info[func]['next'][0] == 'END':
-                    func_info_dict['successor_pos'] = {'END':{}}
-                else:
-                    func_info_dict['successor_pos'] = {f:{function_pos_per_tx[tx_id][f]} for f in self.function_info[func]['next']}
-                
                 expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
                 expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
         return expired_keys_per_ip
 
 
-    def update_pessimistic_repair_metadata(self, batch_id, tx_id, tx_dependency, function_pos_tx, expired_keys):
+    def update_pessimistic_repair_metadata(self, batch_id, tx_id, tx_dependency, expired_keys):
         """
         Update the repair metadata for the given transaction in the batch.
         and update the expired keys due to abort of previous transactions.
         """
         for func, func_dependency in tx_dependency.items():
-            func_ip = function_pos_tx[func]['ip']
+            func_ip = self.function_pos[func]
             func_info_dict = self.get_info_dict(batch_id, func_ip, tx_id, func)
             RYW_info = func_info_dict.get('RYW_keys', {})
             for key, dependency in func_dependency.items():

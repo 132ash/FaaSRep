@@ -27,6 +27,7 @@ PESSIMISTIC_REPAIR_FINISH = 4
 GATEWAY_ADDR = config.GATEWAY_ADDR
 DISPATCH_INTERVAL = 0.005 
 
+repo = Repository()
 
 class ValidatorPool:
     def __init__(self, num_validators, workflow_name=None):
@@ -36,17 +37,26 @@ class ValidatorPool:
         self.handler_task_queues = []
         self.serializer_return_pipes = []
         self.validator_handlers = []
+        function_pos = {}
+        workflow_graph_topo = {}
+        worker_ip_set = set()
         self.workflow_name = workflow_name
+        function_info = repo.get_function_info(repo.get_all_functions(workflow_name), workflow_name)
+        for func, info in function_info.items():
+            function_pos[func] = info['ip']
+            workflow_graph_topo[func] = info['next']
+            worker_ip_set.add(info['ip'])
+        worker_ip_set = list(worker_ip_set)
         self.batch_processor_table = {}  # {batch_id: processor_id}
         for i in range(self.num_validators):
             task_queue = Queue()
             parent_put, child_get = Pipe()
-            p = ValidatorProcess(i, workflow_name, task_queue, self.serializer_req_queue, child_get)
+            p = ValidatorProcess(i, workflow_name, task_queue, self.serializer_req_queue, child_get, function_pos, workflow_graph_topo, worker_ip_set, repo)
             p.start()
             self.handler_task_queues.append(task_queue)
             self.serializer_return_pipes.append(parent_put)
             self.validator_handlers.append(p)
-        self.serializer = SerializerProcess(self.serializer_req_queue, [parent_put for parent_put in self.serializer_return_pipes], self.handler_task_queues)
+        self.serializer = SerializerProcess(self.serializer_req_queue, [parent_put for parent_put in self.serializer_return_pipes], self.handler_task_queues, function_pos)
         self.serializer.start()
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
 
@@ -81,24 +91,26 @@ class ValidatorPool:
 
 class ValidatorProcess(Process):
 
-    def __init__(self, validator_id, workflow_name, task_queue, serializer_req_queue, child_get, repo:Repository):
+    def __init__(self, validator_id, workflow_name, task_queue, serializer_req_queue, child_get, function_pos, workflow_graph_topo, worker_ip_set, repo:Repository):
         super().__init__()
         self.validator_id = validator_id
         self.workflow_name = workflow_name
+
+
+        self.function_pos = function_pos
+        self.workflow_graph_topo = workflow_graph_topo
+        self.worker_ip_set = worker_ip_set
         self.repo = repo
-        self.all_functions = self.repo.get_all_functions(workflow_name)
-        self.function_info = self.repo.get_function_info(self.all_functions, workflow_name)
-        self.tx_sink_addr =  self.function_info[self.repo.get_end_function(workflow_name)]['ip']
+
+        self.tx_sink_addr =  self.function_pos[self.repo.get_end_function(workflow_name)]
         self.task_queue = task_queue
         self.serializer_req_queue = serializer_req_queue
         self.serializer_return_pipe = child_get
-        self.repair_info = RepairInfo(self.function_info)
-        self.repair_engine = RepairEngine(self.repair_info, self.workflow_name, self.tx_sink_addr, repo)
+        self.repair_info = RepairInfo(self.workflow_graph_topo,  self.function_pos)
+        self.repair_engine = RepairEngine(self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
 
         self.tx_list_per_batch = {}
-        self.tx_ip_set_per_batch = {}  # {batch_id: {tx_id: [ip1, ip2, ...]}}
-        self.function_pos_per_batch = {} 
-        self.worker_ip_set_per_batch = {}
+        self.container_port_per_batch = {} 
         self.read_set_per_batch = {}
         self.write_set_per_batch = {}
         self.successed_tx_list_per_batch = {}  # {batch_id: [tx_id1, tx_id2, ...]}
@@ -112,23 +124,19 @@ class ValidatorProcess(Process):
                 batch_id, op, data = self.task_queue.get(timeout=1)
                 last_task_time = time.time()
             except:
-                # 1秒无任务则休眠
                 if time.time() - last_task_time > 1:
                     gevent.sleep(0.1)
                 continue
             if op == VALIDATE:
                 lock_set = data.get('lock_set', {})
                 self.tx_list_per_batch[batch_id] = data['transaction_list']
-                self.worker_ip_set_per_batch[batch_id] = data['worker_set']['ip_set']
-                self.tx_ip_set_per_batch[batch_id] = data['worker_set']['per_tx']
-                self.function_pos_per_batch[batch_id] = data['function_pos']
                 self.successed_tx_list_per_batch[batch_id] = []
                 self.read_set_per_batch[batch_id] = data['read_set']
                 self.write_set_per_batch[batch_id] = data['write_set']
                 batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time, pessi_sink_info = self.validate(batch_id, data, last_task_time)
                 self.time_tuple_per_batch[batch_id] = (data['first_run_finish_time'], last_task_time, inside_validator_time)
                 if batch_need_repair:
-                    self.repair_engine.repair_batch(batch_id, data, self.function_pos_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], self.worker_ip_set_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
+                    self.repair_engine.repair_batch(batch_id, data['container_port'], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
                 else:
                     self.commit_batch_list(commit_list_for_current_handler,  lock_set)
             elif op == COMMIT:
@@ -137,7 +145,7 @@ class ValidatorProcess(Process):
             elif op == CASCADED_COMMIT:
                 self.commit_batch_list(data)
             elif op == PESSIMISTIC_REPAIR_FINISH:
-                self.repair_engine.pessimistic_repair_finish(batch_id, self.function_pos_per_batch[batch_id], self.worker_ip_set_per_batch[batch_id], self.write_set_per_batch[batch_id],self.successed_tx_list_per_batch[batch_id] , data)
+                self.repair_engine.pessimistic_repair_finish(batch_id, self.function_pos, self.worker_ip_set, self.write_set_per_batch[batch_id],self.successed_tx_list_per_batch[batch_id] , data)
 
     def serializer_request(self, batch_id, op, data):
         self.serializer_req_queue.put((self.validator_id, batch_id, op, data))
@@ -155,18 +163,19 @@ class ValidatorProcess(Process):
         if config.BASIC or config.REMOTE_LOCK:
             return False, {}, [(batch_id, Fake_version)], time.time() - start_time
         else:
-            serializer_input = {'function_pos':batch['function_pos'], 'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
+            serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
             batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
             if not batch_need_repair:
                 expired_keys_per_ip = {}
             else:
-                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], batch['function_pos'],  batch['worker_set'].keys(), batch['transaction_list'])
+                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
             return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time, pessi_sink_info
 
     
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, lock_set = {}):
         txid_lists, timestamps = [], []
+        worker_commit_set = {worker_ip:{"txs":[]} for worker_ip in self.worker_ip_set }
         for batch_id, version, keys_for_commit_per_ip in commit_batch_list:
             timestamps.append(self.time_tuple_per_batch[batch_id])
             if PESSIMISTIC_REPAIR_ENABLED:
@@ -179,25 +188,19 @@ class ValidatorProcess(Process):
                 self.repo.sync_shadow_to_data_db_with_version(batch_id, version)
                 self.repo.release_lock(batch_id, lock_set)
             else:
-                worker_commit_set = {}
-                for tx_id, worker_ip_list in self.tx_ip_set_per_batch[batch_id].items():
-                    for ip in worker_ip_list:
-                        worker_commit_set.setdefault(ip, {"txs":[]})['txs'].append(tx_id)
-                for ip, keys_for_commit in keys_for_commit_per_ip.items():
-                    worker_commit_set[ip]['keys'] = keys_for_commit
-                jobs = [
-                    gevent.spawn(self.trigger_worker_commit, batch_id, ip, version, worker_commit_set[ip])
-                    for ip in worker_commit_set
-                ]
-                gevent.joinall(jobs)
+                for worker_ip in self.worker_ip_set:
+                    worker_commit_set[worker_ip]["txs"].extend(successed_tx_list)
+                    worker_commit_set[worker_ip]['keys'] = keys_for_commit_per_ip[worker_ip]
             self.tx_list_per_batch.pop(batch_id, None)
-            self.tx_ip_set_per_batch.pop(batch_id, None)
-            self.worker_ip_set_per_batch.pop(batch_id, None)
             self.time_tuple_per_batch.pop(batch_id, None)
             self.read_set_per_batch.pop(batch_id, None)
-            self.function_pos_per_batch.pop(batch_id, None)
             self.write_set_per_batch.pop(batch_id, None)
             self.repair_engine.clean_table_of_batch(batch_id)
+        jobs = [
+            gevent.spawn(self.trigger_worker_commit, batch_id, ip, version, worker_commit_set[ip])
+            for ip in worker_commit_set
+        ]
+        gevent.joinall(jobs)
         self.notify_gateway(txid_lists, True, timestamps)
                      
 

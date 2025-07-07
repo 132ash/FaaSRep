@@ -158,10 +158,11 @@ class TransactionSink:
         self.repairing_batch_state:RepairingBatchState = RepairingBatchState(workflow_name) 
 
 
-    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], function_pos: Dict[str, str], worker_set: Dict[str, str], RYW_subjection:Dict[str, dict], lock_set:Dict[str, bool]):
+    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], container_port: Dict[str, str], RYW_subjection:Dict[str, dict], lock_set:Dict[str, bool]):
         self.queue_lock.acquire()
-        self.queue.append({'transaction_id': transaction_id, "workflow_name":workflow_name, 'worker_set': worker_set,
-                           'read_set': read_set, 'write_set': write_set, 'function_pos': function_pos, 'RYW_subjection': RYW_subjection, 'lock_set':lock_set})
+        self.queue.append({'transaction_id': transaction_id, "workflow_name":workflow_name, 
+                           'read_set': read_set, 'write_set': write_set, 'container_port': container_port, 
+                           'RYW_subjection': RYW_subjection, 'lock_set':lock_set})
         self.queue_lock.release()
 
     # transform the batch from a list of txs to a dict, for the convenience of validation.
@@ -172,8 +173,7 @@ class TransactionSink:
             "read_set": {},
             "write_set": {},
             "RYW_subjection": {},
-            "function_pos": {},
-            'worker_set':{},
+            "container_port": {},
             "transaction_list":[],
             "lock_set": {}
         }
@@ -183,9 +183,7 @@ class TransactionSink:
             transformed_batch["read_set"][tx_id]= tx["read_set"]
             transformed_batch["write_set"][tx_id]=tx["write_set"]
             transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
-            transformed_batch["function_pos"][tx_id] = tx["function_pos"]
-            transformed_batch["worker_set"]['per_tx'][tx_id] = tx["worker_set"].keys()
-            transformed_batch["worker_set"]['ip_set'].update(tx["worker_set"])
+            transformed_batch["container_port"][tx_id] = tx["container_port"]
             transformed_batch["transaction_list"].append(tx_id)
             transformed_batch["lock_set"][tx_id] = tx["lock_set"]
         transformed_batch["worker_set"]['ip_set'] = list(transformed_batch["worker_set"].keys())

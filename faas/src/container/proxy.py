@@ -44,7 +44,7 @@ class Runner:
         self.function = None
         self.node_list = None
         self.sink_addr = None
-        self.ip = None
+        self.function_pos = None
         self.shadow_table = None
         self.cache = None
         self.ctx = {}
@@ -53,7 +53,6 @@ class Runner:
         self.transaction_id = None
         self.input = {}
         self.output = {}
-        self.function_pos_inside_tx = {}
         self.write_set = {}
         self.is_repair = None
         self.parent_cnt = 0
@@ -72,7 +71,7 @@ class Runner:
         self.optimistic_repair = False
         self.lock_set = {}
 
-    def init(self, workflow, function, sink, node_list,input,output,ip, port, fast_path_enabled, remote_lock_enabled, optimistic_repair):
+    def init(self, workflow, function, sink, node_list,input,output,function_pos, port, fast_path_enabled, remote_lock_enabled, optimistic_repair):
         # update function status
         self.workflow = workflow
         self.function = function
@@ -80,7 +79,7 @@ class Runner:
         self.node_list = node_list
         self.input = input
         self.output = output
-        self.ip = ip
+        self.function_pos = function_pos
         self.port = port
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
@@ -97,13 +96,12 @@ class Runner:
         filename = os.path.join(work_dir, default_file)
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
-        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled)
+        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled, self.function_pos)
 
         logging.info('init finished...')
 
-    def save(self, transaction_id, function_pos, write_set, parent_cnt, lock_set):
+    def save(self, transaction_id, write_set, parent_cnt, lock_set):
         self.transaction_id = transaction_id
-        self.function_pos_inside_tx = function_pos
         self.write_set = write_set
         self.parent_cnt = parent_cnt
         self.lock_set = lock_set
@@ -150,7 +148,7 @@ class Runner:
                     repair_metadata = json.loads(metadata_string)
                     self.keys_from_upstream = repair_metadata['upstream_keys']
                     self.keys_from_RYW = repair_metadata['RYW_keys']
-                    self.successor_pos = repair_metadata['successor_pos']
+                    self.successor_port = repair_metadata['successor_port']
                     self.dirty = repair_metadata['dirty']
                     # besides metadata, the subjection from upstream should be prepared by container itself.
                     self.prepair_subjection_before_repair(transaction_id)
@@ -205,17 +203,18 @@ class Runner:
             )
         # If not aborted, trigger successor functions in workflow graph.
         if not aborted:
-            for next_func, pos in self.successor_pos:
+            for next_func, port in self.successor_port:
+                next_ip = self.function_pos[next_func]
                 if next_func == 'END':
                     next_trigger_tasks.append(
                         gevent.spawn(self.fin_repair, batch_id, self.transaction_id, self.ip)
                     )
                     break
-                logging.info(f"Trigger Next functions: {self.successor_pos}")
+                logging.info(f"Trigger Next functions: {next_ip}:{self.successor_port}")
                 next_trigger_tasks.append(
                     gevent.spawn(
                     self.trigger_next_function,
-                    self.transaction_id, pos['ip'], pos['port'], self.container_state, self.dirty, batch_id
+                    self.transaction_id, next_ip, port, self.container_state, self.dirty, batch_id
                     )
                 )
         gevent.joinall(next_trigger_tasks)
@@ -236,10 +235,10 @@ class Runner:
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, function_pos_inside_tx: {self.function_pos_inside_tx}, write_set: {self.write_set}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
+        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         if not is_repair or not self.fast_path_enabled or self.dirty:
-            store.runtime_init(self.input, self.output, is_repair, self.function_pos_inside_tx, transaction_id, TxMetaData_thisFunc)
+            store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
             # pre-exec
             try:
@@ -306,7 +305,7 @@ def init():
     inp = request.get_json(force=True, silent=True)
     runner.init(inp['workflow'], inp['function'], inp['sink'],
                 inp['node_list'], inp['input'],inp['output'],
-                inp['ip'],inp['port'],inp['fast_path_enabled'], 
+                inp['function_pos'],inp['port'],inp['fast_path_enabled'], 
                 inp['remote_lock_enabled'], inp['optimistic_repair'])
 
     proxy.status = 'ok'

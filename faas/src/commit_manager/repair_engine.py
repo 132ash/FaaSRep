@@ -22,41 +22,43 @@ PESSIMISTIC_REPAIR_ENABLED = config.PESSIMISTIC_REPAIR and config.REPAIR
 
 class RepairEngine:
 
-    def __init__(self, repair_info:RepairInfo, workflow_name, tx_sink_addr, repo: Repository):
+    def __init__(self, repair_info:RepairInfo, function_pos, worker_ip_set, workflow_name, tx_sink_addr, repo: Repository):
         self.repair_info = repair_info
         self.tx_sink_addr = tx_sink_addr
         self.workflow_name = workflow_name
+        self.function_pos = function_pos
+        self.worker_ip_set = worker_ip_set
         self.repo = repo
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
-        self.PessimisticRepairer = PessimisticRepairer(workflow_name, tx_sink_addr, self.repair_info)
+        self.PessimisticRepairer = PessimisticRepairer(workflow_name, tx_sink_addr, self.repair_info, self.function_pos)
 
-    def repair_batch(self,batch_id, batch, func_pos,write_set,tx_list ,worker_ip_set, expired_keys, pessi_sink_info):
+    def repair_batch(self,batch_id,container_port, write_set,tx_list, expired_keys, pessi_sink_info):
         # allocate works
         start = time.time()
-        function_pos_per_tx = batch['function_pos']
         if PESSIMISTIC_REPAIR_ENABLED:
-            self.PessimisticRepairer.register_repair_info(batch_id, write_set, func_pos, tx_list, pessi_sink_info['last_tx'])
+            self.PessimisticRepairer.register_repair_info(batch_id, write_set, tx_list, pessi_sink_info['last_tx'])
             ready_txs = self.register_on_sink(batch_id, pessi_sink_info)['ready_txs']
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)
         else:
-            ready_txs = batch['transaction_list']
-        self.repair_transactions(batch_id, ready_txs, worker_ip_set, function_pos_per_tx, expired_keys)
+            ready_txs = tx_list
+        self.repair_transactions(batch_id, ready_txs, expired_keys, container_port)
         return time.time() - start
 
     # after repair metadata is filled, trigger the start functions to repair the workflow.
-    def pessimistic_repair_finish(self, batch_id, func_pos, worker_ip_set ,batch_write_set,successed_tx_list_per_batch, data):
+    def pessimistic_repair_finish(self, batch_id, batch_write_set,successed_tx_list_per_batch, data):
         fin_tx_id = data['tx_id']
         state = data['state']
         cascaded_ready_txs = data['ready_txs']
+        container_port = data.get('container_port', {})
         if state == ABORTED:
             self.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, batch_write_set, fin_tx_id)
         else:
             successed_tx_list_per_batch.append(fin_tx_id)
         expired_keys = {}
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
-        self.repair_transactions(batch_id, cascaded_ready_txs, worker_ip_set, func_pos, expired_keys)     
+        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port)     
             
-    def repair_transactions(self, batch_id, ready_transactions, worker_ip_set, function_pos_per_tx, expired_keys):
+    def repair_transactions(self, batch_id, ready_transactions, worker_ip_set, expired_keys, container_port={}):
         repair_prepare_jobs = []
         trigger_jobs = []
         for ip in worker_ip_set:
@@ -70,8 +72,8 @@ class RepairEngine:
                 repair_metadata_no_fast = self.repair_info.get_repair_metadata(batch_id, '', tx_id)
             # trigger start functions
             for n in self.start_functions:
-                ip = function_pos_per_tx[tx_id][n]['ip']
-                port = function_pos_per_tx[tx_id][n]['port']
+                ip = self.function_pos[n]
+                port = container_port.get(n)
                 trigger_jobs.append(gevent.spawn(self.trigger_function, FAST_PATH_ENABLED, self.workflow_name, tx_id, n, ip, port,batch_id, repair_metadata_no_fast))
         gevent.joinall(trigger_jobs)   
         

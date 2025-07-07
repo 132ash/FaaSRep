@@ -15,15 +15,16 @@ WAITING = 3
 
 class PessimisticRepairer:
 
-    def __init__(self, workflow_name, repair_info: RepairInfo = None):
+    def __init__(self, workflow_name, repair_info: RepairInfo = None, function_pos=None):
         self.workflow_name = workflow_name
         self.repair_info = repair_info
+        self.function_pos = function_pos
         self.tx_write_table_per_batch = {} 
         self.write_table_lock_per_batch = {}
         self.transaction_idx_per_batch = {}  
         self.last_subjection_for_tx_per_batch = {}  # {batch_id:{txid: last_tx_id}}
     
-    def register_repair_info(self, batch_id, batch_write_set, batch_function_pos, transaction_list, last_tx):
+    def register_repair_info(self, batch_id, batch_write_set, transaction_list, last_tx):
         self.write_table_lock_per_batch[batch_id] = gevent.lock.BoundedSemaphore()
         self.transaction_idx_per_batch[batch_id] = {tx_id: idx for idx, tx_id in enumerate(transaction_list)}
         self.tx_write_table_per_batch[batch_id] = {}
@@ -31,10 +32,10 @@ class PessimisticRepairer:
         for tx_id in transaction_list:
             ws = batch_write_set.get(tx_id, {})
             for key, writer_func in ws.items():
-                self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = {'tx_id': tx_id, 'func': writer_func, 'ip':batch_function_pos[tx_id][writer_func]['ip']}
+                self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = {'tx_id': tx_id, 'func': writer_func}
                 
 
-    def prepare_pessimistic_info(self,batch_id, read_set,batch_function_pos,expired_keys, ready_tx_list):
+    def prepare_pessimistic_info(self,batch_id, read_set,expired_keys, ready_tx_list):
         """
         based on current writer_list, prepare the expired keys and subjection info for the ready transactions.
         """
@@ -58,7 +59,7 @@ class PessimisticRepairer:
                                 break
                         # Store the dependency for this (key, func)
                         tx_dependency[func][key] = dependency
-            self.repair_info.update_pessimistic_repair_metadata(batch_id, tx_id, tx_dependency, batch_function_pos[tx_id], expired_keys)
+            self.repair_info.update_pessimistic_repair_metadata(batch_id, tx_id, tx_dependency, expired_keys)
         self.write_table_lock_per_batch[batch_id].release()
 
     def modify_batch_write_table_for_abort(self, batch_id, batch_write_set, tx_id):
@@ -76,9 +77,9 @@ class PessimisticRepairer:
             # Find the rightmost non-None writer info
             for writer_info in writer_list[::-1]:
                 if writer_info is not None:
-                    ip = writer_info['ip']
                     tx_id = writer_info['tx_id']
                     func = writer_info['func']
+                    ip = self.function_pos[func]
                     commit_keys_per_ip.setdefault(ip, []).append(f"{tx_id}:PUT:{func}:{key}")
                     break
         return commit_keys_per_ip

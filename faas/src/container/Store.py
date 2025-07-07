@@ -33,17 +33,18 @@ class Store:
             os.system('rm -rf work')
         os.mkdir('work')
 
-    def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled):
+    def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled, function_pos):
         self.function_name = function_name
         self.redis_shadow_table = shadow_table
         self.redis_cache = cache
+        self.function_pos = function_pos
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         self.db_server = db_server
         self.beldi_store = BeldiStore(self.db_server)
        
 
-    def runtime_init(self, input, output, is_repair, function_pos, transaction_id, metadata):
+    def runtime_init(self, input, output, is_repair, transaction_id, metadata):
         self.transaction_id = transaction_id
         self.input = input
         self.output = output
@@ -54,7 +55,6 @@ class Store:
         self.keys_from_upstream = metadata['keys_from_upstream']
         self.lock_set = metadata['lock_set']
         self.is_repair = is_repair
-        self.function_pos = function_pos
         self.beldi_store.runtime_init(transaction_id, self.lock_set)
 
     # mode: 'RET', 'PUT'
