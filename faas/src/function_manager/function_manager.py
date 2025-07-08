@@ -3,6 +3,7 @@ import logging
 
 import gevent
 import docker
+from typing import Dict
 from function_info import parse
 from port_controller import PortController
 from function import Function
@@ -35,7 +36,7 @@ class FunctionManager:
         self.port_controller = PortController(min_port, min_port + 4999)
         self.client = docker.from_env()
         self.default_container_num = config.DEFAULT_CONTAINER_NUM
-        self.functions = {}
+        self.functions:Dict[str, Function] = {}
         self.function_pos = function_pos
 
         for x in self.function_info:
@@ -57,8 +58,8 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_pos, function_name, transaction_id, write_set,is_repair, parent_cnt,batch_id, lock_set=None, repair_states={}):
+    def run(self, function_name, transaction_id, write_set,is_repair, parent_cnt,batch_id, lock_set=None, repair_states={},snapshot_interval=[]):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
-        return self.functions[function_name].send_request(transaction_id, function_pos, write_set, is_repair, parent_cnt,batch_id, lock_set, repair_states)
+        return self.functions[function_name].send_request(transaction_id, write_set, is_repair, parent_cnt,batch_id, lock_set, repair_states, snapshot_interval)

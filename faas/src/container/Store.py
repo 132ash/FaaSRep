@@ -4,7 +4,7 @@ from redis_component import RedisShadowTable, RedisCache
 import json
 import os
 import threading
-import container_config
+from FaaSTCC_store import FaaSTCC_Store
 from beldi_store import BeldiStore
 import redis
 import time
@@ -33,15 +33,17 @@ class Store:
             os.system('rm -rf work')
         os.mkdir('work')
 
-    def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled, function_pos):
+    def init(self, workflow, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled, function_pos,validator_addr, FaaSTCC_enabled):
         self.function_name = function_name
         self.redis_shadow_table = shadow_table
         self.redis_cache = cache
         self.function_pos = function_pos
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
+        self.FaaSTCC_enabled = FaaSTCC_enabled
         self.db_server = db_server
         self.beldi_store = BeldiStore(self.db_server)
+        self.FaaSTCC_Store = FaaSTCC_Store(workflow, validator_addr, self.redis_shadow_table, function_pos, db_server)
        
 
     def runtime_init(self, input, output, is_repair, transaction_id, metadata):
@@ -54,8 +56,10 @@ class Store:
         self.keys_from_RYW = metadata['keys_from_RYW']
         self.keys_from_upstream = metadata['keys_from_upstream']
         self.lock_set = metadata['lock_set']
+        self.snapshot_interval = metadata['snapshot_interval']
         self.is_repair = is_repair
         self.beldi_store.runtime_init(transaction_id, self.lock_set)
+        self.FaaSTCC_Store.runtime_init(self.transaction_id ,self.snapshot_interval, self.read_set)
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode, txid=None):
@@ -135,6 +139,10 @@ class Store:
             upstream_func = self.write_set.get(key, "")
             value, lock_time = self.beldi_store.get(key, upstream_func)
             self.lock_latency += lock_time
+            end = time.time()  
+        elif self.FaaSTCC_enabled:
+            upstream_func = self.write_set.get(key, "")
+            value = self.FaaSTCC_Store.get(key, upstream_func)
             end = time.time()  
         else: 
             # first run, check RYW subjection.

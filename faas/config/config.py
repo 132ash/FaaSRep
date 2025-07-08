@@ -44,11 +44,15 @@ FAST_PATH = False
 REMOTE_LOCK = False
 OPTIMISTIC_REPAIR = True
 PESSIMISTIC_REPAIR = False
+FAASTCC = False
 
 # repair setting
 RUNNING = 1
 REPAIRED = 2
 ABORTED = 3
+
+# FaaSTCC setting
+DEFAULT_SNAPSHOT_INTERVAL = []
 
 
 

@@ -18,8 +18,10 @@ monkey.patch_all()
 import os
 import gevent
 import time
+import requests
 import json
 from typing import Dict
+from datetime import datetime
 sys.path.append('../../config')
 import config
 import workersp_repo
@@ -36,6 +38,7 @@ sys.path.append('../../config')
 import config
 
 validate_interval = 0.005 # 200 qps at most
+default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
 
 
 REPAIRED = 1
@@ -47,9 +50,10 @@ class Dispatcher:
        os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
        repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
+       self.node_list = repo.get_all_addrs('common')
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo) for name, addr in info_addrs.items()}
+       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
     def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id, state):
@@ -59,8 +63,8 @@ class Dispatcher:
     def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
         return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
 
-    def get_state(self, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set)
+    def get_state(self, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}, snapshot_interval=[]) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set,snapshot_interval)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -73,6 +77,12 @@ class Dispatcher:
     
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
+
+    def FaaSTCC_abort(self, workflow_name, transaction_id):
+        self.managers[workflow_name].abort_tx(transaction_id)
+
+    def clear_and_notify_for_abort(self, workflow_name, transaction_id):
+        self.managers[workflow_name].clear_and_notify_for_abort(transaction_id)
     
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
@@ -118,10 +128,14 @@ def fin_repair():
 @app.route('/abort', methods = ['POST'])
 def abort():
     data = request.get_json(force=True, silent=True)
-    batch_id = data['batch_id']
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, ABORTED)
+    dispatcher.clear_and_notify_for_abort(workflow_name, transaction_id)
+    if config.REMOTE_LOCK:
+        lock_set = data.get('lock_set', {})
+        repo.release_lock(transaction_id, lock_set)
+    elif config.PESSIMISTIC_REPAIR and data.get('repair', False):
+        dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id, ABORTED)
     return json.dumps({'status': 'ok'})
 
 @app.route('/crosstx_req', methods = ['GET'])
@@ -154,12 +168,15 @@ def req():
     repair_states = {}
     # data for remote lock
     lock_set = data.get('lock_set', {})
+    # data for FaaSTCC
+    snapshot_interval = data.get('snapshot_interval', default_FaaSTCC_snapshot_interval)
     if config.REPAIR and not config.FAST_PATH:
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
-
-    state = dispatcher.get_state(workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set)
-        
+    state = dispatcher.get_state(workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
+    if config.FAASTCC and state is None:
+        dispatcher.FaaSTCC_abort(workflow_name, transaction_id)
+        return
     logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -200,15 +217,11 @@ def prepare():
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
-    workflow_name = data['workflow_name']
-    batch_id = data['batch_id']
     version = data['version']
     tx_list = data['txs']
-    commit_key_list = data['keys']
+    commit_key_list = data.get('keys', [])
     # release the containers reserved into container pool.
-    for txid in tx_list:
-        dispatcher.reserve_pools[workflow_name].release(txid)
-    logging.info(f"[{batch_id}] commit. all transactions:{tx_list} commit_key_list: {commit_key_list}, version {version}")
+    logging.info(f"Worker commit. all transactions:{tx_list} commit_key_list: {commit_key_list}, version {version}")
     repo.commit_tx_writes(commit_key_list, tx_list, version)
     return json.dumps({'status': 'ok'})
 

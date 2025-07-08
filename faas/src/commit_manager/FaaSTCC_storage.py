@@ -11,19 +11,28 @@ sys.path.append('../../config')
 import config
 
 class FaaSTCC_StorageLayer:
-    def __init__(self, workflow_name, repo:Repository):
+    def __init__(self, workflow_name):
         self.workflow_name = workflow_name
-        self.repo = repo
+        self.repo = Repository()
         self.nearest_transaction_version = ''
+        self.function_pos = {}
+        self.worker_set = set()
+        function_info = self.repo.get_function_info(self.repo.get_all_functions(workflow_name), workflow_name)
+        for func, info in function_info.items():
+            self.function_pos[func] = info['ip']
+            self.worker_set.add(info['ip'])
+        self.worker_set = list(self.worker_set)
         self.commit_lock = gevent.lock.BoundedSemaphore()
         self.versions_list_per_key = defaultdict(list) # {key:[version1, version2, ...]}
+        self.key_locks = defaultdict(gevent.lock.BoundedSemaphore)  # {key: lock}
       
     
     def FaaSTCC_get(self, version_target, key):
         promise = ''
-        self.commit_lock.acquire()
+        self.key_locks[key].acquire()
+        nearest_version = self.nearest_transaction_version
         if key not in self.versions_list_per_key:
-            self.commit_lock.release()
+            self.key_locks[key].release()
             return '', promise
         versions_list = self.versions_list_per_key[key]
         nearest_version = None
@@ -40,42 +49,35 @@ class FaaSTCC_StorageLayer:
         if result_idx != -1:
             nearest_version = versions_list[result_idx]
         else:
-            self.commit_lock.release()
+            self.key_locks[key].release()
             return '', promise
-        if result_idx + 1 < len(versions_list):
-            promise = versions_list[result_idx + 1]
-        else:
-            promise = self.nearest_transaction_version
-        self.commit_lock.release()
+        promise = versions_list[result_idx + 1] if result_idx + 1 < len(versions_list) else nearest_version
+        self.key_locks[key].release()
         return nearest_version, promise
 
-    def FaaSTCC_commit(self, transaction_id, write_set, version, function_pos, worker_set):
-        commit_set_per_ip = defaultdict(list)
+    def FaaSTCC_commit(self, transaction_id, write_set, version):
         self.commit_lock.acquire()
         self.nearest_transaction_version = version
-        for key, func in write_set:
-            func_ip = function_pos[func]
-            commit_set_per_ip[func_ip].append(key)
+        for key in write_set.keys():
+            self.key_locks[key].acquire()
             self.versions_list_per_key[key].append(version)
+            self.key_locks[key].release()
         self.commit_lock.release()
         jobs = [
-            gevent.spawn(self.trigger_worker_commit, ip, transaction_id, version, commit_set_per_ip[ip])
-            for ip in worker_set
+            gevent.spawn(self.trigger_worker_commit, ip, transaction_id, version)
+            for ip in self.worker_set
         ]
         gevent.joinall(jobs)
 
-    def trigger_worker_commit(self, ip, transaction_id, version, commit_set):
+    def trigger_worker_commit(self, ip, transaction_id, version):
         if not ip.endswith(":7000"):
             url = f"http://{ip}:7000/commit"
         else:
             url = f"http://{ip}/commit"
         data = {
-            'workflow_name': self.workflow_name,
-            'transaction_id':transaction_id,
-            "version": version,
-            "commit_set": commit_set
+            'transaction_id':[transaction_id],
+            "version": version
         }
         requests.post(url, json=data)
 
-    # TODO: FaaSTCC behavior on worker and container, Concord.
-            
+    # TODO: Concord, check code, test all modes.

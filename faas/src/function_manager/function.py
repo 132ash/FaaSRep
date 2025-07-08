@@ -46,9 +46,9 @@ class Function:
         print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
     
     # put the request into request queue
-    def send_request(self, transaction_id, function_pos, input, output, write_set, is_repair, parent_cnt,batch_id,lock_set, repair_states):
-        data = {'transaction_id': transaction_id, "function_pos":function_pos, 'input': input,'repair': is_repair, 'batch_id':batch_id,
-                 'output': output, 'write_set':write_set, "parent_cnt":parent_cnt,"lock_set":lock_set, 'repair_states':repair_states}
+    def send_request(self, transaction_id, write_set, is_repair, parent_cnt,batch_id,lock_set, repair_states, snapshot_interval):
+        data = {'transaction_id': transaction_id, 'repair': is_repair, 'batch_id':batch_id,
+                 'write_set':write_set, "parent_cnt":parent_cnt,"lock_set":lock_set, 'repair_states':repair_states, 'snapshot_interval':snapshot_interval}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()
@@ -118,7 +118,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container: Container):
-        container.init(self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.node_list, self.input,self.output, self.function_pos, container.port, self.fast_path_enabled, self.remote_lock_enabled, self.optimistic_repair)
+        container.init(self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, config.validator_addr, self.node_list, self.input,self.output, self.function_pos, container.port, self.fast_path_enabled, self.remote_lock_enabled, self.optimistic_repair)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

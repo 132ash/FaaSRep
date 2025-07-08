@@ -107,17 +107,18 @@ class Repository:
     def clear_mem(self, transaction_id=""):
         if transaction_id:
             print(f"clearing shadow table for {transaction_id}")
-            keys = self.shadowtable_redis_all_addr[self.ip].keys()
-            for key in keys:
-                key_str = key.decode()
-                if key_str.startswith(transaction_id):
-                    self.shadowtable_redis_all_addr[self.ip].delete(key)
+            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")
+            if keys:
+                pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+                for key in keys:
+                    pipe.delete(key)
+                pipe.execute()
         else:
-            print("clearing all shadow tables")
+            print("clearing all shadow tables and cache")
             self.shadowtable_redis_all_addr[self.ip].flushall(True)
-        self.cache_redis.flushall(True)
-        remain_keys_len = len(self.cache_redis.keys("*")) 
-        print(f"clearing caches, remaining:{remain_keys_len}")
+            self.cache_redis.flushall(True)
+            remain_keys_len = len(self.cache_redis.keys("*")) 
+            print(f"clearing caches, remaining:{remain_keys_len}")
 
     def clear_db(self, transaction_id):
         db = self.couch['results']
@@ -184,16 +185,27 @@ class Repository:
 
     # commit keys to DB, flush cache, and delete shadow table entries.
     def commit_tx_writes(self, commit_key_list, tx_list, version):
-        cache_pipe = self.cache_redis.pipeline()
+        if config.FaaSTCC:
+            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{tx_list[0]}:PUT:*")
+            shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+            shadow_table_pipe.multi()
+            for redis_key in keys:
+                shadow_table_pipe.get(redis_key)
+            responses = shadow_table_pipe.execute()
+            for redis_key, value in zip(keys, responses):
+                key = self.param_decode(redis_key)
+                self.data_db.store_data_to_db(key, version, value)
+        else:
+            cache_pipe = self.cache_redis.pipeline()
+            cache_pipe.multi()
+            for redis_key in commit_key_list:
+                key = self.param_decode(redis_key)
+                value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
+                cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
+                # 调用 store_key_to_db 存储到数据库中
+                self.data_db.store_data_to_db(key, version, value)
+            cache_pipe.execute()
         shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
-        cache_pipe.multi()
-        for redis_key in commit_key_list:
-            key = self.param_decode(redis_key.decode('utf-8'))
-            value = self.shadowtable_redis_all_addr[self.ip].get(redis_key).decode('utf-8')
-            cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
-            # 调用 store_key_to_db 存储到数据库中
-            self.data_db.store_data_to_db(key, version, value)
-        cache_pipe.execute()
         shadow_table_pipe.multi()
         for transaction_id in tx_list:  
             redis_keys_all = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")   
@@ -213,3 +225,24 @@ class Repository:
                 version = item['version']
             self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
         print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")
+
+    def release_lock(self, transaction_id, lock_set):
+        """
+        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
+        """
+
+        for key in lock_set.keys():
+            # 更新 lock 属性为 None
+            self.data_db.update_item(
+                Key={'key': key},
+                UpdateExpression="SET #l = :none",
+                ExpressionAttributeNames={
+                    '#l': 'lock'
+                },
+                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
+                ExpressionAttributeValues={
+                    ':txid': transaction_id,
+                    ':none': None
+                },
+                ReturnValues="UPDATED_NEW"
+            )

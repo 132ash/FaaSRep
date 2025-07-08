@@ -41,6 +41,7 @@ class RedisCache:
             value_tuple = json.loads(value_tuple.decode('utf-8'))
         return value_tuple
     
+    
     def db_get(self, key):
         # 从dynamodb中获取数据
         response = self.data_db.get_item(

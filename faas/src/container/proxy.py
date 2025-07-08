@@ -71,11 +71,12 @@ class Runner:
         self.optimistic_repair = False
         self.lock_set = {}
 
-    def init(self, workflow, function, sink, node_list,input,output,function_pos, port, fast_path_enabled, remote_lock_enabled, optimistic_repair):
+    def init(self, workflow, function, sink, validator, node_list,input,output,function_pos, port, fast_path_enabled, remote_lock_enabled, optimistic_repair, FaaSTCC_enabled):
         # update function status
         self.workflow = workflow
         self.function = function
         self.sink_addr = sink
+        self.validator_addr = validator
         self.node_list = node_list
         self.input = input
         self.output = output
@@ -83,12 +84,13 @@ class Runner:
         self.port = port
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
+        self.FaaSTCC_enabled = FaaSTCC_enabled
         self.optimistic_repair = optimistic_repair
         # shadow table on each host
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.ip)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
-        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.ip, self.port)
+        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.function_pos[self.function], self.port)
         self.container_state = RUNNING
         os.chdir(work_dir)
 
@@ -96,16 +98,17 @@ class Runner:
         filename = os.path.join(work_dir, default_file)
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
-        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled, self.function_pos)
+        store.init(self.workflow, self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled, self.function_pos, self.validator_addr, FaaSTCC_enabled)
 
         logging.info('init finished...')
 
-    def save(self, transaction_id, write_set, parent_cnt, lock_set):
+    def save(self, transaction_id, write_set, parent_cnt, lock_set, snapshot_interval):
         self.transaction_id = transaction_id
         self.write_set = write_set
         self.parent_cnt = parent_cnt
         self.lock_set = lock_set
         self.container_state = RUNNING
+        self.snapshot_interval = snapshot_interval
 
     def prepair_subjection_before_repair(self, transaction_id):
         set_pipeline = self.shadow_table[self.ip].pipeline() 
@@ -177,16 +180,16 @@ class Runner:
         logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
         requests.post(url, json=data)
 
-    def fin_repair(self, batch_id, transaction_id, ip):
+    def fin_repair(self, batch_id, transaction_id):
         logging.info(f"Finishing repair: {self.function}")
-        url = f'http://{ip}:7000/fin_repair'
+        url = f'http://{self.sink_addr}:7000/fin_repair'
         data = {'batch_id': batch_id, "transaction_id": transaction_id}
         requests.post(url, json=data)
 
     def abort_transaction(self, batch_id, transaction_id):
         logging.info(f"abort transaction: {self.function}")
         url = f'http://{self.sink_addr}:7000/abort'
-        data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow}
+        data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True}
         requests.post(url, json=data)
 
     def trigger_downstream_functions(self, batch_id, aborted, downstream_funcs):
@@ -207,7 +210,7 @@ class Runner:
                 next_ip = self.function_pos[next_func]
                 if next_func == 'END':
                     next_trigger_tasks.append(
-                        gevent.spawn(self.fin_repair, batch_id, self.transaction_id, self.ip)
+                        gevent.spawn(self.fin_repair, batch_id, self.transaction_id)
                     )
                     break
                 logging.info(f"Trigger Next functions: {next_ip}:{self.successor_port}")
@@ -227,6 +230,7 @@ class Runner:
                                 "read_set": {}, 
                                 "write_set": self.write_set, 
                                 "lock_set": self.lock_set,
+                                'snapshot_interval': self.snapshot_interval,
                                 "RYW_subjection": {},
                                 "keys_from_RYW": self.keys_from_RYW,
                                 "keys_from_upstream": self.keys_from_upstream,
@@ -275,6 +279,9 @@ class Runner:
         if self.remote_lock_enabled:
             lock_latency = store.lock_latency
 
+        if self.FaaSTCC_enabled:
+            TxMetaData_thisFunc["read_set"] = {}
+
         if not self.fast_path_enabled or not is_repair or self.dirty:
             io_latency = store.io_latency
 
@@ -303,7 +310,7 @@ def init():
     proxy.status = 'init'
 
     inp = request.get_json(force=True, silent=True)
-    runner.init(inp['workflow'], inp['function'], inp['sink'],
+    runner.init(inp['workflow'], inp['function'], inp['sink'], inp['validator'],
                 inp['node_list'], inp['input'],inp['output'],
                 inp['function_pos'],inp['port'],inp['fast_path_enabled'], 
                 inp['remote_lock_enabled'], inp['optimistic_repair'])
@@ -323,12 +330,14 @@ def run():
     no_parent_execution = False
     batch_id = ""
     lock_set = {}
+    snapshot_interval = []
     rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
     if not is_repair:
         lock_set = inp['lock_set']
-        runner.save(transaction_id, inp['function_pos'], inp['write_set'], inp['parent_cnt'], lock_set)
+        snapshot_interval = inp['snapshot_interval']
+        runner.save(transaction_id, inp['write_set'], inp['parent_cnt'], lock_set, snapshot_interval)
     else:
         batch_id = inp['batch_id']
         if runner.fast_path_enabled:
@@ -349,6 +358,7 @@ def run():
         "io_latency": io_latency,
         "lock_set": lock_set,
         "lock_latency": lock_latency,
+        'snapshot_interval': snapshot_interval,
     }
 
     proxy.status = 'ok'
