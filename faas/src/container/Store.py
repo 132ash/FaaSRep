@@ -207,4 +207,4 @@ class Store:
         data = {'mode':'write', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.function_name}
         requests.post(url, json=data)
 
-        # TODO: Concord commit(read set, write set transform), and 
+        # TODO: Concord commit(read set, write set transform), check code, test. 
