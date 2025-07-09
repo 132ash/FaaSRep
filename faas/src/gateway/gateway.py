@@ -76,14 +76,14 @@ def run():
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
-    txTable.registerTX(transaction_id, parameters)
+    txTable.registerTX(workflow, transaction_id, parameters)
     logging.info('processing request ' + transaction_id + '...')
     start = time.time()
     if config.REMOTE_LOCK:
         repo.create_shadow_table(transaction_id)
     aborted = False
     retry = False
-    # run the workflow. in beldi, the workflow may abort in the middle.s
+    # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         exec_first_latency = run_workflow(workflow, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
@@ -115,10 +115,8 @@ def notify():
     transaction_id_lists = data['transaction_id_list']
     timestamps = data['timestamps']
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
-        if config.REMOTE_LOCK and data.get('abort', False):
-            lock_set = data['lock_set']
-            repo.release_lock(transaction_id_list[0], lock_set)
-            logging.info(f"transaction {transaction_id_list[0]} aborted. lock_set {lock_set} released")
+        if data.get('abort', False):
+            logging.info(f"transaction {transaction_id_list[0]} aborted.")
             txTable.notifyTX(transaction_id_list, 0,0, 0, True)
         else:
             first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch

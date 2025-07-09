@@ -323,17 +323,6 @@ class WorkerSPManager:
 
     def clear_mem(self, transaction_id):
         self.repo.clear_mem(transaction_id)
-
-    def clear_and_notify_for_abort(self, transaction_id):
-        trigger_jobs = []
-        url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        data = {"abort":True, 'transaction_id_list': [transaction_id]}
-        trigger_jobs.append(requests.post(url, json=data))
-        for ip in self.node_list:
-            data = {'workflow_name': self.workflow_name, 'transaction_id': transaction_id}
-            url = f"http://{ip}:7000/clear"
-            trigger_jobs.append(gevent.spawn(requests.post, url, data))
-        gevent.joinall(trigger_jobs)
     
     def clear_db(self, transaction_id):
         self.repo.clear_db(transaction_id)

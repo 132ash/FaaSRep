@@ -43,6 +43,7 @@ class Runner:
         self.workflow = None
         self.function = None
         self.node_list = None
+        self.host_addr = container_config.CACHE_HOST
         self.sink_addr = None
         self.function_pos = None
         self.shadow_table = None
@@ -71,8 +72,9 @@ class Runner:
         self.optimistic_repair = False
         self.lock_set = {}
 
-    def init(self, workflow, function, sink, validator, node_list,input,output,function_pos, port, fast_path_enabled, remote_lock_enabled, optimistic_repair, FaaSTCC_enabled):
+    def init(self, host_addr, workflow, function, sink, validator, node_list,input,output,function_pos, port, fast_path_enabled, remote_lock_enabled, optimistic_repair, FaaSTCC_enabled, Concord_enabled):
         # update function status
+        self.host_addr = host_addr
         self.workflow = workflow
         self.function = function
         self.sink_addr = sink
@@ -85,9 +87,10 @@ class Runner:
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         self.FaaSTCC_enabled = FaaSTCC_enabled
+        self.Concord_enabled = Concord_enabled
         self.optimistic_repair = optimistic_repair
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.ip)
+        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
         self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.function_pos[self.function], self.port)
@@ -111,7 +114,7 @@ class Runner:
         self.snapshot_interval = snapshot_interval
 
     def prepair_subjection_before_repair(self, transaction_id):
-        set_pipeline = self.shadow_table[self.ip].pipeline() 
+        set_pipeline = self.shadow_table[self.host_addr].pipeline() 
         set_pipeline.multi()
         upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, transaction_id)
         for _, upstream_tx_dict in upstream_fetch_results.items():
@@ -144,7 +147,7 @@ class Runner:
                 self.dirty = metadata_norepair['dirty']
             else:
                 try:
-                    metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.ip)
+                    metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
                 except KeyError:
                     metadata_string = None
                 if metadata_string:
@@ -292,7 +295,7 @@ proxy = Flask(__name__)
 proxy.status = 'new'
 proxy.debug = False
 runner = Runner()
-store = Store()
+store = Store(container_config.CACHE_HOST)
 
 
 @proxy.route('/status', methods=['GET'])
@@ -310,10 +313,10 @@ def init():
     proxy.status = 'init'
 
     inp = request.get_json(force=True, silent=True)
-    runner.init(inp['workflow'], inp['function'], inp['sink'], inp['validator'],
+    runner.init(inp['host_addr'], inp['workflow'], inp['function'], inp['sink'], inp['validator'],
                 inp['node_list'], inp['input'],inp['output'],
                 inp['function_pos'],inp['port'],inp['fast_path_enabled'], 
-                inp['remote_lock_enabled'], inp['optimistic_repair'])
+                inp['remote_lock_enabled'], inp['optimistic_repair'], inp['FaaSTCC_enabled'],inp['Concord_enabled'])
 
     proxy.status = 'ok'
     return ('OK', 200)

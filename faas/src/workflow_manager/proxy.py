@@ -33,6 +33,7 @@ docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
 from validate_struct import TransactionSink, ReservePool
+from Concord_cache_agent import ConcordCacheAgent
 
 sys.path.append('../../config')
 import config
@@ -54,6 +55,7 @@ class Dispatcher:
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
+       self.concord_cache_agent = {name:ConcordCacheAgent(name, repo, self.host_addr)  for name in info_addrs}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
     def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id, state):
@@ -80,9 +82,6 @@ class Dispatcher:
 
     def FaaSTCC_abort(self, workflow_name, transaction_id):
         self.managers[workflow_name].abort_tx(transaction_id)
-
-    def clear_and_notify_for_abort(self, workflow_name, transaction_id):
-        self.managers[workflow_name].clear_and_notify_for_abort(transaction_id)
     
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
@@ -130,12 +129,18 @@ def abort():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.clear_and_notify_for_abort(workflow_name, transaction_id)
     if config.REMOTE_LOCK:
         lock_set = data.get('lock_set', {})
         repo.release_lock(transaction_id, lock_set)
     elif config.PESSIMISTIC_REPAIR and data.get('repair', False):
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id, ABORTED)
+    notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
+    payload = {
+        'transaction_id_list': [[transaction_id]],
+        'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
+        'abort': True
+    }
+    requests.post(notify_url, json=payload)
     return json.dumps({'status': 'ok'})
 
 @app.route('/crosstx_req', methods = ['GET'])
@@ -234,6 +239,46 @@ def clear_container():
     print('clearing containers')
     os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
     return json.dumps({'status': 'ok'})
+
+@app.route('/concord_data', methods = ['GET'])
+def concord_data():
+    data = request.get_json(force=True, silent=True)
+    mode = data['mode']
+    key = data['key']
+    workflow = data['workflow']
+    trigger_tx = data['trigger_tx']
+    value = ''
+    if mode == 'invalidated':
+        dispatcher.concord_cache_agent[workflow].invalidate_by_home(key, trigger_tx)
+    else:
+        value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, mode)
+    return json.dumps({'value': value})
+
+@app.route('/concord_lock', methods = ['GET'])
+def concord_lock():
+    data = request.get_json(force=True, silent=True)
+    transaction_id = data['transaction_id']
+    lock_keys = data['lock_keys']
+    lock = data['lock']  # default to True, meaning acquire locks
+    dispatcher.concord_cache_agent[data['workflow']].lock_or_unlock_for_commit(transaction_id, lock_keys, lock)
+    
+@app.route('/concord_home', methods = ['GET'])
+def concord_home():
+    data = request.get_json(force=True, silent=True)
+    mode = data['mode']
+    remote_ip = data['remote_ip']
+    key = data['key']
+    workflow = data['workflow']
+    transaction_id = data['transaction_id']
+    value = ''
+    if mode == 'invalidated':
+        # invalidate the cache on this node.
+        value, state = dispatcher.concord_cache_agent[workflow].invalidate_by_home(key, transaction_id)
+    if mode == 'read':
+        value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_read(transaction_id, key, remote_ip)
+    else:
+        value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_write(transaction_id, key, remote_ip, mode)
+    return json.dumps({'value': value, 'state': state})
 
 GET_NODE_INFO_INTERVAL = 0.1
 

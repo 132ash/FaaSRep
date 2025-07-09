@@ -1,7 +1,7 @@
 from gevent import monkey
 monkey.patch_all()
 from redis_component import RedisShadowTable, RedisCache
-import json
+import requests
 import os
 import threading
 from FaaSTCC_store import FaaSTCC_Store
@@ -20,10 +20,11 @@ logging.basicConfig(
 )
 
 class Store:
-    def __init__(self):
+    def __init__(self, host_addr):
         self.fetch_dict = {}
         self.ret_dict = {}
         self.io_latency = 0
+        self.concord_cache_addr = f'{host_addr}:7000/concord_data'
         self.redis_shadow_table: RedisShadowTable = None
         self.redis_cache: RedisCache = None
         self.lock_latency = 0
@@ -33,7 +34,7 @@ class Store:
             os.system('rm -rf work')
         os.mkdir('work')
 
-    def init(self, workflow, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled, function_pos,validator_addr, FaaSTCC_enabled):
+    def init(self, workflow, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, remote_lock_enabled, function_pos,validator_addr, FaaSTCC_enabled, concord_enabled):
         self.function_name = function_name
         self.redis_shadow_table = shadow_table
         self.redis_cache = cache
@@ -41,6 +42,7 @@ class Store:
         self.fast_path_enabled = fast_path_enabled
         self.remote_lock_enabled = remote_lock_enabled
         self.FaaSTCC_enabled = FaaSTCC_enabled
+        self.concord_enabled = concord_enabled
         self.db_server = db_server
         self.beldi_store = BeldiStore(self.db_server)
         self.FaaSTCC_Store = FaaSTCC_Store(workflow, validator_addr, self.redis_shadow_table, function_pos, db_server)
@@ -144,6 +146,9 @@ class Store:
             upstream_func = self.write_set.get(key, "")
             value = self.FaaSTCC_Store.get(key, upstream_func)
             end = time.time()  
+        elif self.concord_enabled:
+            value = self.concord_get(key, upstream_func)
+            pass
         else: 
             # first run, check RYW subjection.
             if not self.is_repair:
@@ -182,5 +187,24 @@ class Store:
         else:       
             self.put_to_mem(key, self.function_name, 'PUT', value)
             self.write_set[key] = self.function_name
+
             end = time.time()
         self.io_latency += (end - start)
+
+    def concord_get(self, key, upstream_func):
+        self.read_set[key] = True
+        if upstream_func:
+            upstream_ip = self.function_pos[upstream_func]['ip']
+            return self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
+        else:
+            url = f"http://{self.concord_cache_addr}"
+            data = {'mode':'read', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.function_name}
+            response = requests.post(url, json=data).json()
+            return response['value']
+        
+    def concord_put(self, key):
+        url = f"http://{self.concord_cache_addr}"
+        data = {'mode':'write', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.function_name}
+        requests.post(url, json=data)
+
+        # TODO: Concord commit(read set, write set transform), and 

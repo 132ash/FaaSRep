@@ -4,11 +4,7 @@ import gevent.lock
 import requests
 from collections import defaultdict
 from validator_repo import Repository
-import sys
 from datetime import datetime
-
-sys.path.append('../../config')
-import config
 
 class FaaSTCC_StorageLayer:
     def __init__(self, workflow_name):
@@ -79,5 +75,3 @@ class FaaSTCC_StorageLayer:
             "version": version
         }
         requests.post(url, json=data)
-
-    # TODO: Concord, check code, test all modes.

@@ -205,13 +205,6 @@ class Repository:
                 # 调用 store_key_to_db 存储到数据库中
                 self.data_db.store_data_to_db(key, version, value)
             cache_pipe.execute()
-        shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
-        shadow_table_pipe.multi()
-        for transaction_id in tx_list:  
-            redis_keys_all = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")   
-            for redis_key in redis_keys_all:
-                shadow_table_pipe.delete(redis_key)
-        shadow_table_pipe.execute()
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()

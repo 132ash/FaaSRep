@@ -45,6 +45,7 @@ REMOTE_LOCK = False
 OPTIMISTIC_REPAIR = True
 PESSIMISTIC_REPAIR = False
 FAASTCC = False
+CONCORD = False
 
 # repair setting
 RUNNING = 1
