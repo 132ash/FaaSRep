@@ -53,6 +53,7 @@ class TransactionState:
         self.lock_set:Dict = lock_set
         self.snapshot_interval:list = snapshot_interval
 
+
         for f in all_func:
             self.executed[f] = False
             self.parent_executed[f] = 0
@@ -91,12 +92,20 @@ class WorkerSPManager:
         # repairing batches and finished transactions
         self.repair_table: Dict[str, int] = {}
         min_port += 5000
+        # config of different modes.
+        self.BASIC = config.BASIC
+        self.FAST_PATH = config.FAST_PATH
+        self.REMOTE_LOCK = config.REMOTE_LOCK
+        self.REPAIR = config.REPAIR
+        self.FAASTCC = config.FAASTCC
+        self.CONCORD = config.CONCORD
+        self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
     # return the workflow state of the request
-    def get_state(self, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states, lock_set, snapshot_interval) -> TransactionState:
+    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states, lock_set, snapshot_interval) -> TransactionState:
         self.lock.acquire()
         # first time to run, create new state
-        if transaction_id not in self.states:
+        if transaction_id not in self.states or retry_after_abort:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
         else:
             state = self.states[transaction_id]
@@ -106,7 +115,7 @@ class WorkerSPManager:
                 state.repair_states = repair_states 
                 state.batch_id = batch_id
             else:
-                if config.FAASTCC:
+                if self.FAASTCC:
                     min_snapshot = max(snapshot_interval[0], state.snapshot_interval[0])
                     max_snapshot = min(snapshot_interval[1], state.snapshot_interval[1])
                     if min_snapshot > max_snapshot:
@@ -131,13 +140,20 @@ class WorkerSPManager:
             del self.states[transaction_id]
         self.lock.release()
 
+    def stop_transaction(self, transaction_id: str) -> None:
+        self.lock.acquire()
+        if transaction_id not in self.states:
+            return
+        state = self.states[transaction_id]
 
-    def FaaSTCC_commit(self, transaction_id: str, write_set: Dict[str, int]) -> None:
-        commiter_url = 'http://{}:7000/commit'.format(config.VALIDATOR_ADDR)
+
+    def FaaSTCC_Concord_commit(self, transaction_id: str, write_set: Dict[str, int], read_set) -> None:
+        commiter_url = 'http://{}:7000/commit'.format(self.VALIDATOR_ADDR)
         data = {
             'transaction_id': transaction_id,
             'workflow_name': self.workflow_name,
             'write_set': write_set,
+            'read_set': read_set,
         }
         requests.post(commiter_url, json=data)
     
@@ -168,8 +184,8 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             if not state.repair:
-                if config.FAASTCC:
-                    self.FaaSTCC_commit(state.transaction_id, state.write_set)
+                if self.FAASTCC or self.CONCORD:
+                    self.FaaSTCC_Concord_commit(state.transaction_id, state.write_set, state.read_set)
                 else:
                     self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection, state.lock_set, state.snapshot_interval)
             else:
@@ -265,8 +281,9 @@ class WorkerSPManager:
             if not successful:
                 self.abort_tx(state, lock_set)
                 return
-        if config.OPTIMISTIC_REPAIR and state.repair:
-            downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, config.REPAIRED)
+            
+        if self.OPTIMISTIC_REPAIR and state.repair:
+            downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, self.REPAIRED)
             self.repo.subjection_collector.send_data_to_waiting_downstream(state.transaction_id, function_name, downstream_funcs)
             crosstx_jobs = [
                         gevent.spawn(self.trigger_function_cross_tx, func_info)
@@ -300,21 +317,23 @@ class WorkerSPManager:
         # only count the function latency in first run.
 
         state.write_set.update(res["write_set"])
+        if self.CONCORD:
+            state.read_set.update(res["read_set"])
         if not state.repair:
             self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
             self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-            if config.REPAIR:
+            if self.REPAIR:
                 state.container_port[name] = res['port']
                 state.read_set[info["function_name"]] = res["read_set"]
                 state.RYW_subjection[name] = res["RYW_subjection"]
                 logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
 
-        if config.REMOTE_LOCK:
+        if self.REMOTE_LOCK:
             # update lock set for the function
             state.lock_set.update(res['lock_set'])
             self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         
-        if config.FAASTCC:
+        if self.FAASTCC:
             state.snapshot_interval = res['snapshot_interval']
         state.lock.release()
         logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")

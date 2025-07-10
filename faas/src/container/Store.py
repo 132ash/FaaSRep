@@ -24,7 +24,7 @@ class Store:
         self.fetch_dict = {}
         self.ret_dict = {}
         self.io_latency = 0
-        self.concord_cache_addr = f'{host_addr}:7000/concord_data'
+        self.concord_cache_addr = f'{host_addr}:6000/concord_data'
         self.redis_shadow_table: RedisShadowTable = None
         self.redis_cache: RedisCache = None
         self.lock_latency = 0
@@ -148,7 +148,7 @@ class Store:
             end = time.time()  
         elif self.concord_enabled:
             value = self.concord_get(key, upstream_func)
-            pass
+            self.read_set[key] = True
         else: 
             # first run, check RYW subjection.
             if not self.is_repair:
@@ -187,7 +187,8 @@ class Store:
         else:       
             self.put_to_mem(key, self.function_name, 'PUT', value)
             self.write_set[key] = self.function_name
-
+            if self.concord_enabled:
+                self.concord_put(key)
             end = time.time()
         self.io_latency += (end - start)
 

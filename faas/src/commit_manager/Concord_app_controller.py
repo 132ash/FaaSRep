@@ -77,19 +77,20 @@ class AppControllerConcord:
         self.acquire_or_unlock(transaction_id, [], False)
         self.commit_lock.release()
 
-    # when unlock: clear the bits
+    # when unlock: clear the bits, let all 
     def acquire_or_unlock(self, transaction_id, lock):
         acquire_jobs = []
         if lock:
             for directory_ip, keys in self.lock_set_per_tx[transaction_id]:
-                url = f"http://{directory_ip}:7000/concord_lock"
+                url = f"http://{directory_ip}:6000/concord_lock"
                 data = {'transaction_id': transaction_id, 'lock_keys': list(keys), 'lock':lock}
                 acquire_jobs.append(gevent.spawn(requests.post, url, data))
         else:
             for unlock_addr in self.worker_set:
-                url = f"http://{unlock_addr}:7000/concord_lock"
+                url = f"http://{unlock_addr}:6000/concord_lock"
                 data = {'transaction_id': transaction_id, 'lock_keys': [], 'lock': lock}
                 acquire_jobs.append(gevent.spawn(requests.post, url, data))
+                acquire_jobs.append(gevent.spawn(requests.post, f"http://{unlock_addr}:7000/stop", {'transaction_id': transaction_id, 'workflow': self.workflow_name}))
         gevent.joinall(acquire_jobs)
 
     def wait_lock(self, tx_id):

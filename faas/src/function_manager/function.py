@@ -3,6 +3,7 @@ import time
 import math
 from gevent import event
 import sys
+from function_info import FunctionInfo
 from container import Container, ContainerPool
 sys.path.append('../../config')
 import config
@@ -17,10 +18,10 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self,host_addr, client, transaction_sink_addr, function_info, port_controller, node_list, default_container_num, reserve_pool, input, output,function_pos):
+    def __init__(self,host_addr, client, transaction_sink_addr, function_info:FunctionInfo, port_controller, node_list, default_container_num, reserve_pool, input, output,function_pos):
         self.client = client
         self.host_addr = host_addr
-        self.info = function_info
+        self.info:FunctionInfo = function_info
         self.transaction_sink_addr = transaction_sink_addr
         self.port_controller = port_controller
         self.node_list = node_list
@@ -32,6 +33,16 @@ class Function:
         
         self.num_processing = 0
         self.rq = []
+
+        self.BASIC = config.BASIC
+        self.FAST_PATH = config.FAST_PATH
+        self.REMOTE_LOCK = config.REMOTE_LOCK
+        self.REPAIR = config.REPAIR
+        self.FAASTCC = config.FAASTCC
+        self.CONCORD = config.CONCORD
+        self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
+
+
 
         # container pool
         self.container_pool = ContainerPool(self.info.max_containers, self.info.function_name)
@@ -82,7 +93,7 @@ class Function:
         
         # 3. in fastpath, reserve the container into reserve pool
         # else, return the container to pool
-        if config.REPAIR and config.FAST_PATH:
+        if self.REPAIR and self.FAST_PATH:
             # if the container is not used in fast path, reserve it into reserve pool
             self.reserve_pool.reserve(req.transaction_id, container)
         else:
@@ -116,7 +127,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container: Container):
-        container.init(self.host_addr, self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, config.validator_addr, self.node_list, self.input,self.output, self.function_pos, container.port, config.FAST_PATH, config.REMOTE_LOCK, config.OPTIMISTIC_REPAIR, config.FAASTCC ,config.CONCORD)
+        container.init(self.host_addr, self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.validator_addr, self.node_list, self.input,self.output, self.function_pos, container.port, self.FAST_PATH, self.REMOTE_LOCK, self.OPTIMISTIC_REPAIR, self.FAASTCC ,self.CONCORD)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

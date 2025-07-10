@@ -33,7 +33,6 @@ docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
 from validate_struct import TransactionSink, ReservePool
-from Concord_cache_agent import ConcordCacheAgent
 
 sys.path.append('../../config')
 import config
@@ -55,7 +54,6 @@ class Dispatcher:
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
-       self.concord_cache_agent = {name:ConcordCacheAgent(name, repo, self.host_addr)  for name in info_addrs}
        gevent.spawn_later(validate_interval, self._validate_loop)
 
     def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id, state):
@@ -65,8 +63,8 @@ class Dispatcher:
     def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
         return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
 
-    def get_state(self, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}, snapshot_interval=[]) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set,snapshot_interval)
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}, snapshot_interval=[]) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set,snapshot_interval)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -88,6 +86,9 @@ class Dispatcher:
     
     def del_state(self, workflow_name, transaction_id):
         self.managers[workflow_name].del_state(transaction_id)
+
+    def stop_transaction(self, workflow_name, transaction_id):
+        self.managers[workflow_name].stop_transaction(transaction_id)
     
     def _validate_loop(self):
         gevent.spawn_later(validate_interval, self._validate_loop)
@@ -123,6 +124,14 @@ def fin_repair():
     transaction_id = data['transaction_id']
     dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, REPAIRED)
     return json.dumps({'status': 'ok'})
+
+@app.route('/stop', methods = ['POST'])
+def stop():
+    data = request.get_json(force=True, silent=True)
+    transaction_id = data['transaction_id']
+    workflow_name = data['workflow_name']
+    logging.info(f"Stopping transaction {transaction_id} in workflow {workflow_name}")
+    dispatcher.stop_transaction(workflow_name, transaction_id)
 
 @app.route('/abort', methods = ['POST'])
 def abort():
@@ -169,6 +178,7 @@ def req():
     RYW_subjection = data.get('RYW_subjection', {})
     # data for repair
     batch_id = data.get('batch_id', "")
+    retry_after_abort = data.get('retry', False)
     repair = False
     repair_states = {}
     # data for remote lock
@@ -178,7 +188,7 @@ def req():
     if config.REPAIR and not config.FAST_PATH:
         repair = data.get('repair', False)
         repair_states = data.get('repair_states', {})
-    state = dispatcher.get_state(workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
+    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
     if config.FAASTCC and state is None:
         dispatcher.FaaSTCC_abort(workflow_name, transaction_id)
         return
@@ -240,46 +250,6 @@ def clear_container():
     os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
     return json.dumps({'status': 'ok'})
 
-@app.route('/concord_data', methods = ['GET'])
-def concord_data():
-    data = request.get_json(force=True, silent=True)
-    mode = data['mode']
-    key = data['key']
-    workflow = data['workflow']
-    trigger_tx = data['trigger_tx']
-    value = ''
-    if mode == 'invalidated':
-        dispatcher.concord_cache_agent[workflow].invalidate_by_home(key, trigger_tx)
-    else:
-        value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, mode)
-    return json.dumps({'value': value})
-
-@app.route('/concord_lock', methods = ['GET'])
-def concord_lock():
-    data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    lock_keys = data['lock_keys']
-    lock = data['lock']  # default to True, meaning acquire locks
-    dispatcher.concord_cache_agent[data['workflow']].lock_or_unlock_for_commit(transaction_id, lock_keys, lock)
-    
-@app.route('/concord_home', methods = ['GET'])
-def concord_home():
-    data = request.get_json(force=True, silent=True)
-    mode = data['mode']
-    remote_ip = data['remote_ip']
-    key = data['key']
-    workflow = data['workflow']
-    transaction_id = data['transaction_id']
-    value = ''
-    if mode == 'invalidated':
-        # invalidate the cache on this node.
-        value, state = dispatcher.concord_cache_agent[workflow].invalidate_by_home(key, transaction_id)
-    if mode == 'read':
-        value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_read(transaction_id, key, remote_ip)
-    else:
-        value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_write(transaction_id, key, remote_ip, mode)
-    return json.dumps({'value': value, 'state': state})
-
 GET_NODE_INFO_INTERVAL = 0.1
 
 def get_container_names():
@@ -294,8 +264,6 @@ from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    if sum([int(config.BASIC), int(config.REPAIR), int(config.REMOTE_LOCK)]) != 1:
-        raise Exception("Exactly one of BASIC, REPAIR, or REMOTE_LOCK must be true.")
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()
    

@@ -30,7 +30,7 @@ app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
 
-def trigger_function(workflow_name, transaction_id, function_name, ip):
+def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
     url = 'http://{}/request'.format(ip)
     print(f"sending req to {url}")
     data = {
@@ -38,7 +38,8 @@ def trigger_function(workflow_name, transaction_id, function_name, ip):
         'workflow_name': workflow_name,
         'function_name': function_name,
         'no_parent_execution': True,
-        'repair': False
+        'repair': False,
+        'retry': retry
     }
     requests.post(url, json=data)
 
@@ -52,8 +53,8 @@ def clear_mem(ip, transaction_id, workflow_name):
         print(f"node {clear_url} not started or performs well.")
 
 def run_workflow(workflow_name, transaction_id, parameters, retry=False):
-    repo.create_request_doc(transaction_id)
-
+    if not retry:
+        repo.create_request_doc(transaction_id)
     # allocate works
     start_functions = repo.get_start_functions(workflow_name + '_workflow_metadata')
     print(f"start_functions: {start_functions}")
@@ -65,7 +66,7 @@ def run_workflow(workflow_name, transaction_id, parameters, retry=False):
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
