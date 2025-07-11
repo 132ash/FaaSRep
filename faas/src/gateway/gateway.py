@@ -26,9 +26,23 @@ import time
 sys.path.append('../../config')
 import config
 
+REMOTE_LOCK = config.REMOTE_LOCK
+CLEAR_MEM = config.CLEAR_MEM
+
 app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
+
+workflow_metadata  =  {}
+def get_workflow_metadata(workflow_name):
+    if workflow_name not in workflow_metadata:
+        workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
+        workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
+        for func in workflow_metadata[workflow_name]['start_functions']:
+            info = repo.get_function_info(func, workflow_name + '_function_info')
+            workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
+        workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
+    return workflow_metadata[workflow_name]
 
 def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
     url = 'http://{}/request'.format(ip)
@@ -52,17 +66,16 @@ def clear_mem(ip, transaction_id, workflow_name):
     except:
         print(f"node {clear_url} not started or performs well.")
 
-def run_workflow(workflow_name, transaction_id, parameters, retry=False):
+def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
-    start_functions = repo.get_start_functions(workflow_name + '_workflow_metadata')
+    start_functions = workflow_metadata['start_functions']
     print(f"start_functions: {start_functions}")
     start = time.time()
     jobs = []
     for n in start_functions:
-        info = repo.get_function_info(n, workflow_name + '_function_info')
-        ip = info['ip']
+        ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
@@ -78,15 +91,16 @@ def run():
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(workflow, transaction_id, parameters)
+    workflow_metadata = get_workflow_metadata(workflow)
     logging.info('processing request ' + transaction_id + '...')
     start = time.time()
-    if config.REMOTE_LOCK:
+    if REMOTE_LOCK:
         repo.create_shadow_table(transaction_id)
     aborted = False
     retry = False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
-        exec_first_latency = run_workflow(workflow, transaction_id, parameters, retry)
+        exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
             txTable.resetTX(transaction_id)
@@ -99,7 +113,7 @@ def run():
     logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
-        worker_addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
+        worker_addrs = workflow_metadata['all_addrs']
         jobs = []
         logging.info(f"clearing shadow table and transaction state on {worker_addrs}")
         for ip in worker_addrs:

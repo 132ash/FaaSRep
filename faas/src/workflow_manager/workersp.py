@@ -42,7 +42,7 @@ class TransactionState:
         self.executed: Dict[str, bool] = {}
         self.container_port: Dict[str, str] = container_port
         self.parent_executed: Dict[str, int] = {}
-        self.subjection_fetched = {} # don't send to remote node.
+        self.stop_running = False # used to stop running the transaction, e.g., when the function is aborted.
 
         # repair state, used only when fast-path is turned off.
         self.repair = repair
@@ -104,7 +104,7 @@ class WorkerSPManager:
     # return the workflow state of the request
     def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states, lock_set, snapshot_interval) -> TransactionState:
         self.lock.acquire()
-        # first time to run, create new state
+        # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
         else:
@@ -145,6 +145,9 @@ class WorkerSPManager:
         if transaction_id not in self.states:
             return
         state = self.states[transaction_id]
+        state.lock.acquire()
+        state.stop_running = True
+        state.lock.release()
 
 
     def FaaSTCC_Concord_commit(self, transaction_id: str, write_set: Dict[str, int], read_set) -> None:
@@ -161,10 +164,10 @@ class WorkerSPManager:
         logging.info(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}, snapshot_interval:{snapshot_interval}")
         self.transaction_sink.append(transaction_id, workflow_name, read_set, write_set, container_port, RYW_subjection, lock_set, snapshot_interval)
 
-    def abort_tx(self, state:TransactionState, lock_set):
+    def abort_tx(self,transaction_id, batch_id='', lock_set={}):
         # trigger next run of the transaction under pessimistic repair mode
         url = 'http://{}:7000/abort'.format(self.transaction_sink_addr)
-        data = {'batch_id': state.batch_id, 'transaction_id': state.transaction_id, 'workflow_name': self.workflow_name, 'lock_set':lock_set, 'repair': state.repair}
+        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'lock_set':lock_set}
         requests.post(url, json=data)
 
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
@@ -193,7 +196,7 @@ class WorkerSPManager:
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
-            self.trigger_function_local(state, function_name, func_info['ip'], no_parent_execution)
+            self.trigger_function_local(state, function_name, no_parent_execution)
         else:
             # function runs on remote machine
             self.trigger_function_remote(state, function_name, func_info['ip'], no_parent_execution)
@@ -204,13 +207,14 @@ class WorkerSPManager:
         self.trigger_function_local(state, function_name, func_info['ip'])
 
     # trigger a function that runs on local
-    def trigger_function_local(self, state: TransactionState, function_name: str, ip:str, no_parent_execution = False) -> None:
+    def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         state.lock.acquire()
+        if state.stop_running:
+            return
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
-        if state.repair and not state.subjection_fetched.get(function_name, False):
+        if state.repair:
             # fetch subjection from redis, used in optimistic repair mode
-            state.subjection_fetched[function_name] = True
             upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(state.repair_states[function_name]["upstream_keys"], state.transaction_id, function_name) 
             upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info ) 
             state.repair_states[function_name]["up_cnt"] = upstream_waiting_count     
@@ -279,11 +283,11 @@ class WorkerSPManager:
         if not state.repair or dirty:
             successful, lock_set = self.run_normal(state, info)
             if not successful:
-                self.abort_tx(state, lock_set)
+                self.abort_tx(state.transaction_id,state.batch_id,lock_set)
                 return
             
         if self.OPTIMISTIC_REPAIR and state.repair:
-            downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, self.REPAIRED)
+            downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, REPAIRED)
             self.repo.subjection_collector.send_data_to_waiting_downstream(state.transaction_id, function_name, downstream_funcs)
             crosstx_jobs = [
                         gevent.spawn(self.trigger_function_cross_tx, func_info)
@@ -291,9 +295,12 @@ class WorkerSPManager:
             ]    
                  
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
+        state.lock.acquire()
+        if state.stop_running:
+            return
         state.parent_executed[function_name] = 0
         state.executed[function_name] = False
-        
+        state.lock.release()
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
             gevent.spawn(self.trigger_function, state, func)
