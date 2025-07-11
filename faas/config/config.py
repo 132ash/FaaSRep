@@ -9,7 +9,6 @@ REDIS_PORT = 6379 # it follows the same configuration as created redis by docker
 SHADOWTABLE_DB = 0
 CACHE_DB = 1
 GATEWAY_ADDR = '192.168.162.132:8000' # need to update as your private_ip
-VALIDATOR_ADDR = '192.168.162.132:9000'
 
 
 # workflow setting

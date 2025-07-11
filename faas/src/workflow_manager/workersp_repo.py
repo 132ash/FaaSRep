@@ -1,13 +1,9 @@
 from gevent import monkey
 monkey.patch_all()
-from typing import Dict, List, Any
+from typing import List, Any
 import couchdb
-import redis
 import boto3
-from datetime import datetime
-from subjection_collector import SubjectionCollector, RedisShadowTable
 import sys
-import json
 
 sys.path.append('../../config')
 import config
@@ -51,23 +47,9 @@ class DynamoDBClient:
 
 class Repository:
     def __init__(self):
-        self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.CACHE_DB)
-        self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)
+        self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
+        self.data_db = self.dynamo.Table('data')
         self.couch = couchdb.Server(couchdb_url)
-        self.shadowtable_redis_all_addr:Dict[str, redis.StrictRedis] =  {
-                    host:redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
-                    for host in self.get_all_addrs('common')
-                    }
-        self.subjection_collector:SubjectionCollector = None
-
-    def shadowtable_init(self, ip):
-        self.ip = ip
-        self.subjection_collector = SubjectionCollector(
-            shadow_table=self.shadowtable_redis_all_addr[self.ip], 
-            ip=self.ip,
-            cache_redis = self.cache_redis,
-            db_server = self.data_db
-        )
         
     # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
     def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
@@ -103,22 +85,6 @@ class Repository:
         db = self.couch[mode]
         for item in db.find({'selector': {'function_name': function_name}}):
             return item
-    
-    def clear_mem(self, transaction_id=""):
-        if transaction_id:
-            print(f"clearing shadow table for {transaction_id}")
-            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")
-            if keys:
-                pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
-                for key in keys:
-                    pipe.delete(key)
-                pipe.execute()
-        else:
-            print("clearing all shadow tables and cache")
-            self.shadowtable_redis_all_addr[self.ip].flushall(True)
-            self.cache_redis.flushall(True)
-            remain_keys_len = len(self.cache_redis.keys("*")) 
-            print(f"clearing caches, remaining:{remain_keys_len}")
 
     def clear_db(self, transaction_id):
         db = self.couch['results']
@@ -140,85 +106,6 @@ class Repository:
         key = ':'.join(parts[3:])  # 将索引3及之后的部分重新组合成key
         return key
 
-    # input_keys: specify the keys you want
-    def fetch_result(self, transaction_id, func, output):
-        keys = output.keys()
-        print(f"fetching result. Keys: {keys}")
-        result = {}
-        for k in keys:
-            redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
-            if output[k]["type"] == "int":
-                result[k] = int(self.shadowtable_redis_all_addr[self.ip][redis_key])
-            else:
-                result[k] = self.shadowtable_redis_all_addr[self.ip][redis_key]
-        return result
-
-    def update_cache(self, keys, version='', from_db=True):
-        if from_db:
-            for key in keys:
-                version, value = self.data_db.get_data_from_db(key)
-                data = {"value": value, "version": version}
-                self.cache_redis[key] = json.dumps(data)
-        else:
-            pipe = self.cache_redis.pipeline()
-            for key in keys:
-                value = self.shadowtable_redis_all_addr[self.ip].get(key)
-                if value:
-                    data = {"value": value, "version": version}
-                    pipe.set(key, json.dumps(data))
-            pipe.execute()
-
-    def fillup_repair_matadata(self, repair_metadata):
-        for txid in repair_metadata:
-            for func in repair_metadata[txid]:
-                # fill up the repair metadata to redis
-                repair_info = repair_metadata[txid][func]
-                repair_info
-                redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
-                self.shadowtable_redis_all_addr[self.ip][redis_key] = json.dumps(repair_metadata[txid][func])
-
-    def get_global_function_pos(self, batch_id):
-        func_pos_key =  self.param_wrapper(batch_id, 'POS')
-        # get the function position from redis
-        func_pos = json.loads(self.shadowtable_redis_all_addr[self.ip][func_pos_key])
-        return func_pos
-
-    # commit keys to DB, flush cache, and delete shadow table entries.
-    def commit_tx_writes(self, commit_key_list, tx_list, version):
-        if config.FaaSTCC:
-            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{tx_list[0]}:PUT:*")
-            shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
-            shadow_table_pipe.multi()
-            for redis_key in keys:
-                shadow_table_pipe.get(redis_key)
-            responses = shadow_table_pipe.execute()
-            for redis_key, value in zip(keys, responses):
-                key = self.param_decode(redis_key)
-                self.data_db.store_data_to_db(key, version, value)
-        else:
-            cache_pipe = self.cache_redis.pipeline()
-            cache_pipe.multi()
-            for redis_key in commit_key_list:
-                key = self.param_decode(redis_key)
-                value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
-                cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
-                # 调用 store_key_to_db 存储到数据库中
-                self.data_db.store_data_to_db(key, version, value)
-            cache_pipe.execute()
-
-    def fillup_cache(self):
-        data = self.data_db.get_all_data_from_db()
-        expired_version = datetime(1970, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
-        for item in data:
-            key = item['key']
-            if config.EXPIRED_CACHE:
-                # eariler than default timestamp in database
-                version = expired_version
-            else:
-                version = item['version']
-            self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
-        print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")
-
     def release_lock(self, transaction_id, lock_set):
         """
         释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
@@ -239,3 +126,34 @@ class Repository:
                 },
                 ReturnValues="UPDATED_NEW"
             )
+
+    def sync_shadow_to_data_db_with_version(self, transaction_id, version=''):
+        shadow_table_name = f"{transaction_id}_shadow_table"
+        shadow_table = self.dynamo.Table(shadow_table_name)
+
+        # 扫描 shadow table 中的所有数据
+        response = shadow_table.scan()
+        items = response.get('Items', [])
+
+        for item in items:
+            key = item['key']
+            value = item['value']  # Ensure value is stored as a string
+            # only flush the items func write.
+            if not key.startswith('RET'):
+                self.data_db.update_item(
+                    Key={'key': key},
+                    UpdateExpression="SET #v = :value, #ver = :version",
+                    ExpressionAttributeNames={
+                        '#v': 'value',
+                        '#ver': 'version'
+                    },
+                    ExpressionAttributeValues={
+                        ':value': value,
+                        ':version': version
+                    },
+                    ReturnValues="UPDATED_NEW"
+                )
+
+    def beldi_commit(self, transaction_id, lock_set):
+        self.sync_shadow_to_data_db_with_version(transaction_id)
+        self.release_lock(transaction_id, lock_set)
