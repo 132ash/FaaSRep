@@ -123,7 +123,6 @@ def run():
     return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
 
 
-
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)

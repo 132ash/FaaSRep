@@ -30,7 +30,7 @@ dispatch_interval = 0.005 # 200 qps at most
 
 # the class for scheduling functions' inter-operations
 class FunctionManager:
-    def __init__(self, host_addr, config_path, transaction_sink_addr, min_port, node_list, reserve_pool, function_pos):
+    def __init__(self, config_path, min_port, function_pos, node_list):
         self.function_info = parse(config_path)
 
         self.port_controller = PortController(min_port, min_port + 4999)
@@ -41,7 +41,7 @@ class FunctionManager:
 
         for x in self.function_info:
             graph_info = repo.get_function_info(x.function_name)
-            self.functions[x] = Function(host_addr, self.client,transaction_sink_addr, x, self.port_controller, node_list, self.default_container_num, reserve_pool, graph_info['input'], graph_info['output'], self.function_pos)
+            self.functions[x] = Function(self.client, x, self.port_controller, node_list, self.default_container_num, graph_info['input'], graph_info['output'], self.function_pos)
         self.init()
        
     def init(self):
@@ -58,8 +58,8 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_name, transaction_id, write_set,is_repair, parent_cnt,batch_id, lock_set=None, repair_states={},snapshot_interval=[]):
+    def run(self, function_name, transaction_id, write_set, snapshot_interval):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception("No such function!")
-        return self.functions[function_name].send_request(transaction_id, write_set, is_repair, parent_cnt,batch_id, lock_set, repair_states, snapshot_interval)
+        return self.functions[function_name].send_request(transaction_id, write_set, snapshot_interval)
