@@ -30,7 +30,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval):
+    def __init__(self, transaction_id: str, all_func: List[str], container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -48,10 +48,6 @@ class TransactionState:
         self.repair = repair
         self.repair_states = repair_states 
         self.batch_id = batch_id
-
-        # used only in remote lock mode.
-        self.lock_set:Dict = lock_set
-        self.snapshot_interval:list = snapshot_interval
 
 
         for f in all_func:
@@ -93,20 +89,15 @@ class WorkerSPManager:
         self.repair_table: Dict[str, int] = {}
         min_port += 5000
         # config of different modes.
-        self.BASIC = config.BASIC
         self.FAST_PATH = config.FAST_PATH
-        self.REMOTE_LOCK = config.REMOTE_LOCK
-        self.REPAIR = config.REPAIR
-        self.FAASTCC = config.FAASTCC
-        self.CONCORD = config.CONCORD
         self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states, lock_set, snapshot_interval) -> TransactionState:
+    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
@@ -115,14 +106,6 @@ class WorkerSPManager:
                 state.repair_states = repair_states 
                 state.batch_id = batch_id
             else:
-                if self.FAASTCC:
-                    min_snapshot = max(snapshot_interval[0], state.snapshot_interval[0])
-                    max_snapshot = min(snapshot_interval[1], state.snapshot_interval[1])
-                    if min_snapshot > max_snapshot:
-                        state.lock.release()
-                        return None
-                    state.snapshot_interval = [min_snapshot, max_snapshot]
-                state.lock_set.update(lock_set)
                 state.container_port.update(container_port)
                 state.read_set.update(read_set)
                 state.write_set.update(write_set)
@@ -148,26 +131,15 @@ class WorkerSPManager:
         state.lock.acquire()
         state.stop_running = True
         state.lock.release()
-
-
-    def FaaSTCC_Concord_commit(self, transaction_id: str, write_set: Dict[str, int], read_set) -> None:
-        commiter_url = 'http://{}:7000/commit'.format(self.VALIDATOR_ADDR)
-        data = {
-            'transaction_id': transaction_id,
-            'workflow_name': self.workflow_name,
-            'write_set': write_set,
-            'read_set': read_set,
-        }
-        requests.post(commiter_url, json=data)
     
-    def validate_tx(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection, lock_set, snapshot_interval) -> None:
-        logging.info(f"Validating workflow:{workflow_name}, transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, RYW_subjection:{RYW_subjection}, lock_set:{lock_set}, snapshot_interval:{snapshot_interval}")
-        self.transaction_sink.append(transaction_id, workflow_name, read_set, write_set, container_port, RYW_subjection, lock_set, snapshot_interval)
+    def validate_tx(self, transaction_id, read_set, write_set, container_port, RYW_subjection) -> None:
+        logging.info(f"Validating transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, RYW_subjection:{RYW_subjection}")
+        self.transaction_sink.append(transaction_id, read_set, write_set, container_port, RYW_subjection)
 
-    def abort_tx(self,transaction_id, batch_id='', lock_set={}):
+    def abort_tx(self,transaction_id, batch_id=''):
         # trigger next run of the transaction under pessimistic repair mode
         url = 'http://{}:7000/abort'.format(self.transaction_sink_addr)
-        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'lock_set':lock_set}
+        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name}
         requests.post(url, json=data)
 
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
@@ -187,10 +159,7 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             if not state.repair:
-                if self.FAASTCC or self.CONCORD:
-                    self.FaaSTCC_Concord_commit(state.transaction_id, state.write_set, state.read_set)
-                else:
-                    self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection, state.lock_set, state.snapshot_interval)
+                self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection, state.lock_set, state.snapshot_interval)
             else:
                 self.transaction_sink.fin_repair_or_abort(state.batch_id, state.transaction_id, REPAIRED)
             return
@@ -209,8 +178,6 @@ class WorkerSPManager:
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         state.lock.acquire()
-        if state.stop_running:
-            return
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         if state.repair:
@@ -245,10 +212,7 @@ class WorkerSPManager:
             # get from validator. repair metadata.
             'batch_id': state.batch_id,
             'repair': state.repair,
-            'repair_states': state.repair_states,
-            # used in remote lock
-            'lock_set': state.lock_set,
-            'snapshot_interval': state.snapshot_interval
+            'repair_states': state.repair_states
         }
         requests.post(remote_url, json=data)
 
@@ -296,8 +260,6 @@ class WorkerSPManager:
                  
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
         state.lock.acquire()
-        if state.stop_running:
-            return
         state.parent_executed[function_name] = 0
         state.executed[function_name] = False
         state.lock.release()
@@ -313,7 +275,7 @@ class WorkerSPManager:
         start = time.time()
         name = info['function_name']
         logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}")
-        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.batch_id, state.lock_set, state.repair_states.get(name, {}), state.snapshot_interval)
+        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")
@@ -323,25 +285,15 @@ class WorkerSPManager:
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
 
-        state.write_set.update(res["write_set"])
-        if self.CONCORD:
-            state.read_set.update(res["read_set"])
         if not state.repair:
+            state.write_set.update(res["write_set"])
             self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
             self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-            if self.REPAIR:
-                state.container_port[name] = res['port']
-                state.read_set[info["function_name"]] = res["read_set"]
-                state.RYW_subjection[name] = res["RYW_subjection"]
-                logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
+            state.container_port[name] = res['port']
+            state.read_set[info["function_name"]] = res["read_set"]
+            state.RYW_subjection[name] = res["RYW_subjection"]
+            logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
 
-        if self.REMOTE_LOCK:
-            # update lock set for the function
-            state.lock_set.update(res['lock_set'])
-            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
-        
-        if self.FAASTCC:
-            state.snapshot_interval = res['snapshot_interval']
         state.lock.release()
         logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 

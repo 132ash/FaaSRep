@@ -16,6 +16,9 @@ REPAIRED = 1
 ABORTED = 2
 WAITING = 3
 
+PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
+VALIDATOR_ADDR = config.VALIDATOR_ADDR
+
 # reserve the containers after the first run, and return to the container pool after repairing.
 class ReservePool:
     def __init__(self):
@@ -96,7 +99,7 @@ class RepairingBatchState:
     def register_batch(self, batch_id, tx_list, batch_size):
         self.transaction_list_per_batch[batch_id] = tx_list
         self.tx_finished_table_per_batch[batch_id] = {'total':batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}     
-        if config.PESSIMISTIC_REPAIR:
+        if PESSIMISTIC_REPAIR:
             self.pessimistic_state_lock = gevent.lock.BoundedSemaphore()
             self.pessimistic_state_per_batch[batch_id] = PessimisticBatchState(batch_id, tx_list, batch_size)
             
@@ -140,7 +143,7 @@ class RepairingBatchState:
         batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
         self.tx_finished_table_per_batch[batch_id]['lock'].release()
         ready_successor_tx = []
-        if config.PESSIMISTIC_REPAIR:
+        if PESSIMISTIC_REPAIR:
             ready_successor_tx = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
         if batch_finished:
             self.tx_finished_table_per_batch.pop(batch_id, None)
@@ -158,11 +161,12 @@ class TransactionSink:
         self.repairing_batch_state:RepairingBatchState = RepairingBatchState(workflow_name) 
 
 
-    def append(self, transaction_id: str, workflow_name:str, read_set: Dict[str, Dict], write_set: Dict[str, int], container_port: Dict[str, str], RYW_subjection:Dict[str, dict], lock_set:Dict[str, bool], snapshot_interval:list):
+    def append(self, transaction_id: str, read_set: Dict[str, Dict], write_set: Dict[str, int], container_port: Dict[str, str], RYW_subjection:Dict[str, dict]):
         self.queue_lock.acquire()
-        self.queue.append({'transaction_id': transaction_id, "workflow_name":workflow_name, 
-                           'read_set': read_set, 'write_set': write_set, 'container_port': container_port, 
-                           'RYW_subjection': RYW_subjection, 'lock_set':lock_set, 'snapshot_interval':snapshot_interval})
+        self.queue.append({'transaction_id': transaction_id,
+                           'read_set': read_set, 'write_set': write_set, 
+                           'container_port': container_port, 
+                           'RYW_subjection': RYW_subjection})
         self.queue_lock.release()
 
     # transform the batch from a list of txs to a dict, for the convenience of validation.
@@ -174,9 +178,7 @@ class TransactionSink:
             "write_set": {},
             "RYW_subjection": {},
             "container_port": {},
-            "transaction_list":[],
-            "lock_set": {},
-            'snapshot_interval':{}
+            "transaction_list":[]
         }
 
         for tx in batch:
@@ -186,16 +188,13 @@ class TransactionSink:
             transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
             transformed_batch["container_port"][tx_id] = tx["container_port"]
             transformed_batch["transaction_list"].append(tx_id)
-            transformed_batch["lock_set"][tx_id] = tx["lock_set"]
-            transformed_batch["snapshot_interval"][tx_id] = tx["snapshot_interval"]
-        transformed_batch["worker_set"]['ip_set'] = list(transformed_batch["worker_set"].keys())
         return transformed_batch
 
     def send_validate_request(self):
         self.queue_lock.acquire()
         idx = min(self.batch_size, len(self.queue))
         # MODIFY: must wait the batch to finish: if batch open, wait until the batch is full.
-        if (config.BATCH_SIZE == 1 and idx == 0) or (config.BATCH_SIZE != 1 and idx != config.BATCH_SIZE):
+        if self.batch_size != 1 and idx != self.batch_size:
             self.queue_lock.release()
             return
         first_run_finish_time = time.time()
@@ -208,7 +207,7 @@ class TransactionSink:
         self.send_validate_request(batch, first_run_finish_time)
 
     def send_cascaded_repair_request_pessi(self, batch_id, tx_id, state, ready_txs):
-        remote_url = 'http://{}/pessi_fin'.format(config.VALIDATOR_ADDR)
+        remote_url = 'http://{}/pessi_fin'.format(VALIDATOR_ADDR)
         data = {
             "workflow_name": self.workflow_name,
             "batch_id": batch_id,
@@ -220,7 +219,7 @@ class TransactionSink:
         response.close()
         
     def send_validate_request(batch, first_run_finish_time):
-        remote_url = 'http://{}/validate'.format(config.VALIDATOR_ADDR)
+        remote_url = 'http://{}/validate'.format(VALIDATOR_ADDR)
         data = {
             "batch": batch,
             "batch_id": batch["batch_id"],
@@ -231,7 +230,7 @@ class TransactionSink:
         
 
     def commit_batch(self, batch_id):
-        remote_url = 'http://{}/commit'.format(config.VALIDATOR_ADDR)
+        remote_url = 'http://{}/commit'.format(VALIDATOR_ADDR)
         data = {
                 'workflow_name': self.workflow_name,
                 "batch_id": batch_id
@@ -241,7 +240,7 @@ class TransactionSink:
     def fin_repair_or_abort(self, batch_id, transaction_id, state):
         trigger_jobs = []
         batch_finished, ready_successors = self.repairing_batch_state.after_transaction_finish(batch_id, transaction_id, state)
-        if config.PESSIMISTIC_REPAIR:
+        if PESSIMISTIC_REPAIR:
             trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,transaction_id, state, ready_successors))
         if batch_finished:
             trigger_jobs.append(gevent.spawn(self.commit_batch, batch_id))

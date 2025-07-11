@@ -26,7 +26,6 @@ import time
 sys.path.append('../../config')
 import config
 
-REMOTE_LOCK = config.REMOTE_LOCK
 CLEAR_MEM = config.CLEAR_MEM
 
 app = Flask(__name__)
@@ -94,8 +93,6 @@ def run():
     workflow_metadata = get_workflow_metadata(workflow)
     logging.info('processing request ' + transaction_id + '...')
     start = time.time()
-    if REMOTE_LOCK:
-        repo.create_shadow_table(transaction_id)
     aborted = False
     retry = False
     # run the workflow,  the workflow may abort in the middle.

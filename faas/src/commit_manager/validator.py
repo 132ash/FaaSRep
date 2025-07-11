@@ -15,9 +15,8 @@ from validator_repo import Repository
 
 sys.path.append('../../config')
 import config
-from collections import defaultdict
 
-PESSIMISTIC_REPAIR_ENABLED = config.PESSIMISTIC_REPAIR and config.REPAIR
+PESSIMISTIC_REPAIR_ENABLED = not config.OPTIMISTIC_REPAIR
 
 
 VALIDATE = 1
@@ -159,19 +158,15 @@ class ValidatorProcess(Process):
 
     def validate(self, batch_id, batch, start_time):
         self.repair_info.batch_init(batch_id)
-        Fake_version = get_timestamp()
-        if config.BASIC or config.REMOTE_LOCK:
-            return False, {}, [(batch_id, Fake_version)], time.time() - start_time
+        serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
+        batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
+        if not batch_need_repair:
+            expired_keys_per_ip = {}
         else:
-            serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
-            batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
-            if not batch_need_repair:
-                expired_keys_per_ip = {}
-            else:
-                expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
-            return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time, pessi_sink_info
+            expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
+        return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, time.time() - start_time, pessi_sink_info
 
-    
+
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, lock_set = {}):
         txid_lists, timestamps = [], []
@@ -184,13 +179,9 @@ class ValidatorProcess(Process):
             else:
                 successed_tx_list = self.tx_list_per_batch[batch_id]
             txid_lists.append(successed_tx_list)
-            if config.REMOTE_LOCK:
-                self.repo.sync_shadow_to_data_db_with_version(batch_id, version)
-                self.repo.release_lock(batch_id, lock_set)
-            else:
-                for worker_ip in self.worker_ip_set:
-                    worker_commit_set[worker_ip]["txs"].extend(successed_tx_list)
-                    worker_commit_set[worker_ip]['keys'] = keys_for_commit_per_ip[worker_ip]
+            for worker_ip in self.worker_ip_set:
+                worker_commit_set[worker_ip]["txs"].extend(successed_tx_list)
+                worker_commit_set[worker_ip]['keys'] = keys_for_commit_per_ip[worker_ip]
             self.tx_list_per_batch.pop(batch_id, None)
             self.time_tuple_per_batch.pop(batch_id, None)
             self.read_set_per_batch.pop(batch_id, None)

@@ -42,10 +42,6 @@ class RunningTXTable:
 
     def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
         if abort:
-            if config.CONCORD:
-                print(f"CONCORD: transaction {transaction_id_list[0]} aborted.")
-                self.concord_abort(transaction_id_list[0])
-                return
             self.running_txs[transaction_id_list[0]]['abort'] = True
             self.running_txs[transaction_id_list[0]]['finished'] = True
             self.running_txs[transaction_id_list[0]]['cond'].set()
@@ -58,16 +54,3 @@ class RunningTXTable:
                 self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
                 condition.set()
                 print(f"notified {tx_id}")
-
-    def concord_abort(self, transaction_id):
-        tx_table = self.running_txs.get(transaction_id, None)
-        if not tx_table or tx_table['concord']:
-            return
-        tx_table['concord'] = True
-        workflow_name = tx_table['workflow']
-        url = f"http://{VALIDATOR_ADDR}/concord_abort"
-        data = {'workflow_name': workflow_name, 'transaction_id': transaction_id}
-        requests.post(url, json=data)
-        self.running_txs[transaction_id]['abort'] = True
-        self.running_txs[transaction_id]['finished'] = True
-        self.running_txs[transaction_id]['cond'].set()

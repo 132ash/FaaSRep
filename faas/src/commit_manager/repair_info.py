@@ -2,13 +2,12 @@ import sys
 sys.path.append('../../config')
 import config
 
-PESSIMISTIC_REPAIR_ENABLED = config.PESSIMISTIC_REPAIR and config.REPAIR
-
 class RepairInfo:
     def __init__(self, workflow_graph_topo, function_pos):
         self.workflow_graph_topo = workflow_graph_topo
         self.function_pos = function_pos
-        self.fast_path_enabled = config.REPAIR and config.FAST_PATH
+        self.fast_path_enabled = config.FAST_PATH
+        self.optimistic_repair_enabled = config.OPTIMISTIC_REPAIR
 
         # downstream function table: {txid:{func: {cnt, key:{upstream_func；xx, upstream_ip:xx}}}}, cnt is the number of functions it subject to.
 
@@ -52,7 +51,7 @@ class RepairInfo:
                     func_info_dict['successor_port'] = {'END':{}}
                 else:
                     func_info_dict['successor_port'] = {f:{container_port[f]} for f in next_funcs}
-                if PESSIMISTIC_REPAIR_ENABLED:
+                if not self.optimistic_repair_enabled:
                     expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
                     expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
                     continue

@@ -12,7 +12,7 @@ from datetime import datetime
 repo = validator_repo.Repository()
 sys.path.append('../../config')
 import config
-PESSIMISTIC_REPAIR = config.PESSIMISTIC_REPAIR
+optimistic_repair_enabled = config.OPTIMISTIC_REPAIR
 VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
@@ -114,7 +114,7 @@ class SerializerProcess(Process):
                     need_repair = True
                     subjection_set[tx_id][func]["dirty"] = True
                     prev_batch_id,  prev_tx_id,  prev_func, prev_ip = prev_writer_tuple
-                    if PESSIMISTIC_REPAIR:
+                    if not optimistic_repair_enabled:
                         # add to prev info.
                         if batch_id != prev_batch_id:
                             expired_set[tx_id][func][key] = True
@@ -162,7 +162,7 @@ class SerializerProcess(Process):
                 current_key_writers = self.key_writers[key]
                 _,  writer_tx_id,  writer_func, writer_ip = current_key_writers.pop(0)
                 self.key_version_table[key] = current_batch_write_info['version']
-                if not PESSIMISTIC_REPAIR:
+                if optimistic_repair_enabled:
                     keys_for_commit_per_ip[writer_ip].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
                     if len(current_key_writers) > 0:
                         cascaded_batch_id, _, _ = current_key_writers[0]

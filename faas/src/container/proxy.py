@@ -43,7 +43,6 @@ class Runner:
         self.workflow = None
         self.function = None
         self.node_list = None
-        self.host_addr = container_config.CACHE_HOST
         self.sink_addr = None
         self.function_pos = None
         self.shadow_table = None
@@ -70,9 +69,8 @@ class Runner:
         self.fast_path_enabled = False
         self.remote_lock_enabled = False
         self.optimistic_repair = False
-        self.lock_set = {}
 
-    def init(self, host_addr, workflow, function, sink, validator, node_list,input,output,function_pos, port, fast_path_enabled, remote_lock_enabled, optimistic_repair, FaaSTCC_enabled, Concord_enabled):
+    def init(self, host_addr, workflow, function, sink, validator, node_list,input,output,function_pos, port, fast_path_enabled, optimistic_repair):
         # update function status
         self.host_addr = host_addr
         self.workflow = workflow
@@ -85,9 +83,6 @@ class Runner:
         self.function_pos = function_pos
         self.port = port
         self.fast_path_enabled = fast_path_enabled
-        self.remote_lock_enabled = remote_lock_enabled
-        self.FaaSTCC_enabled = FaaSTCC_enabled
-        self.Concord_enabled = Concord_enabled
         self.optimistic_repair = optimistic_repair
         # shadow table on each host
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
@@ -101,17 +96,15 @@ class Runner:
         filename = os.path.join(work_dir, default_file)
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
-        store.init(self.workflow, self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled, self.function_pos, self.validator_addr, FaaSTCC_enabled)
+        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled, self.function_pos, self.validator_addr)
 
         logging.info('init finished...')
 
-    def save(self, transaction_id, write_set, parent_cnt, lock_set, snapshot_interval):
+    def save(self, transaction_id, write_set, parent_cnt):
         self.transaction_id = transaction_id
         self.write_set = write_set
         self.parent_cnt = parent_cnt
-        self.lock_set = lock_set
         self.container_state = RUNNING
-        self.snapshot_interval = snapshot_interval
 
     def prepair_subjection_before_repair(self, transaction_id):
         set_pipeline = self.shadow_table[self.host_addr].pipeline() 
@@ -232,8 +225,6 @@ class Runner:
         TxMetaData_thisFunc = {
                                 "read_set": {}, 
                                 "write_set": self.write_set, 
-                                "lock_set": self.lock_set,
-                                'snapshot_interval': self.snapshot_interval,
                                 "RYW_subjection": {},
                                 "keys_from_RYW": self.keys_from_RYW,
                                 "keys_from_upstream": self.keys_from_upstream,
@@ -242,7 +233,7 @@ class Runner:
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, parent_cnt: {self.parent_cnt}, lock_set:{self.lock_set}")
+        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, parent_cnt: {self.parent_cnt}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         if not is_repair or not self.fast_path_enabled or self.dirty:
             store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
@@ -254,7 +245,7 @@ class Runner:
                 out = eval('main()', self.ctx)               
             except Exception as e:
                 aborted = True
-                msg = json.dumps({'Abort': True, 'error': str(e), 'lock_set': self.lock_set})
+                msg = json.dumps({'Abort': True, 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         if is_repair:
             runner.repair_metadata_fetched = False
@@ -278,24 +269,18 @@ class Runner:
                         self.trigger_downstream_functions(batch_id, aborted, downstream_funcs_opt)        
 
         io_latency = 0
-        lock_latency = 0
-        if self.remote_lock_enabled:
-            lock_latency = store.lock_latency
-
-        if self.FaaSTCC_enabled:
-            TxMetaData_thisFunc["read_set"] = {}
 
         if not self.fast_path_enabled or not is_repair or self.dirty:
             io_latency = store.io_latency
 
-        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency, lock_latency
+        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency
 
 
 proxy = Flask(__name__)
 proxy.status = 'new'
 proxy.debug = False
 runner = Runner()
-store = Store(container_config.CACHE_HOST)
+store = Store()
 
 
 @proxy.route('/status', methods=['GET'])
@@ -316,7 +301,7 @@ def init():
     runner.init(inp['host_addr'], inp['workflow'], inp['function'], inp['sink'], inp['validator'],
                 inp['node_list'], inp['input'],inp['output'],
                 inp['function_pos'],inp['port'],inp['fast_path_enabled'], 
-                inp['remote_lock_enabled'], inp['optimistic_repair'], inp['FaaSTCC_enabled'],inp['Concord_enabled'])
+                inp['optimistic_repair'])
 
     proxy.status = 'ok'
     return ('OK', 200)
@@ -338,9 +323,7 @@ def run():
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
     if not is_repair:
-        lock_set = inp['lock_set']
-        snapshot_interval = inp['snapshot_interval']
-        runner.save(transaction_id, inp['write_set'], inp['parent_cnt'], lock_set, snapshot_interval)
+        runner.save(transaction_id, inp['write_set'], inp['parent_cnt'])
     else:
         batch_id = inp['batch_id']
         if runner.fast_path_enabled:
@@ -350,7 +333,7 @@ def run():
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
     if runner.check_runnable(is_repair, no_parent_execution):
-        aborted, abort_msg, rs, ws, RYW_subjection, io_latency, lock_latency = runner.run(batch_id, transaction_id, is_repair)
+        aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(batch_id, transaction_id, is_repair)
         if aborted:
             return abort_msg
 
@@ -359,8 +342,6 @@ def run():
         "write_set": ws,
         "RYW_upstreams": RYW_subjection,
         "io_latency": io_latency,
-        "lock_set": lock_set,
-        "lock_latency": lock_latency,
         'snapshot_interval': snapshot_interval,
     }
 

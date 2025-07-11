@@ -185,26 +185,15 @@ class Repository:
 
     # commit keys to DB, flush cache, and delete shadow table entries.
     def commit_tx_writes(self, commit_key_list, tx_list, version):
-        if config.FaaSTCC:
-            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{tx_list[0]}:PUT:*")
-            shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
-            shadow_table_pipe.multi()
-            for redis_key in keys:
-                shadow_table_pipe.get(redis_key)
-            responses = shadow_table_pipe.execute()
-            for redis_key, value in zip(keys, responses):
-                key = self.param_decode(redis_key)
-                self.data_db.store_data_to_db(key, version, value)
-        else:
-            cache_pipe = self.cache_redis.pipeline()
-            cache_pipe.multi()
-            for redis_key in commit_key_list:
-                key = self.param_decode(redis_key)
-                value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
-                cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
-                # 调用 store_key_to_db 存储到数据库中
-                self.data_db.store_data_to_db(key, version, value)
-            cache_pipe.execute()
+        cache_pipe = self.cache_redis.pipeline()
+        cache_pipe.multi()
+        for redis_key in commit_key_list:
+            key = self.param_decode(redis_key)
+            value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
+            cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
+            # 调用 store_key_to_db 存储到数据库中
+            self.data_db.store_data_to_db(key, version, value)
+        cache_pipe.execute()
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()

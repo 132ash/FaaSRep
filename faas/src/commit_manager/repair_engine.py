@@ -17,8 +17,8 @@ from repair_info import RepairInfo
 REPAIRED = 1
 ABORTED = 2
 
-FAST_PATH_ENABLED = config.FAST_PATH and config.REPAIR
-PESSIMISTIC_REPAIR_ENABLED = config.PESSIMISTIC_REPAIR and config.REPAIR
+FAST_PATH_ENABLED = config.FAST_PATH
+OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
 class RepairEngine:
 
@@ -35,7 +35,7 @@ class RepairEngine:
     def repair_batch(self,batch_id,container_port, write_set,tx_list, expired_keys, pessi_sink_info):
         # allocate works
         start = time.time()
-        if PESSIMISTIC_REPAIR_ENABLED:
+        if not OPTIMISTIC_REPAIR:
             self.PessimisticRepairer.register_repair_info(batch_id, write_set, tx_list, pessi_sink_info['last_tx'])
             ready_txs = self.register_on_sink(batch_id, pessi_sink_info)['ready_txs']
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)

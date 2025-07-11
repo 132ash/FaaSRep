@@ -43,9 +43,7 @@ default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:
 
 REPAIR_ENABLED = config.REPAIR
 FAST_PATH = config.FAST_PATH
-REMOTE_LOCK = config.REMOTE_LOCK
-PESSIMISTIC_REPAIR = config.PESSIMISTIC_REPAIR
-FAASTCC = config.FAASTCC
+PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 
 REPAIRED = 1
 ABORTED = 2
@@ -83,9 +81,6 @@ class Dispatcher:
     
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
-
-    def FaaSTCC_abort(self, workflow_name, transaction_id):
-        self.managers[workflow_name].abort_tx(transaction_id)
     
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
@@ -144,10 +139,7 @@ def abort():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    if REMOTE_LOCK:
-        lock_set = data.get('lock_set', {})
-        repo.release_lock(transaction_id, lock_set)
-    elif PESSIMISTIC_REPAIR and data.get('repair', False):
+    if data.get('repair', False):
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id, ABORTED)
     notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
     payload = {
@@ -187,14 +179,7 @@ def req():
     batch_id = data.get('batch_id', "")
     repair = data.get('repair', False)
     repair_states = data.get('repair_states', {})
-    # data for remote lock
-    lock_set = data.get('lock_set', {})
-    # data for FaaSTCC
-    snapshot_interval = data.get('snapshot_interval', default_FaaSTCC_snapshot_interval)
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
-    if FAASTCC and state is None:
-        dispatcher.FaaSTCC_abort(workflow_name, transaction_id)
-        return
+    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states)
     logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)

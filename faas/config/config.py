@@ -38,21 +38,14 @@ BATCH_SIZE = 1
 BATCH_INTERVAL = 0.005
 
 # mode setting
-BASIC = True
-REPAIR = False
 FAST_PATH = False
-REMOTE_LOCK = False
 OPTIMISTIC_REPAIR = True
-FAASTCC = False
-CONCORD = False
 
 # repair setting
 RUNNING = 1
 REPAIRED = 2
 ABORTED = 3
 
-# FaaSTCC setting
-DEFAULT_SNAPSHOT_INTERVAL = []
 
 
 
