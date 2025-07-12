@@ -18,9 +18,9 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self,host_addr, client, transaction_sink_addr, function_info:FunctionInfo, port_controller, node_list, default_container_num, reserve_pool, input, output,function_pos):
-        self.client = client
+    def __init__(self, host_addr, client, transaction_sink_addr, function_info:FunctionInfo, port_controller, node_list, default_container_num, reserve_pool, input, output,function_pos):
         self.host_addr = host_addr
+        self.client = client
         self.info:FunctionInfo = function_info
         self.transaction_sink_addr = transaction_sink_addr
         self.validator_addr = config.VALIDATOR_ADDR
@@ -35,7 +35,6 @@ class Function:
         self.num_processing = 0
         self.rq = []
         self.FAST_PATH = config.FAST_PATH
-        self.REPAIR = config.REPAIR
         self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
 
@@ -89,7 +88,7 @@ class Function:
         
         # 3. in fastpath, reserve the container into reserve pool
         # else, return the container to pool
-        if self.REPAIR and self.FAST_PATH:
+        if self.FAST_PATH:
             # if the container is not used in fast path, reserve it into reserve pool
             self.reserve_pool.reserve(req.transaction_id, container)
         else:
@@ -123,7 +122,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container: Container):
-        container.init(self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.validator_addr, self.node_list, self.input,self.output, self.function_pos, container.port, self.FAST_PATH, self.OPTIMISTIC_REPAIR)
+        container.init(self.host_addr, self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.validator_addr, self.node_list, self.input,self.output, self.function_pos, container.port, self.FAST_PATH, self.OPTIMISTIC_REPAIR)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self):

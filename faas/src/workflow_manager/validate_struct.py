@@ -190,11 +190,11 @@ class TransactionSink:
             transformed_batch["transaction_list"].append(tx_id)
         return transformed_batch
 
-    def send_validate_request(self):
+    def validate_batch(self):
         self.queue_lock.acquire()
         idx = min(self.batch_size, len(self.queue))
         # MODIFY: must wait the batch to finish: if batch open, wait until the batch is full.
-        if self.batch_size != 1 and idx != self.batch_size:
+        if idx != self.batch_size:
             self.queue_lock.release()
             return
         first_run_finish_time = time.time()

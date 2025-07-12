@@ -41,7 +41,6 @@ validate_interval = 0.005 # 200 qps at most
 default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
 
 
-REPAIR_ENABLED = config.REPAIR
 FAST_PATH = config.FAST_PATH
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 
@@ -52,8 +51,9 @@ class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        print("Clearing previous containers.")
        os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
-       repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
+       repo.shadowtable_init(sys.argv[1])
+       repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
@@ -67,8 +67,8 @@ class Dispatcher:
     def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
         return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}, snapshot_interval=[]) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set,snapshot_interval)
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -94,7 +94,7 @@ class Dispatcher:
     def _validate_loop(self):
         gevent.spawn_later(validate_interval, self._validate_loop)
         for sink in self.sinks.values():
-            gevent.spawn(sink.send_validate_request)
+            gevent.spawn(sink.validate_batch)
 
 
 

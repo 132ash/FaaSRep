@@ -18,23 +18,10 @@ class SubjectionCollector:
         self.shadow_table = shadow_table
         self.ip = ip
         self.cache_redis = cache_redis
-        self.data_db = db_server.Table('data')
-
-    def db_get(self, key):
-        # 从dynamodb中获取数据
-        response = self.data_db.get_item(
-            Key={
-                'key': key
-            }
-        )
-        item = response.get('Item')
-        if item:
-            return item['version'], item['value']
-        else:
-            return None, None
+        self.data_db = db_server
 
     def update_and_fetch(self, key):
-        version, value = self.db_get(key)
+        version, value = self.data_db.get_data_from_db(key)
         data = {"value": value, "version": version}
         self.cache_redis[key] = json.dumps(data)
         return data

@@ -132,13 +132,13 @@ def analyze_all(_baseline, _mode):
     df.to_csv(f"{_baseline}_{_mode}" + '.csv')
    
 
-TESTRUN = False
+TESTRUN = True
 baseline = ["basic", "repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
 mode = ["NOCACHE + SMALL", "NOCACHE + LARGE", "CACHE + LARGE", "CACHE + SMALL"]
 
 if __name__ == '__main__':
     _baseline = baseline[0]
-    _mode = mode[1]
+    _mode = mode[3]
     if mode == "remote lock":
         release_lock()
     if TESTRUN:

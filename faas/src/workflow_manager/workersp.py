@@ -68,7 +68,7 @@ class WorkerSPManager:
 
         self.lock = gevent.lock.BoundedSemaphore() # guard self.states
         self.host_addr = host_addr
-        repo.shadowtable_init(extract_ip(host_addr))
+        self.repo = repo
         self.workflow_name = workflow_name
         self.states: Dict[str, TransactionState] = {}
         self.func = self.repo.get_current_node_functions(self.host_addr, self.info_db)
@@ -84,7 +84,7 @@ class WorkerSPManager:
 
         self.node_list = node_list
         
-        self.function_manager = FunctionManager(function_info_addr, self.transaction_sink_addr, min_port, self.node_list, reserve_pool, self.function_pos)
+        self.function_manager = FunctionManager(self.host_addr, self.workflow_name, function_info_addr, self.transaction_sink_addr, min_port, self.node_list, reserve_pool, self.function_pos)
         # repairing batches and finished transactions
         self.repair_table: Dict[str, int] = {}
         min_port += 5000
@@ -245,9 +245,9 @@ class WorkerSPManager:
         crosstx_jobs = []
         # if function in repair mode and not dirty, skip running
         if not state.repair or dirty:
-            successful, lock_set = self.run_normal(state, info)
+            successful = self.run_normal(state, info)
             if not successful:
-                self.abort_tx(state.transaction_id,state.batch_id,lock_set)
+                self.abort_tx(state.transaction_id,state.batch_id)
                 return
             
         if self.OPTIMISTIC_REPAIR and state.repair:

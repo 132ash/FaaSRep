@@ -5,7 +5,7 @@ import couchdb
 import redis
 import boto3
 from datetime import datetime
-from subjection_collector import SubjectionCollector, RedisShadowTable
+from subjection_collector import SubjectionCollector
 import sys
 import json
 
