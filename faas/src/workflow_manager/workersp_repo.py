@@ -208,23 +208,3 @@ class Repository:
             self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
         print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")
 
-    def release_lock(self, transaction_id, lock_set):
-        """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
-        """
-
-        for key in lock_set.keys():
-            # 更新 lock 属性为 None
-            self.data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #l = :none",
-                ExpressionAttributeNames={
-                    '#l': 'lock'
-                },
-                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                ExpressionAttributeValues={
-                    ':txid': transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
-            )

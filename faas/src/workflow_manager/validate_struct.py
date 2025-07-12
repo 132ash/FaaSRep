@@ -202,7 +202,7 @@ class TransactionSink:
         self.queue = self.queue[idx:]
         self.queue_lock.release()
         batch = self.transform_batch(batch)
-        self.repairing_batch_state.register_batch(batch['batch_id'], batch['tx_list'], idx)
+        self.repairing_batch_state.register_batch(batch['batch_id'], batch['transaction_list'], idx)
         logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}, batch_size:{idx}")
         self.send_validate_request(batch, first_run_finish_time)
 
@@ -218,9 +218,10 @@ class TransactionSink:
         response = requests.post(remote_url, json=data)
         response.close()
         
-    def send_validate_request(batch, first_run_finish_time):
+    def send_validate_request(self, batch, first_run_finish_time):
         remote_url = 'http://{}/validate'.format(VALIDATOR_ADDR)
         data = {
+            'workflow_name': self.workflow_name,
             "batch": batch,
             "batch_id": batch["batch_id"],
             "first_run_finish_time": first_run_finish_time

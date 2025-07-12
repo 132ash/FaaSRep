@@ -159,7 +159,7 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             if not state.repair:
-                self.validate_tx(self.workflow_name, state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection, state.lock_set, state.snapshot_interval)
+                self.validate_tx(state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection)
             else:
                 self.transaction_sink.fin_repair_or_abort(state.batch_id, state.transaction_id, REPAIRED)
             return

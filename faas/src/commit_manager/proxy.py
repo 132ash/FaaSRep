@@ -16,7 +16,7 @@ COMMIT = 2
 PESSIMISTIC_REPAIR_FINISH = 4
 
 workflows = config.FUNCTION_INFO_ADDRS.keys()
-validator_pools = {workflow: ValidatorPool(config.VALIDATORS_PER_POOL) for workflow in workflows}
+validator_pools = {workflow: ValidatorPool(config.VALIDATORS_PER_POOL, workflow) for workflow in workflows}
 
 # receive a set of rw sets and validate them. they belongs to the same workflow.
 # read set: {func: {key: version}}  write set: {key: {ip:func_ip, func:func}}

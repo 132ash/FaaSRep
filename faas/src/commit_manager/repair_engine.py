@@ -30,7 +30,7 @@ class RepairEngine:
         self.worker_ip_set = worker_ip_set
         self.repo = repo
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
-        self.PessimisticRepairer = PessimisticRepairer(workflow_name, tx_sink_addr, self.repair_info, self.function_pos)
+        self.PessimisticRepairer = PessimisticRepairer(workflow_name, self.repair_info, self.function_pos)
 
     def repair_batch(self,batch_id,container_port, write_set,tx_list, expired_keys, pessi_sink_info):
         # allocate works

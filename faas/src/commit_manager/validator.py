@@ -6,7 +6,7 @@ import sys
 import logging
 import time
 from typing import Dict
-from serializer import SerializerProcess, get_timestamp
+from serializer import SerializerProcess
 import requests
 from multiprocessing import Process, Queue, Pipe
 from repair_info import RepairInfo
