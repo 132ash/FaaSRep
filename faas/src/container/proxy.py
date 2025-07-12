@@ -96,7 +96,7 @@ class Runner:
         filename = os.path.join(work_dir, default_file)
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
-        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.remote_lock_enabled, self.function_pos, self.validator_addr)
+        store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.function_pos, self.validator_addr)
 
         logging.info('init finished...')
 
@@ -178,13 +178,13 @@ class Runner:
 
     def fin_repair(self, batch_id, transaction_id):
         logging.info(f"Finishing repair: {self.function}")
-        url = f'http://{self.sink_addr}:7000/fin_repair'
+        url = f'http://{self.sink_addr}/fin_repair'
         data = {'batch_id': batch_id, "transaction_id": transaction_id}
         requests.post(url, json=data)
 
     def abort_transaction(self, batch_id, transaction_id):
         logging.info(f"abort transaction: {self.function}")
-        url = f'http://{self.sink_addr}:7000/abort'
+        url = f'http://{self.sink_addr}/abort'
         data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True}
         requests.post(url, json=data)
 
@@ -246,6 +246,7 @@ class Runner:
             except Exception as e:
                 aborted = True
                 msg = json.dumps({'Abort': True, 'error': str(e)})
+                logging.error(f"Function {self.function} execution failed: {msg}")
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         if is_repair:
             runner.repair_metadata_fetched = False
@@ -259,14 +260,13 @@ class Runner:
                     self.container_state = REPAIRED
                     # in fast-path: the container need to trigger downstream functions.
                     # besides, in optimistic repair mode, the container should send data to waiting downstream functions.
-                    if self.fast_path_enabled:
-                        if self.optimistic_repair:
-                            # optimistic repair: the container should send data to waiting downstream functions.
-                            downstream_funcs_opt = self.repair_sidecar.set_state_and_get_waiting_downstream(transaction_id, self.container_state)
-                            self.repair_sidecar.send_data_to_waiting_downstream(transaction_id, downstream_funcs_opt)
-                        else:
-                            downstream_funcs_opt = []
-                        self.trigger_downstream_functions(batch_id, aborted, downstream_funcs_opt)        
+                    if self.optimistic_repair:
+                        # optimistic repair: the container should send data to waiting downstream functions.
+                        downstream_funcs_opt = self.repair_sidecar.set_state_and_get_waiting_downstream(transaction_id, self.container_state)
+                        self.repair_sidecar.send_data_to_waiting_downstream(transaction_id, downstream_funcs_opt)
+                    else:
+                        downstream_funcs_opt = []
+                    self.trigger_downstream_functions(batch_id, aborted, downstream_funcs_opt)        
 
         io_latency = 0
 
@@ -313,12 +313,10 @@ def run():
 
     inp = request.get_json(force=True, silent=True)
     transaction_id = inp['transaction_id']
-    io_latency, lock_latency = 0, 0
+    io_latency = 0
     is_repair = inp.get('repair',False)
     no_parent_execution = False
     batch_id = ""
-    lock_set = {}
-    snapshot_interval = []
     rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
@@ -340,9 +338,8 @@ def run():
     res = {
         "read_set": rs,
         "write_set": ws,
-        "RYW_upstreams": RYW_subjection,
-        "io_latency": io_latency,
-        'snapshot_interval': snapshot_interval,
+        "RYW_subjection": RYW_subjection,
+        "io_latency": io_latency
     }
 
     proxy.status = 'ok'

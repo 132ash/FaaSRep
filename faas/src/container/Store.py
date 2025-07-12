@@ -37,6 +37,7 @@ class Store:
         self.function_pos = function_pos
         self.fast_path_enabled = fast_path_enabled
         self.db_server = db_server
+        self.validator_addr = validator_addr
 
     def runtime_init(self, input, output, is_repair, transaction_id, metadata):
         self.transaction_id = transaction_id
@@ -58,9 +59,9 @@ class Store:
     
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
-            return self.function_pos[self.function_name]['ip']
+            return self.function_pos[self.function_name]
         else:
-            return self.function_pos[upstream]['ip']
+            return self.function_pos[upstream]
         
     def abort_tx(self):
         raise Exception("Transaction abort triggered by itself.")
@@ -115,7 +116,7 @@ class Store:
         if not self.is_repair:
             upstream_func = self.write_set.get(key, "")
             if upstream_func:
-                upstream_ip = self.function_pos[upstream_func]['ip']
+                upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
                 self.RYW_subjection_collect[key] = upstream_func
             else:
@@ -126,7 +127,7 @@ class Store:
         else:
             if self.keys_from_RYW.get(key, None):
                 upstream_func = self.keys_from_RYW[key]
-                upstream_ip = self.function_pos[upstream_func]['ip']
+                upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
             elif self.keys_from_upstream.get(key, None):
                 value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, self.function_name, 'UPSTREAM'))
