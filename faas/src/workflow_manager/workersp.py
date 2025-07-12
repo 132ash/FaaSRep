@@ -76,7 +76,7 @@ class WorkerSPManager:
         self.function_pos = {}
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
-            self.function_pos[function_name] = self.function_info[function_name]['ip']
+            self.function_pos[function_name] = extract_ip(self.function_info[function_name]['ip'])
 
         self.transaction_sink = transaction_sink
         self.repo = repo
@@ -138,7 +138,7 @@ class WorkerSPManager:
 
     def abort_tx(self,transaction_id, batch_id=''):
         # trigger next run of the transaction under pessimistic repair mode
-        url = 'http://{}:7000/abort'.format(self.transaction_sink_addr)
+        url = 'http://{}/abort'.format(self.transaction_sink_addr)
         data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name}
         requests.post(url, json=data)
 
@@ -279,7 +279,7 @@ class WorkerSPManager:
         end = time.time()
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")
-            return False, res['lock_set']
+            return False
             
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
@@ -292,12 +292,12 @@ class WorkerSPManager:
             state.container_port[name] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
             state.RYW_subjection[name] = res["RYW_subjection"]
-            logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_upstreams']}, update RYW: {state.RYW_subjection}")
+            logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_subjection']}, update RYW: {state.RYW_subjection}")
 
         state.lock.release()
         logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
-        return True, res['lock_set']
+        return True
 
     def clear_mem(self, transaction_id):
         self.repo.clear_mem(transaction_id)
