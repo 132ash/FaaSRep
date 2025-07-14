@@ -43,7 +43,7 @@ class FunctionManager:
 
         for x in self.function_info:
             graph_info = repo.get_function_info(x.function_name, workflow_name+'_function_info')
-            self.functions[x.function_name] = Function(host_addr, self.client,transaction_sink_addr, x, self.port_controller, node_list, self.default_container_num, reserve_pool, graph_info['input'], graph_info['output'], self.function_pos)
+            self.functions[x.function_name] = Function(host_addr, self.client,transaction_sink_addr, x, self.port_controller, node_list, self.default_container_num, reserve_pool, graph_info['input'], graph_info['output'], graph_info['parent_cnt'], self.function_pos)
         self.init()
        
     def init(self):
@@ -60,8 +60,8 @@ class FunctionManager:
         for function in self.functions.values():
             gevent.spawn(function.dispatch_request)
     
-    def run(self, function_name, transaction_id, write_set,is_repair, parent_cnt,batch_id, repair_states={}):
+    def run(self, function_name, transaction_id, write_set,is_repair,batch_id, repair_states={}):
         # print('run', function_name, request_id, runtime, input, output, to, keys)
         if function_name not in self.functions:
             raise Exception(f"No such function! all functions: {self.functions}")
-        return self.functions[function_name].send_request(transaction_id, write_set, is_repair, parent_cnt,batch_id, repair_states)
+        return self.functions[function_name].send_request(transaction_id, write_set, is_repair,batch_id, repair_states)

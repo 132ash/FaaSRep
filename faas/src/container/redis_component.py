@@ -86,7 +86,7 @@ class RepairSidecar:
         # f"{transaction_id}:{self.function}:UPSTREAM:"
         for info in downstream_funcs:
             tx_id, func, ip = info[0], info[1], info[2]
-            keys = self_redis.lpop(f"{self_tx_id}:SUCCESSOR:{self.function}:KEYS:{tx_id}:{func}", 0, -1)
+            keys = self_redis.lrange(f"{self_tx_id}:SUCCESSOR:{self.function}:KEYS:{tx_id}:{func}", 0, -1)
             for key in keys:
                 downstream_keys.setdefault(ip, []).append((tx_id, func, key))
         # 2. 多线程并发写入每个 ip 的 redis

@@ -226,6 +226,7 @@ class TransactionSink:
             "batch_id": batch["batch_id"],
             "first_run_finish_time": first_run_finish_time
         }
+        logging.info(f"Sending validate request to {remote_url} with data: {data}")
         response = requests.post(remote_url, json=data)
         response.close() 
         
@@ -240,7 +241,7 @@ class TransactionSink:
 
     def fin_repair_or_abort(self, batch_id, transaction_id, state):
         trigger_jobs = []
-        batch_finished, ready_successors = self.repairing_batch_state.after_transaction_finish(batch_id, transaction_id, state)
+        batch_finished, ready_successors = self.repairing_batch_state.after_transaction_finish(batch_id, transaction_id)
         if PESSIMISTIC_REPAIR:
             trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,transaction_id, state, ready_successors))
         if batch_finished:

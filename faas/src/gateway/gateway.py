@@ -124,7 +124,7 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id_lists = data['transaction_id_list']
+    transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
         if data.get('abort', False):

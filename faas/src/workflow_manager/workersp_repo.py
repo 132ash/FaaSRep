@@ -63,7 +63,7 @@ class Repository:
     def shadowtable_init(self, ip):
         self.ip = ip
         self.subjection_collector = SubjectionCollector(
-            shadow_table=self.shadowtable_redis_all_addr[self.ip], 
+            shadow_table=self.shadowtable_redis_all_addr, 
             ip=self.ip,
             cache_redis = self.cache_redis,
             db_server = self.data_db
@@ -184,7 +184,7 @@ class Repository:
         return func_pos
 
     # commit keys to DB, flush cache, and delete shadow table entries.
-    def commit_tx_writes(self, commit_key_list, tx_list, version):
+    def commit_tx_writes(self, commit_key_list, version):
         cache_pipe = self.cache_redis.pipeline()
         cache_pipe.multi()
         for redis_key in commit_key_list:

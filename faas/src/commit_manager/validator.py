@@ -5,7 +5,7 @@ from gevent import event
 import sys
 import logging
 import time
-from typing import Dict
+from subprocess_log import setup_validator_logger, log_validator_message
 from serializer import SerializerProcess
 import requests
 from multiprocessing import Process, Queue, Pipe
@@ -18,13 +18,14 @@ import config
 
 PESSIMISTIC_REPAIR_ENABLED = not config.OPTIMISTIC_REPAIR
 
-
 VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
 PESSIMISTIC_REPAIR_FINISH = 4
 GATEWAY_ADDR = config.GATEWAY_ADDR
 DISPATCH_INTERVAL = 0.005 
+
+Serializer_timeout = 10  # seconds
 
 repo = Repository()
 
@@ -35,7 +36,6 @@ class ValidatorPool:
         self.serializer_req_queue = Queue()
         self.handler_task_queues = []
         self.serializer_return_pipes = []
-        self.validator_handlers = []
         function_pos = {}
         workflow_graph_topo = {}
         worker_ip_set = set()
@@ -49,14 +49,18 @@ class ValidatorPool:
         self.batch_processor_table = {}  # {batch_id: processor_id}
         for i in range(self.num_validators):
             task_queue = Queue()
-            parent_put, child_get = Pipe()
-            p = ValidatorProcess(i, workflow_name, task_queue, self.serializer_req_queue, child_get, function_pos, workflow_graph_topo, worker_ip_set, repo)
+            serializer_return_pipe = Queue()
+            p = ValidatorProcess(i, workflow_name, task_queue, self.serializer_req_queue,  serializer_return_pipe, function_pos, workflow_graph_topo, worker_ip_set, repo)
+            p.daemon = True
             p.start()
             self.handler_task_queues.append(task_queue)
-            self.serializer_return_pipes.append(parent_put)
-            self.validator_handlers.append(p)
-        self.serializer = SerializerProcess(self.serializer_req_queue, [parent_put for parent_put in self.serializer_return_pipes], self.handler_task_queues, function_pos)
+            self.serializer_return_pipes.append(serializer_return_pipe)
+        self.serializer = SerializerProcess(self.serializer_req_queue, self.serializer_return_pipes, self.handler_task_queues, function_pos)
+        self.serializer.daemon = True
         self.serializer.start()
+        self.init()
+
+    def init(self):
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
 
     def _dispatch_loop(self):
@@ -81,11 +85,11 @@ class ValidatorPool:
                     min_idx = idx
                     if min_len == 0:
                         break
-            req = self.pool_task_queue.get()
             self.handler_task_queues[min_idx].put(req)
             logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
 
     def submit(self, batch_id, op, data={}):
+        logging.info(f"Submitting request {batch_id} with operation {op}, batch data:{data}")
         self.pool_task_queue.put((batch_id, op, data))
 
 class ValidatorProcess(Process):
@@ -95,19 +99,22 @@ class ValidatorProcess(Process):
         self.validator_id = validator_id
         self.workflow_name = workflow_name
 
+        # 初始化logger
+        self.logger = setup_validator_logger(validator_id)
 
         self.function_pos = function_pos
         self.workflow_graph_topo = workflow_graph_topo
         self.worker_ip_set = worker_ip_set
         self.repo = repo
+        log_validator_message(self.logger, f"topo info:{self.workflow_graph_topo}, function_pos:{self.function_pos}")
 
         self.tx_sink_addr =  self.function_pos[self.repo.get_end_function(workflow_name)]
         self.task_queue = task_queue
         self.serializer_req_queue = serializer_req_queue
         self.serializer_return_pipe = child_get
-        self.repair_info = RepairInfo(self.workflow_graph_topo,  self.function_pos)
-        self.repair_engine = RepairEngine(self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
-
+        self.repair_info = RepairInfo(self.logger, self.workflow_graph_topo,  self.function_pos)
+        self.repair_engine = RepairEngine(self.logger, self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
+        
         self.tx_list_per_batch = {}
         self.container_port_per_batch = {} 
         self.read_set_per_batch = {}
@@ -117,6 +124,8 @@ class ValidatorProcess(Process):
 
 
     def run(self):
+        log_validator_message(self.logger, f"ValidatorProcess {self.validator_id} started")
+        
         while True:
             last_task_time = time.time()
             try:
@@ -126,18 +135,23 @@ class ValidatorProcess(Process):
                 if time.time() - last_task_time > 1:
                     gevent.sleep(0.1)
                 continue
+            
+            log_validator_message(self.logger, f"Validator {self.validator_id} processing batch {batch_id} with operation {op}")
+            
             if op == VALIDATE:
-                lock_set = data.get('lock_set', {})
-                self.tx_list_per_batch[batch_id] = data['transaction_list']
+                log_validator_message(self.logger, f"Validator {self.validator_id} received validation request for batch {batch_id}, data: {data}")
+                batch = data['batch'] 
+                first_run_finish_time = data['first_run_finish_time']
+                self.tx_list_per_batch[batch_id] = batch['transaction_list']
                 self.successed_tx_list_per_batch[batch_id] = []
-                self.read_set_per_batch[batch_id] = data['read_set']
-                self.write_set_per_batch[batch_id] = data['write_set']
-                batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time, pessi_sink_info = self.validate(batch_id, data, last_task_time)
-                self.time_tuple_per_batch[batch_id] = (data['first_run_finish_time'], last_task_time, inside_validator_time)
+                self.read_set_per_batch[batch_id] = batch['read_set']
+                self.write_set_per_batch[batch_id] = batch['write_set']
+                batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time, pessi_sink_info = self.validate(batch_id, batch, last_task_time)
+                self.time_tuple_per_batch[batch_id] = (first_run_finish_time, last_task_time, inside_validator_time)
                 if batch_need_repair:
-                    self.repair_engine.repair_batch(batch_id, data['container_port'], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
+                    self.repair_engine.repair_batch(batch_id, batch['container_port'], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
                 else:
-                    self.commit_batch_list(commit_list_for_current_handler,  lock_set)
+                    self.commit_batch_list(commit_list_for_current_handler)
             elif op == COMMIT:
                 ready_batch_list = self.serializer_request(batch_id, COMMIT, {})
                 self.commit_batch_list(ready_batch_list)
@@ -147,18 +161,22 @@ class ValidatorProcess(Process):
                 self.repair_engine.pessimistic_repair_finish(batch_id, self.function_pos, self.worker_ip_set, self.write_set_per_batch[batch_id],self.successed_tx_list_per_batch[batch_id] , data)
 
     def serializer_request(self, batch_id, op, data):
+        log_validator_message(self.logger, f"Validator {self.validator_id} sent request for batch {batch_id} with operation {op} to serializer")
         self.serializer_req_queue.put((self.validator_id, batch_id, op, data))
-        while True:
-            if self.serializer_return_pipe.poll(1):
-                resp = self.serializer_return_pipe.recv()
-                break
-            else:
-                gevent.sleep(0.005)
-        return resp
+        start_time = time.time()
+        while time.time() - start_time < Serializer_timeout:
+            try:
+                response = self.serializer_return_pipe.get(timeout=1)
+                return response
+            except:
+                continue
+        else:
+            raise Exception(f"Serializer request for batch {batch_id} with operation {op} timed out after {Serializer_timeout} seconds")
 
     def validate(self, batch_id, batch, start_time):
         self.repair_info.batch_init(batch_id)
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
+        log_validator_message(self.logger, f"Validator {self.validator_id} validating batch {batch_id} with input: {serializer_input}")
         batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
         if not batch_need_repair:
             expired_keys_per_ip = {}
@@ -168,7 +186,7 @@ class ValidatorProcess(Process):
 
 
     # commit_batch_list : [(batch_id, version), ...]
-    def commit_batch_list(self, commit_batch_list, lock_set = {}):
+    def commit_batch_list(self, commit_batch_list):
         txid_lists, timestamps = [], []
         worker_commit_set = {worker_ip:{"txs":[]} for worker_ip in self.worker_ip_set }
         for batch_id, version, keys_for_commit_per_ip in commit_batch_list:
@@ -201,14 +219,12 @@ class ValidatorProcess(Process):
         else:
             url = f"http://{ip}/commit"
         
-        print(f"triggering batch_id {batch_id} commit, sending req to {ip}")
+        log_validator_message(self.logger, f"triggering batch_id {batch_id} commit, sending req to {ip}")
         data = {
-            'workflow_name': self.workflow_name,
-            'batch_id':batch_id,
             "version": version,
-            "tx_list": commit_info['txs'],
-            'key_list': commit_info['keys']
+            'keys': commit_info['keys']
         }
+
         requests.post(url, json=data)
 
     def notify_gateway(self, txid_lists, success:bool, timestamps):
@@ -216,7 +232,7 @@ class ValidatorProcess(Process):
         data = {
             'transaction_id_lists': txid_lists,
             'success': success,
-            'first_run_finish_time':timestamps
+            'timestamps':timestamps
         }
         r = requests.post(url, json=data)
         return r.json() 

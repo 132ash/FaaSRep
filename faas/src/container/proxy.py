@@ -70,7 +70,7 @@ class Runner:
         self.remote_lock_enabled = False
         self.optimistic_repair = False
 
-    def init(self, host_addr, workflow, function, sink, validator, node_list,input,output,function_pos, port, fast_path_enabled, optimistic_repair):
+    def init(self, host_addr, workflow, function, sink, validator, node_list,input,output,parent_cnt,function_pos, port, fast_path_enabled, optimistic_repair):
         # update function status
         self.host_addr = host_addr
         self.workflow = workflow
@@ -80,6 +80,7 @@ class Runner:
         self.node_list = node_list
         self.input = input
         self.output = output
+        self.parent_cnt = parent_cnt
         self.function_pos = function_pos
         self.port = port
         self.fast_path_enabled = fast_path_enabled
@@ -100,10 +101,9 @@ class Runner:
 
         logging.info('init finished...')
 
-    def save(self, transaction_id, write_set, parent_cnt):
+    def save(self, transaction_id, write_set):
         self.transaction_id = transaction_id
         self.write_set = write_set
-        self.parent_cnt = parent_cnt
         self.container_state = RUNNING
 
     def prepair_subjection_before_repair(self, transaction_id):
@@ -129,15 +129,15 @@ class Runner:
         set_pipeline.execute()
 
     # in repair mode: save the repair metadata. 
-    def fetch_repair_metadata(self, transaction_id, metadata_norepair={}):
+    def fetch_repair_metadata(self, transaction_id, metadata_nofast={}):
         self.repair_metadata_lock.acquire()
         if not self.repair_metadata_fetched:
             self.repair_metadata_fetched = True
             # not fast-path: the metadata is sent by workersp.
             if not self.fast_path_enabled:
-                self.keys_from_upstream = metadata_norepair['upstream_keys']
-                self.keys_from_RYW = metadata_norepair['RYW_keys']
-                self.dirty = metadata_norepair['dirty']
+                self.keys_from_upstream = metadata_nofast['upstream_keys']
+                self.keys_from_RYW = metadata_nofast['RYW_keys']
+                self.dirty = metadata_nofast['dirty']
             else:
                 try:
                     metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
@@ -299,7 +299,7 @@ def init():
 
     inp = request.get_json(force=True, silent=True)
     runner.init(inp['host_addr'], inp['workflow'], inp['function'], inp['sink'], inp['validator'],
-                inp['node_list'], inp['input'],inp['output'],
+                inp['node_list'], inp['input'],inp['output'],inp['parent_cnt'],
                 inp['function_pos'],inp['port'],inp['fast_path_enabled'], 
                 inp['optimistic_repair'])
 
@@ -321,7 +321,7 @@ def run():
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
     if not is_repair:
-        runner.save(transaction_id, inp['write_set'], inp['parent_cnt'])
+        runner.save(transaction_id, inp['write_set'])
     else:
         batch_id = inp['batch_id']
         if runner.fast_path_enabled:

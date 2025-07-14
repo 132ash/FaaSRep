@@ -8,6 +8,7 @@ import sys
 import validator_repo
 from collections import defaultdict
 from datetime import datetime
+import logging
 
 repo = validator_repo.Repository()
 sys.path.append('../../config')
@@ -17,10 +18,37 @@ VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
 
+# 配置logging模块
+def setup_logger():
+    logger = logging.getLogger('serializer')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    handler = logging.FileHandler('/home/ash/FaaSnap/faas/logging/serializer.log', mode='a')
+    handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(handler)
+    
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
 def get_timestamp():
     # use timestamp as the version of batch.
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
     return timestamp
+
+def log_message(message):
+    logger.info(message)
+    # 强制刷新缓冲区
+    for handler in logger.handlers:
+        handler.flush()
 
 class SerializerProcess(Process):
     def __init__(self, req_queue, result_pipes, handler_task_queues, function_pos):
@@ -38,6 +66,9 @@ class SerializerProcess(Process):
         
     def run(self):
         last_task_time = time.time()
+
+        log_message("SerializerProcess started")
+        
         while True:
             try:
                 msg = self.req_queue.get(timeout=1)
@@ -47,18 +78,29 @@ class SerializerProcess(Process):
                 if time.time() - last_task_time > 1:
                     gevent.sleep(0.1)
                 continue
+            
             handler_id, batch_id, op, data = msg
+            log_message(f"Serializer processing batch {batch_id} with operation {op} for handler {handler_id}")
+            
             # find dirty set, and subjection set send to the validator to repair.
             # if the batch is ready to commit, send the commit list to the handler.
             if op == VALIDATE:
                 self.batch_validator_assignment[batch_id] = handler_id
                 version = get_timestamp()
+                commit_list_for_current_handler = []
                 batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
+                log_message(f"Validation result for batch {batch_id}: need_repair={batch_need_repair}")
+                
                 if not batch_need_repair:
-                    commit_list_for_current_handler = self.commit_all_ready_batches(batch_id)
+                    commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
+                    log_message(f"Commit list prepared for batch {batch_id}: {len(commit_list_for_current_handler)} items")
+                
                 self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info))
+                log_message(f"Serializer sent response to handler {handler_id}")
+                
             elif op == COMMIT:
                 commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
+                log_message(f"Commit operation for batch {batch_id}: {len(commit_list_for_current_handler)} items")
                 self.result_pipes[handler_id].put(commit_list_for_current_handler)
 
     # check if this batch is ready to commit.
@@ -78,10 +120,10 @@ class SerializerProcess(Process):
     def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch):
         expired_set = {}
         subjection_set = {}
-        pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
+        pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':''} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
         batch_need_repair = False
-        tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)} if config.PESSIMISTIC_REPAIR else None
+        tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)} if not optimistic_repair_enabled else None
         for tx_id in transaction_list:
             expired_set[tx_id] = {}
             subjection_set[tx_id] = {}
@@ -106,6 +148,7 @@ class SerializerProcess(Process):
                 # prev_writer_tuple: (batch_id, tx_id, func) 
                 if not prev_writer_tuple:
                     # expired key.
+                    log_message(f"Key {key} compare version. version={version}, key_version={self.key_version_table.get(key)}")
                     if version < self.key_version_table.get(key):
                         expired_set[tx_id][func][key] = True
                         subjection_set[tx_id][func]["dirty"] = True
@@ -121,14 +164,15 @@ class SerializerProcess(Process):
                             if pessi_nearest_writer['batch'][0] is None or pessi_nearest_writer['batch'][1] < self.batch_write_info[prev_batch_id]['version']:
                                 pessi_nearest_writer['batch'] = (prev_batch_id, self.batch_write_info[prev_batch_id]['version'])
                         else:
-                            if pessi_nearest_writer['tx'] is None or pessi_nearest_writer['tx'] < tx_index_inside_batch(prev_tx_id):
+                            if pessi_nearest_writer['tx'] is None or pessi_nearest_writer['tx'] < tx_index_inside_batch[prev_tx_id]:
                                 pessi_nearest_writer['tx'] = prev_tx_id    
                     else: 
                         subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip':prev_ip}
+        if not optimistic_repair_enabled:
             pessi_sink_info['batch_sub'].setdefault(pessi_nearest_writer['batch'][0], []).append(tx_id)
             pessi_sink_info['tx_sub'].setdefault(pessi_nearest_writer['tx'], []).append(tx_id)
             pessi_sink_info['last_tx'][tx_id] = pessi_nearest_writer['tx']
-            return need_repair
+        return need_repair
 
     def update_key_writers(self, batch_id, tx_id, write_set):
         for key, writer_func in write_set.items():
@@ -146,7 +190,7 @@ class SerializerProcess(Process):
         return self.batch_write_info[batch_id]['ready_write_cnt'] == self.batch_write_info[batch_id]['all_write_cnt']
 
     def get_commitable_batches(self, target_batch_id):
-        if not self.prev_batch_committed(current_batch_id):
+        if not self.prev_batch_committed(target_batch_id):
             return False, {}
         batches_ready_for_committing = [target_batch_id]
         commit_list_per_handler = {}
@@ -164,13 +208,13 @@ class SerializerProcess(Process):
                 self.key_version_table[key] = current_batch_write_info['version']
                 if optimistic_repair_enabled:
                     keys_for_commit_per_ip[writer_ip].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
-                    if len(current_key_writers) > 0:
-                        cascaded_batch_id, _, _ = current_key_writers[0]
-                        self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
-                        # only suspended batches are ready to commit cascaded.
-                        if self.prev_batch_committed(cascaded_batch_id) and cascaded_batch_id in self.commit_suspended_batches:    
-                            self.commit_suspended_batches.pop(cascaded_batch_id)         
-                            batches_ready_for_committing.append(cascaded_batch_id)
+                if len(current_key_writers) > 0:
+                    cascaded_batch_id, _, _, _ = current_key_writers[0]
+                    self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
+                    # only suspended batches are ready to commit cascaded.
+                    if self.prev_batch_committed(cascaded_batch_id) and cascaded_batch_id in self.commit_suspended_batches:    
+                        self.commit_suspended_batches.pop(cascaded_batch_id)         
+                        batches_ready_for_committing.append(cascaded_batch_id)
             commit_list_per_handler.setdefault(current_handler_id, []).append((current_batch_id, current_batch_write_info['version'], keys_for_commit_per_ip))
         return True, commit_list_per_handler
 

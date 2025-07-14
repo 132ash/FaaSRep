@@ -221,11 +221,10 @@ def prepare():
 def commit():
     data = request.get_json(force=True, silent=True)
     version = data['version']
-    tx_list = data['txs']
     commit_key_list = data.get('keys', [])
     # release the containers reserved into container pool.
-    logging.info(f"Worker commit. all transactions:{tx_list} commit_key_list: {commit_key_list}, version {version}")
-    repo.commit_tx_writes(commit_key_list, tx_list, version)
+    logging.info(f"Worker commit.  commit_key_list: {commit_key_list}, version {version}")
+    repo.commit_tx_writes(commit_key_list, version)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

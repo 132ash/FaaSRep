@@ -1,10 +1,12 @@
 import sys
 sys.path.append('../../config')
 import config
+from subprocess_log import log_validator_message
 
 class RepairInfo:
-    def __init__(self, workflow_graph_topo, function_pos):
+    def __init__(self, logger, workflow_graph_topo, function_pos):
         self.workflow_graph_topo = workflow_graph_topo
+        self.logger = logger
         self.function_pos = function_pos
         self.fast_path_enabled = config.FAST_PATH
         self.optimistic_repair_enabled = config.OPTIMISTIC_REPAIR
@@ -38,8 +40,9 @@ class RepairInfo:
         Construct the repair metadata for the given batch. Only add RYW info and expired keys to the metadata when pessimistic repair is enabled.        
         '''
         expired_keys_per_ip = {ip:set() for ip in worker_set}
+        log_validator_message(self.logger, f"container port:{container_port}")
         for tx_id in txid_list:
-            for func, next_funcs in self.workflow_graph_topo:
+            for func, next_funcs in self.workflow_graph_topo.items():
                 func_ip = self.function_pos[func]
                 RYW_sub = RYW_subjection.get(tx_id, {}).get(func, {})
                 tx_dict = self.get_info_dict(batch_id, func_ip, tx_id)
@@ -48,9 +51,11 @@ class RepairInfo:
                 func_info_dict = tx_dict[func]
                 func_info_dict['RYW_keys'] = RYW_sub
                 if next_funcs[0] == 'END':
-                    func_info_dict['successor_port'] = {'END':{}}
+                    func_info_dict['successor_port'] = {'END':''}
                 else:
-                    func_info_dict['successor_port'] = {f:{container_port[f]} for f in next_funcs}
+                    func_info_dict['successor_port'] = {}
+                    for f in next_funcs:
+                        func_info_dict['successor_port'][f] = container_port[tx_id][f]
                 if not self.optimistic_repair_enabled:
                     expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
                     expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))

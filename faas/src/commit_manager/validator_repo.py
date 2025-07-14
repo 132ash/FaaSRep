@@ -25,8 +25,10 @@ class Repository:
         table = self.dynamo.Table('data')
         response = table.scan()
         items = response.get('Items', [])
+        global_table_dict = {}
         try:
-            global_table_dict = {item['key']: {'version':item['version'], 'writers':[]} for item in items}
+            for item in items:
+                global_table_dict[item['key']] = item['version']
         except KeyError:
             for i in items:
                 print(i['key'])

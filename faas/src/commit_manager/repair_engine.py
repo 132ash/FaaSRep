@@ -8,7 +8,7 @@ from gevent import event
 import time
 from validator_repo import Repository
 from pessimistic_repairer import PessimisticRepairer
-import validator_repo
+from subprocess_log import setup_validator_logger, log_validator_message
 
 sys.path.append('../../config')
 import config
@@ -22,7 +22,8 @@ OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
 class RepairEngine:
 
-    def __init__(self, repair_info:RepairInfo, function_pos, worker_ip_set, workflow_name, tx_sink_addr, repo: Repository):
+    def __init__(self, logger, repair_info:RepairInfo, function_pos, worker_ip_set, workflow_name, tx_sink_addr, repo: Repository):
+        self.logger = logger
         self.repair_info = repair_info
         self.tx_sink_addr = tx_sink_addr
         self.workflow_name = workflow_name
@@ -58,10 +59,10 @@ class RepairEngine:
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
         self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port)     
             
-    def repair_transactions(self, batch_id, ready_transactions, worker_ip_set, expired_keys, container_port={}):
+    def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port={}):
         repair_prepare_jobs = []
         trigger_jobs = []
-        for ip in worker_ip_set:
+        for ip in self.worker_ip_set:
             repair_metadata_local = self.repair_info.get_repair_metadata(batch_id, ip) if FAST_PATH_ENABLED else {}
             repair_prepare_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set())))
         gevent.joinall(repair_prepare_jobs) 
@@ -73,7 +74,7 @@ class RepairEngine:
             # trigger start functions
             for n in self.start_functions:
                 ip = self.function_pos[n]
-                port = container_port.get(n)
+                port = container_port[tx_id][n]
                 trigger_jobs.append(gevent.spawn(self.trigger_function, FAST_PATH_ENABLED, self.workflow_name, tx_id, n, ip, port,batch_id, repair_metadata_no_fast))
         gevent.joinall(trigger_jobs)   
         
@@ -93,7 +94,7 @@ class RepairEngine:
             'no_parent_execution': True,
             'port': port,
             'repair': True,
-            'repair_states':repair_metadata_per_tx
+            'repair_states': repair_metadata_per_tx
         }
         print(f"triggering {function_name}, sending req to {url}, batch_id: {batch_id}")
         requests.post(url, json=data)
@@ -104,12 +105,7 @@ class RepairEngine:
             url = f'http://{ip}:7000/repair_pessi'
         else:
             url = f'http://{ip}/repair_pessi'
-        data = {
-            'batch_id': batch_id,
-            'workflow_name': self.workflow_name,
-            'batch_sub': pessi_sink_info['batch_sub'],
-            'tx_sub': pessi_sink_info['tx_sub']  
-        }
+        data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'] }
         res = requests.post(url, json=data)
         return res.json()
 
