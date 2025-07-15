@@ -131,9 +131,9 @@ def notify():
             logging.info(f"transaction {transaction_id_list[0]} aborted.")
             txTable.notifyTX(transaction_id_list, 0,0, 0, True)
         else:
-            first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch
+            first_run_finish_time, validate_start_time, validate_time_inside_validator = timestamp_per_batch
             end_time = time.time()
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - start_time, validate_time_inside_validator)  
+            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - validate_start_time, validate_time_inside_validator)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

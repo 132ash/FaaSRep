@@ -66,9 +66,6 @@ class SerializerProcess(Process):
         
     def run(self):
         last_task_time = time.time()
-
-        log_message("SerializerProcess started")
-        
         while True:
             try:
                 msg = self.req_queue.get(timeout=1)
@@ -80,7 +77,7 @@ class SerializerProcess(Process):
                 continue
             
             handler_id, batch_id, op, data = msg
-            log_message(f"Serializer processing batch {batch_id} with operation {op} for handler {handler_id}")
+            log_message(f"Processing batch {batch_id} with operation {op} for handler {handler_id}")
             
             # find dirty set, and subjection set send to the validator to repair.
             # if the batch is ready to commit, send the commit list to the handler.
@@ -89,18 +86,15 @@ class SerializerProcess(Process):
                 version = get_timestamp()
                 commit_list_for_current_handler = []
                 batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
-                log_message(f"Validation result for batch {batch_id}: need_repair={batch_need_repair}")
+                log_message(f"Validation result for batch {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
                 
                 if not batch_need_repair:
                     commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
-                    log_message(f"Commit list prepared for batch {batch_id}: {len(commit_list_for_current_handler)} items")
                 
                 self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info))
-                log_message(f"Serializer sent response to handler {handler_id}")
                 
             elif op == COMMIT:
                 commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
-                log_message(f"Commit operation for batch {batch_id}: {len(commit_list_for_current_handler)} items")
                 self.result_pipes[handler_id].put(commit_list_for_current_handler)
 
     # check if this batch is ready to commit.

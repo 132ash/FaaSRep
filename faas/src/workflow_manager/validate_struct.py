@@ -1,7 +1,7 @@
 from gevent import monkey
 monkey.patch_all()
 import gevent
-from typing import Any, Dict, List
+from multiprocessing import Queue
 import requests
 import logging
 from workersp_repo import Repository

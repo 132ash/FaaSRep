@@ -25,21 +25,21 @@ FUNCTION_INFO_ADDRS = {
 #                         'testflow': '../../../../benchmark/testflow',
                        }
 # cache setting
-CLEAR_MEM = False
+CLEAR_MEM = True
 FILLUP_CACHE = True
 EXPIRED_CACHE = True
-DEFAULT_CONTAINER_NUM = 1
+DEFAULT_CONTAINER_NUM = 4
 
 # validator setting
 VALIDATORS_PER_POOL = 2
 
 # batch setting
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 BATCH_INTERVAL = 0.005
 
 # mode setting
-FAST_PATH = True
-OPTIMISTIC_REPAIR = False
+FAST_PATH = False
+OPTIMISTIC_REPAIR = True
 
 # repair setting
 RUNNING = 1

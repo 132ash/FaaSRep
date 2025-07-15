@@ -1,7 +1,7 @@
 import logging
-import sys
 from gevent import monkey
 monkey.patch_all()
+import sys
 import time
 import gevent.lock
 from workersp_repo import Repository
