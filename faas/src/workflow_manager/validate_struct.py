@@ -93,14 +93,13 @@ class RepairingBatchState:
         self.pessimistic_state_per_batch:Dict[str, PessimisticBatchState] = {}
         self.transaction_list_per_batch = {}
         self.tx_finished_table_per_batch = {}
-        self.pessimistic_state_lock = None
+        self.pessimistic_state_lock = gevent.lock.BoundedSemaphore()
         self.workflow_name = workflow_name
 
     def register_batch(self, batch_id, tx_list, batch_size):
         self.transaction_list_per_batch[batch_id] = tx_list
         self.tx_finished_table_per_batch[batch_id] = {'total':batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}     
         if PESSIMISTIC_REPAIR:
-            self.pessimistic_state_lock = gevent.lock.BoundedSemaphore()
             self.pessimistic_state_per_batch[batch_id] = PessimisticBatchState(batch_id, tx_list, batch_size)
             
     def update_pessimistic_subjection_info(self, batch_id:str, batch_sub, tx_sub):
@@ -125,14 +124,14 @@ class RepairingBatchState:
         ready_txs = []
         batch_trigger_txs = []
         if batch_finished:
-            self.pessimistic_state_lock().acquire()
+            self.pessimistic_state_lock.acquire()
             batch_trigger_txs = self.pessimistic_state_per_batch[batch_id].next_txs_after_batch
             for next_batch_id, next_trigger_txs in batch_trigger_txs.items():
                 self.pessimistic_state_per_batch[next_batch_id].state_lock.acquire()
                 self.pessimistic_state_per_batch[next_batch_id].trigger_successor(next_trigger_txs, ready_txs)
                 self.pessimistic_state_per_batch[next_batch_id].state_lock.release()
             self.tx_finished_table_per_batch.pop(batch_id)
-            self.pessimistic_state_lock().release()
+            self.pessimistic_state_lock.release()
         else:
             self.pessimistic_state_per_batch[batch_id].transaction_finish(tx_id, ready_txs)
         return ready_txs 
@@ -243,7 +242,7 @@ class TransactionSink:
         trigger_jobs = []
         batch_finished, ready_successors = self.repairing_batch_state.after_transaction_finish(batch_id, transaction_id)
         if PESSIMISTIC_REPAIR:
-            trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,transaction_id, state, ready_successors))
+            trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,batch_id, transaction_id, state, ready_successors))
         if batch_finished:
             trigger_jobs.append(gevent.spawn(self.commit_batch, batch_id))
         gevent.joinall(trigger_jobs)

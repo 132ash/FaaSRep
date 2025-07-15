@@ -120,7 +120,7 @@ class SerializerProcess(Process):
     def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch):
         expired_set = {}
         subjection_set = {}
-        pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':''} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
+        pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
         batch_need_repair = False
         tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)} if not optimistic_repair_enabled else None
@@ -169,9 +169,13 @@ class SerializerProcess(Process):
                     else: 
                         subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip':prev_ip}
         if not optimistic_repair_enabled:
-            pessi_sink_info['batch_sub'].setdefault(pessi_nearest_writer['batch'][0], []).append(tx_id)
-            pessi_sink_info['tx_sub'].setdefault(pessi_nearest_writer['tx'], []).append(tx_id)
-            pessi_sink_info['last_tx'][tx_id] = pessi_nearest_writer['tx']
+            nearest_batch = pessi_nearest_writer['batch'][0]
+            nearest_tx = pessi_nearest_writer['tx']
+            if nearest_batch:
+                pessi_sink_info['batch_sub'].setdefault(nearest_batch, []).append(tx_id)
+            if nearest_tx:
+                pessi_sink_info['tx_sub'].setdefault(nearest_tx, []).append(tx_id)
+                pessi_sink_info['last_tx'][tx_id] = nearest_tx
         return need_repair
 
     def update_key_writers(self, batch_id, tx_id, write_set):

@@ -8,7 +8,7 @@ from gevent import event
 import time
 from validator_repo import Repository
 from pessimistic_repairer import PessimisticRepairer
-from subprocess_log import setup_validator_logger, log_validator_message
+from subprocess_log import log_validator_message
 
 sys.path.append('../../config')
 import config
@@ -33,12 +33,12 @@ class RepairEngine:
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
         self.PessimisticRepairer = PessimisticRepairer(workflow_name, self.repair_info, self.function_pos)
 
-    def repair_batch(self,batch_id,container_port, write_set,tx_list, expired_keys, pessi_sink_info):
+    def repair_batch(self,batch_id,container_port, read_set, write_set,tx_list, expired_keys, pessi_sink_info):
         # allocate works
         start = time.time()
         if not OPTIMISTIC_REPAIR:
-            self.PessimisticRepairer.register_repair_info(batch_id, write_set, tx_list, pessi_sink_info['last_tx'])
-            ready_txs = self.register_on_sink(batch_id, pessi_sink_info)['ready_txs']
+            self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
+            ready_txs = self.register_on_sink(batch_id, pessi_sink_info)
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)
         else:
             ready_txs = tx_list
@@ -106,8 +106,9 @@ class RepairEngine:
         else:
             url = f'http://{ip}/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'] }
-        res = requests.post(url, json=data)
-        return res.json()
+        log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}")
+        res = requests.post(url, json=data).json()
+        return res['ready_txs']
 
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}
     # send metadata to the proxy on worker node.
@@ -125,7 +126,6 @@ class RepairEngine:
             'repair_metadata': repair_metadata,
             'expired_keys': list(expired_keys)
         }
-        print(f"fillup metadata on worker {worker_ip}, batch_id: {batch_id}, metadata: {repair_metadata}")
         requests.post(url, json=data)
 
     def clean_table_of_batch(self, batch_id):

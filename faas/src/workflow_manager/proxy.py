@@ -201,7 +201,9 @@ def repair_pessimistic():
     batch_id = data['batch_id']
     batch_sub =  data['batch_sub']
     tx_sub =  data['tx_sub']  
-    return json.dumps(dispatcher.register_pessimistic_info(workflow_name, batch_id, batch_sub, tx_sub))
+    res = dispatcher.register_pessimistic_info(workflow_name, batch_id, batch_sub, tx_sub)
+    logging.info(f"Registered pessimistic repair info for batch_id {batch_id}, return: {res}")
+    return res
 
 
 @app.route('/prepare', methods = ['POST'])
@@ -220,11 +222,12 @@ def prepare():
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
-    version = data['version']
-    commit_key_list = data.get('keys', [])
-    # release the containers reserved into container pool.
-    logging.info(f"Worker commit.  commit_key_list: {commit_key_list}, version {version}")
-    repo.commit_tx_writes(commit_key_list, version)
+    commit_list = data['commit_list']
+    for commit_info_per_batch in commit_list:
+        keys = commit_info_per_batch['keys']
+        version = commit_info_per_batch['version']
+        logging.info(f"Worker commit.  commit keys: {keys}, version {version}")
+        repo.commit_tx_writes(keys, version)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

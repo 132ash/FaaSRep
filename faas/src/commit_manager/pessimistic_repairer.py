@@ -20,22 +20,24 @@ class PessimisticRepairer:
         self.repair_info = repair_info
         self.function_pos = function_pos
         self.tx_write_table_per_batch = {} 
+        self.tx_read_table_per_batch = {}
         self.write_table_lock_per_batch = {}
         self.transaction_idx_per_batch = {}  
         self.last_subjection_for_tx_per_batch = {}  # {batch_id:{txid: last_tx_id}}
     
-    def register_repair_info(self, batch_id, batch_write_set, transaction_list, last_tx):
+    def register_repair_info(self, batch_id, batch_read_set, batch_write_set, transaction_list, last_tx):
         self.write_table_lock_per_batch[batch_id] = gevent.lock.BoundedSemaphore()
         self.transaction_idx_per_batch[batch_id] = {tx_id: idx for idx, tx_id in enumerate(transaction_list)}
         self.tx_write_table_per_batch[batch_id] = {}
         self.last_subjection_for_tx_per_batch[batch_id] = last_tx
+        self.tx_read_table_per_batch[batch_id] = batch_read_set
         for tx_id in transaction_list:
             ws = batch_write_set.get(tx_id, {})
             for key, writer_func in ws.items():
                 self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = {'tx_id': tx_id, 'func': writer_func}
                 
 
-    def prepare_pessimistic_info(self,batch_id, read_set,expired_keys, ready_tx_list):
+    def prepare_pessimistic_info(self,batch_id,expired_keys, ready_tx_list):
         """
         based on current writer_list, prepare the expired keys and subjection info for the ready transactions.
         """
@@ -45,7 +47,7 @@ class PessimisticRepairer:
             tx_dependency = {}
             # Find all (key, func) in the read set of tx_id
             if last_tx_idx:
-                rs = read_set[tx_id]
+                rs = self.tx_read_table_per_batch[tx_id]
                 for func, func_rs in rs.items():
                     tx_dependency[func] = {}
                     for key in func_rs.keys():
@@ -91,5 +93,6 @@ class PessimisticRepairer:
         """
         self.tx_write_table_per_batch.pop(batch_id, None)
         self.write_table_lock_per_batch.pop(batch_id, None)
+        self.tx_read_table_per_batch.pop(batch_id, None)
         # Remove transaction index mapping for the batch
         self.transaction_idx_per_batch.pop(batch_id, None)

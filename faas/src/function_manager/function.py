@@ -54,7 +54,6 @@ class Function:
     def send_request(self, transaction_id, write_set, is_repair,batch_id, repair_states):
         data = {'transaction_id': transaction_id, 'repair': is_repair, 'batch_id':batch_id,
                  'write_set':write_set, 'repair_states':repair_states}
-        print(f"function: {self.info.function_name} send request: {data}")
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()

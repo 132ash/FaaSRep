@@ -40,7 +40,6 @@ class RepairInfo:
         Construct the repair metadata for the given batch. Only add RYW info and expired keys to the metadata when pessimistic repair is enabled.        
         '''
         expired_keys_per_ip = {ip:set() for ip in worker_set}
-        log_validator_message(self.logger, f"container port:{container_port}")
         for tx_id in txid_list:
             for func, next_funcs in self.workflow_graph_topo.items():
                 func_ip = self.function_pos[func]

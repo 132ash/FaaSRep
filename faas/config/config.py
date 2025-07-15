@@ -39,7 +39,7 @@ BATCH_INTERVAL = 0.005
 
 # mode setting
 FAST_PATH = True
-OPTIMISTIC_REPAIR = True
+OPTIMISTIC_REPAIR = False
 
 # repair setting
 RUNNING = 1
