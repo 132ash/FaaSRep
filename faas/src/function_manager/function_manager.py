@@ -33,7 +33,6 @@ class FunctionManager:
     def __init__(self, host_addr, workflow_name, config_path, transaction_sink_addr, min_port, node_list, reserve_pool, function_pos):
         self.function_info = parse(config_path)
         self.workflow_name = workflow_name
-        self.host_addr = host_addr
 
         self.port_controller = PortController(min_port, min_port + 4999)
         self.client = docker.from_env()

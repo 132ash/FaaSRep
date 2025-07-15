@@ -73,7 +73,7 @@ class RepairSidecar:
         self_pipeline = self.shadow_table.redis[self.ip].pipeline()
         self_pipeline.multi()
         self_pipeline.set(f"{tx_id}:STATE:{self.function}", state)
-        self_pipeline.lpop(f"{tx_id}:SUCCESSOR:{self.function}:INFO", 0, -1)
+        self_pipeline.lrange(f"{tx_id}:SUCCESSOR:{self.function}:INFO", 0, -1)
         responses = self_pipeline.execute()
         downstream_funcs = responses[1]  # This is the list of downstream functions waiting for this function's state
         for i, info_str in enumerate(downstream_funcs):

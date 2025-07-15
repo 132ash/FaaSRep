@@ -80,11 +80,11 @@ class WorkerSPManager:
 
         self.transaction_sink = transaction_sink
         self.repo = repo
-        self.transaction_sink_addr = self.function_pos[self.repo.get_end_function(self.meta_db)]
+        self.transaction_sink_addr = self.function_pos[self.repo.get_end_function(self.meta_db)] + ':7000'
 
         self.node_list = node_list
         
-        self.function_manager = FunctionManager(self.host_addr, self.workflow_name, function_info_addr, self.transaction_sink_addr, min_port, self.node_list, reserve_pool, self.function_pos)
+        self.function_manager = FunctionManager(extract_ip(self.host_addr), self.workflow_name, function_info_addr, self.transaction_sink_addr, min_port, self.node_list, reserve_pool, self.function_pos)
         # repairing batches and finished transactions
         self.repair_table: Dict[str, int] = {}
         min_port += 5000

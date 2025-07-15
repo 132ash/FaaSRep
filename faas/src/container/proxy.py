@@ -107,7 +107,7 @@ class Runner:
         self.container_state = RUNNING
 
     def prepair_subjection_before_repair(self, transaction_id):
-        set_pipeline = self.shadow_table[self.host_addr].pipeline() 
+        set_pipeline = self.shadow_table.redis[self.host_addr].pipeline() 
         set_pipeline.multi()
         upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, transaction_id)
         for _, upstream_tx_dict in upstream_fetch_results.items():
@@ -139,10 +139,8 @@ class Runner:
                 self.keys_from_RYW = metadata_nofast['RYW_keys']
                 self.dirty = metadata_nofast['dirty']
             else:
-                try:
-                    metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
-                except KeyError:
-                    metadata_string = None
+
+                metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
                 if metadata_string:
                     repair_metadata = json.loads(metadata_string)
                     self.keys_from_upstream = repair_metadata['upstream_keys']
@@ -179,7 +177,8 @@ class Runner:
     def fin_repair(self, batch_id, transaction_id):
         logging.info(f"Finishing repair: {self.function}")
         url = f'http://{self.sink_addr}/fin_repair'
-        data = {'batch_id': batch_id, "transaction_id": transaction_id}
+        logging.info(f"Finishing repair: {self.function}, sending to sink: {url}")
+        data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id}
         requests.post(url, json=data)
 
     def abort_transaction(self, batch_id, transaction_id):
@@ -202,13 +201,13 @@ class Runner:
             )
         # If not aborted, trigger successor functions in workflow graph.
         if not aborted:
-            for next_func, port in self.successor_port:
-                next_ip = self.function_pos[next_func]
+            for next_func, port in self.successor_port.items():
                 if next_func == 'END':
                     next_trigger_tasks.append(
                         gevent.spawn(self.fin_repair, batch_id, self.transaction_id)
                     )
                     break
+                next_ip = self.function_pos[next_func]
                 logging.info(f"Trigger Next functions: {next_ip}:{self.successor_port}")
                 next_trigger_tasks.append(
                     gevent.spawn(
@@ -326,7 +325,7 @@ def run():
         batch_id = inp['batch_id']
         if runner.fast_path_enabled:
             no_parent_execution = inp.get('no_parent_execution', False)
-        runner.fetch_repair_metadata(transaction_id, inp['repair_states'])
+        runner.fetch_repair_metadata(transaction_id, inp.get('repair_states', {}))
         
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)

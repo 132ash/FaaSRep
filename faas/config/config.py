@@ -38,7 +38,7 @@ BATCH_SIZE = 1
 BATCH_INTERVAL = 0.005
 
 # mode setting
-FAST_PATH = False
+FAST_PATH = True
 OPTIMISTIC_REPAIR = True
 
 # repair setting
