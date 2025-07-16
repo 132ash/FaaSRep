@@ -1,6 +1,7 @@
 import json
 import gevent
 from gevent import monkey
+import gevent.lock
 import uuid
 import sys
 import logging
@@ -33,7 +34,10 @@ repo = Repository()
 txTable = RunningTXTable()
 
 workflow_metadata  =  {}
+metadata_lock = gevent.lock.BoundedSemaphore()
+
 def get_workflow_metadata(workflow_name):
+    metadata_lock.acquire()
     if workflow_name not in workflow_metadata:
         workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
         workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
@@ -41,6 +45,7 @@ def get_workflow_metadata(workflow_name):
             info = repo.get_function_info(func, workflow_name + '_function_info')
             workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
+    metadata_lock.release()
     return workflow_metadata[workflow_name]
 
 def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
@@ -91,7 +96,7 @@ def run():
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    logging.info('processing request ' + transaction_id + '...')
+    logging.info(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
     start = time.time()
     aborted = False
     retry = False

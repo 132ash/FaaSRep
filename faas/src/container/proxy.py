@@ -77,7 +77,6 @@ class Runner:
         self.function = function
         self.sink_addr = sink
         self.validator_addr = validator
-        self.node_list = node_list
         self.input = input
         self.output = output
         self.parent_cnt = parent_cnt
@@ -111,8 +110,8 @@ class Runner:
         set_pipeline.multi()
         upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, transaction_id)
         for _, upstream_tx_dict in upstream_fetch_results.items():
-            for upstream_txid, upstream_func_dict in upstream_tx_dict.items():
-                for upstream_func, func_result_info in upstream_func_dict.items():
+            for _, upstream_func_dict in upstream_tx_dict.items():
+                for __cached__, func_result_info in upstream_func_dict.items():
                     if func_result_info['state'] is None:
                         # If the state is None, it means the function has been commited. trigger cache update.
                         for key in func_result_info['fetched_keys'].keys():
@@ -238,14 +237,14 @@ class Runner:
             store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
             # pre-exec
-            try:
-                exec(self.code, self.ctx)
-                # run function
-                out = eval('main()', self.ctx)               
-            except Exception as e:
-                aborted = True
-                msg = json.dumps({'Abort': True, 'error': str(e)})
-                logging.error(f"Function {self.function} execution failed: {msg}")
+            # try:
+            exec(self.code, self.ctx)
+            # run function
+            out = eval('main()', self.ctx)               
+            # except Exception as e:
+            #     aborted = True
+            #     msg = json.dumps({'Abort': True, 'error': str(e)})
+            #     logging.error(f"Function {self.function} execution failed: {msg}")
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         if is_repair:
             runner.repair_metadata_fetched = False

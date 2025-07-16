@@ -55,6 +55,7 @@ class Dispatcher:
        repo.shadowtable_init(sys.argv[1])
        repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
+       logging.info(f"Node list: {self.node_list}")
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
@@ -143,21 +144,21 @@ def abort():
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id, ABORTED)
     notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
     payload = {
-        'transaction_id_list': [[transaction_id]],
+        'transaction_id_lists': [[transaction_id]],
         'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
         'abort': True
     }
     requests.post(notify_url, json=payload)
     return json.dumps({'status': 'ok'})
 
-@app.route('/crosstx_req', methods = ['GET'])
+@app.route('/crosstx_req', methods = ['POST'])
 def crosstx_req():
     data = request.get_json(force=True, silent=True)
     function_name = data['function_name']
     transaction_id = data['transaction_id']
     workflow_name = data['workflow_name']
     dispatcher.trigger_crosstx_function(workflow_name, function_name, transaction_id)
-
+    return json.dumps({'status': 'ok'})
 
 # a new request from outside
 # the previous function was done

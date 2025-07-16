@@ -1,7 +1,6 @@
 from gevent import monkey
 monkey.patch_all()
 from redis_component import RedisShadowTable, RedisCache
-import requests
 import os
 import threading
 import time
@@ -126,11 +125,13 @@ class Store:
         # SECOND run or not RYW, read from cache or shadow table.
         else:
             if self.keys_from_RYW.get(key, None):
+                logging.info(f"[REPAIR RYW] Fetching from RYW for key: {key}")
                 upstream_func = self.keys_from_RYW[key]
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
             elif self.keys_from_upstream.get(key, None):
-                value = self.redis_shadow_table.self_get(self.param_wrapper(upstream_func, self.function_name, 'UPSTREAM'))
+                value = self.redis_shadow_table.self_get(self.param_wrapper(self.function_name, key, 'UPSTREAM'))
+                logging.info(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}, TYPE:{type(value)}")
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
                 self.read_set[key] = value_version_pair["version"]

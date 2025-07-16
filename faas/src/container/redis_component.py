@@ -4,7 +4,9 @@ import redis
 import container_config
 import json
 import threading
-
+RUNNING = container_config.RUNNING
+ABORTED = container_config.ABORTED
+REPAIRED = container_config.REPAIRED
 
 class RedisShadowTable:
     def __init__(self, host_list, port, db, ip):
@@ -70,6 +72,9 @@ class RepairSidecar:
         self.function = function
 
     def set_state_and_get_waiting_downstream(self, tx_id, state):
+        if state == RUNNING:
+            self.shadow_table.redis[self.ip].set(f"{tx_id}:STATE:{self.function}", RUNNING)
+            return []
         self_pipeline = self.shadow_table.redis[self.ip].pipeline()
         self_pipeline.multi()
         self_pipeline.set(f"{tx_id}:STATE:{self.function}", state)
@@ -114,7 +119,7 @@ class RepairSidecar:
         upstream_fetch_results = {} # {ip:{txid: {func: {state:xx, fetched_keys:{key: res}}}}}
 
         for key, upstream_info in upstream_keys_info.items():
-            upstream_txid = upstream_info['txid']
+            upstream_txid = upstream_info['tx_id']
             upstream_func = upstream_info['func']
             upstream_ip = upstream_info['ip']
             upstream_fetch_results.setdefault(upstream_ip, {}).setdefault(upstream_txid, {}).setdefault(upstream_func, {'state':'', 'fetched_keys':{}})['fetched_keys'][key] = ''
@@ -144,6 +149,7 @@ class RepairSidecar:
                     idx += 1
                     # 后面是各key
                     for key in func_result_info['fetched_keys']:
+                        idx += 1
                         func_result_info['fetched_keys'][key] = responses[idx]
                         idx += 1
         threads = []

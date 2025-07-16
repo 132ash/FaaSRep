@@ -82,7 +82,6 @@ class Function:
         req = self.rq.pop(0)
         self.num_processing -= 1
         # 2. send request to the container
-        logging.info('send request to: %s of: %s, rq len: %d, data: %s', self.info.function_name, req.transaction_id, len(self.rq), str(req.data))
         res = container.send_request(req.data)
         res['port'] = container.port
         req.result.set(res)

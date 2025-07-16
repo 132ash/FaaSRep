@@ -4,6 +4,7 @@ import gevent
 monkey.patch_all()
 from multiprocessing import Process, Queue, Pipe
 import time
+import re
 import sys
 import validator_repo
 from collections import defaultdict
@@ -44,6 +45,14 @@ def get_timestamp():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
     return timestamp
 
+def extract_ip(address: str) -> str:
+    # 使用正则表达式匹配 IP 地址和可选的端口号
+    match = re.match(r'^(.*?)(:\d+)?$', address)
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError("Invalid address format")
+
 def log_message(message):
     logger.info(message)
     # 强制刷新缓冲区
@@ -63,6 +72,8 @@ class SerializerProcess(Process):
         self.batch_validator_assignment = {}  # {batch_id: validator_worker_number}
         self.commit_suspended_batches = {} # {batch_id: validator_worker_number}
         self.function_pos = function_pos  # {func_name: {'ip': ip, 'port': port}}, used to get the ip of the function for commit.
+        for func, ip in function_pos.items():
+            self.function_pos[func] = extract_ip(ip)  # Extract IP without port
         
     def run(self):
         last_task_time = time.time()
@@ -91,17 +102,18 @@ class SerializerProcess(Process):
                 if not batch_need_repair:
                     commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
                 
-                self.result_pipes[handler_id].put((batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info))
+                self.result_pipes[handler_id].put((batch_id, (batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, pessi_sink_info)))
                 
             elif op == COMMIT:
                 commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
-                self.result_pipes[handler_id].put(commit_list_for_current_handler)
+                self.result_pipes[handler_id].put((batch_id, commit_list_for_current_handler))
 
     # check if this batch is ready to commit.
     # if not, suspend this batch, and wait for its ancestors to finish.
     # in pessimistic mode, the batch is ready for sure: only flush the ready writes.
     def commit_all_ready_batches(self, current_handler_id, current_batch_id):
         ready, commit_list_per_handler = self.get_commitable_batches(current_batch_id)
+        log_message(f"Commit check for batch {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}")
         commit_list_for_current_handler = commit_list_per_handler.pop(current_handler_id, [])
         if ready:
             for handler_id, commit_batch_list in commit_list_per_handler.items():
@@ -138,9 +150,9 @@ class SerializerProcess(Process):
             expired_set[tx_id].setdefault(func, {})
             for key, version in kv_pairs.items():
                 # key not written by any transaction before, check if it is expired.
-                prev_writer_tuple = self.key_writers.get(key, None)
+                prev_writers = self.key_writers.get(key, [])
                 # prev_writer_tuple: (batch_id, tx_id, func) 
-                if not prev_writer_tuple:
+                if not prev_writers:
                     # expired key.
                     log_message(f"Key {key} compare version. version={version}, key_version={self.key_version_table.get(key)}")
                     if version < self.key_version_table.get(key):
@@ -150,7 +162,7 @@ class SerializerProcess(Process):
                 else:
                     need_repair = True
                     subjection_set[tx_id][func]["dirty"] = True
-                    prev_batch_id,  prev_tx_id,  prev_func, prev_ip = prev_writer_tuple
+                    prev_batch_id,  prev_tx_id,  prev_func, prev_ip = prev_writers[-1]
                     if not optimistic_repair_enabled:
                         # add to prev info.
                         if batch_id != prev_batch_id:

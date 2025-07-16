@@ -5,6 +5,7 @@ import sys
 import json
 from typing import Dict
 import threading
+import logging
 
 sys.path.append('../../config')
 import config
@@ -27,6 +28,9 @@ class SubjectionCollector:
         return data
 
     def set_state_and_get_waiting_downstream(self, tx_id, self_function, state):
+        if state == RUNNING:
+            self.shadow_table[self.ip].set(f"{tx_id}:STATE:{self_function}", RUNNING)
+            return
         self_pipeline = self.shadow_table[self.ip].pipeline()
         self_pipeline.multi()
         self_pipeline.set(f"{tx_id}:STATE:{self_function}", state)
@@ -43,7 +47,7 @@ class SubjectionCollector:
         # f"{transaction_id}:{self_function}:UPSTREAM:"
         for info in downstream_funcs:
             tx_id, func, ip = info[0], info[1], info[2]
-            keys = self_redis.lpop(f"{self_tx_id}:SUCCESSOR:{self_function}:KEYS:{tx_id}:{func}", 0, -1)
+            keys = self_redis.lrange(f"{self_tx_id}:SUCCESSOR:{self_function}:KEYS:{tx_id}:{func}", 0, -1)
             for key in keys:
                 downstream_keys.setdefault(ip, []).append((tx_id, func, key))
         # 2. 多线程并发写入每个 ip 的 redis
@@ -54,7 +58,7 @@ class SubjectionCollector:
                 # 获取本地 redis 中的数据
                 value = self.shadow_table[self.ip].get(f"{self_tx_id}:PUT:{self_function}:{key}")
                 # 写入目标 redis
-                pipeline.set(f"{tx_id}:{func}:UPSTREAM:{key}", value)
+                pipeline.set(f"{tx_id}:UPSTREAM:{func}:{key}", value)
             pipeline.execute()
 
         threads = []
@@ -71,7 +75,7 @@ class SubjectionCollector:
         upstream_fetch_results = {} # {ip:{txid: {func: {state:xx, fetched_keys:{key: res}}}}}
 
         for key, upstream_info in upstream_keys_info.items():
-            upstream_txid = upstream_info['txid']
+            upstream_txid = upstream_info['tx_id']
             upstream_func = upstream_info['func']
             upstream_ip = upstream_info['ip']
             upstream_fetch_results.setdefault(upstream_ip, {}).setdefault(upstream_txid, {}).setdefault(upstream_func, {'state':'', 'fetched_keys':{}})['fetched_keys'][key] = ''
@@ -101,6 +105,7 @@ class SubjectionCollector:
                     idx += 1
                     # 后面是各key
                     for key in func_result_info['fetched_keys']:
+                        idx += 1
                         func_result_info['fetched_keys'][key] = responses[idx]
                         idx += 1
         threads = []
@@ -110,7 +115,6 @@ class SubjectionCollector:
             threads.append(t)
         for t in threads:
             t.join()
-
         return upstream_fetch_results
 
     def prepair_subjection_before_repair(self, transaction_id, function_name, keys_from_upstream, upstream_fetch_results):
@@ -118,8 +122,8 @@ class SubjectionCollector:
         set_pipeline = self.shadow_table[self.ip].pipeline()
         set_pipeline.multi()
         for _, upstream_tx_dict in upstream_fetch_results.items():
-            for _, upstream_func_dict in upstream_tx_dict.items():
-                for _, func_result_info in upstream_func_dict.items():
+            for up_tx, upstream_func_dict in upstream_tx_dict.items():
+                for up_func, func_result_info in upstream_func_dict.items():
                     if func_result_info['state'] is None:
                         # If the state is None, it means the function has been commited. trigger cache update.
                         for key in func_result_info['fetched_keys'].keys():
@@ -130,7 +134,7 @@ class SubjectionCollector:
                         upstream_waiting += 1
                     elif func_result_info['state'] == REPAIRED:
                         # update the fetched keys in shadow table. add fetch count.
-                        upstream_key_prefix = f"{transaction_id}:{function_name}:UPSTREAM:"
+                        upstream_key_prefix = f"{transaction_id}:UPSTREAM:{function_name}:"
                         for key, value in func_result_info['fetched_keys'].items():
                             set_pipeline.set(upstream_key_prefix+key, value)
         set_pipeline.execute()

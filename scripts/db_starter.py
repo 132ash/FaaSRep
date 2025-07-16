@@ -55,7 +55,7 @@ table.put_item(
 def generate_random_text(size):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
 
-keys = ['t0', 't1', 't2', 't5', 't8', 't11', 't14']
+keys = ['t0', 't1', 't2', 't4', 't6', 't8', 't10']
 for key in keys:
     random_text = generate_random_text(TEXT_SIZE)
     table.put_item(

@@ -202,7 +202,6 @@ class TransactionSink:
         self.queue_lock.release()
         batch = self.transform_batch(batch)
         self.repairing_batch_state.register_batch(batch['batch_id'], batch['transaction_list'], idx)
-        logging.info(f"send validate request: {batch['batch_id']}, all tx: {batch['transaction_list']}, batch_size:{idx}")
         self.send_validate_request(batch, first_run_finish_time)
 
     def send_cascaded_repair_request_pessi(self, batch_id, tx_id, state, ready_txs):
@@ -225,7 +224,7 @@ class TransactionSink:
             "batch_id": batch["batch_id"],
             "first_run_finish_time": first_run_finish_time
         }
-        logging.info(f"Sending validate request to {remote_url} with data: {data}")
+        logging.info(f"[VALIDATE] batch_id:{batch['batch_id']}, data:{data}")
         response = requests.post(remote_url, json=data)
         response.close() 
         

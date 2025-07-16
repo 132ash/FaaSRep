@@ -16,9 +16,9 @@ import config
 sys.path.append('../function_manager')
 from function_manager import FunctionManager
 
-
-REPAIRED = 1
-ABORTED = 2
+RUNNING = config.RUNNING
+ABORTED = config.ABORTED
+REPAIRED = config.REPAIRED
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -46,12 +46,15 @@ class TransactionState:
 
         # repair state, used only when fast-path is turned off.
         self.repair = repair
+        self.repair_subjection_upcnt = {}  # {func: up_cnt}
+        self.repair_subjection_fetched = {}
         self.repair_states = repair_states 
         self.batch_id = batch_id
 
 
         for f in all_func:
             self.executed[f] = False
+            self.repair_subjection_fetched[f] = False
             self.parent_executed[f] = 0
         
 
@@ -133,7 +136,6 @@ class WorkerSPManager:
         state.lock.release()
     
     def validate_tx(self, transaction_id, read_set, write_set, container_port, RYW_subjection) -> None:
-        logging.info(f"Validating transaction_id: {transaction_id}, read_set:{read_set}, write_set:{write_set}, RYW_subjection:{RYW_subjection}")
         self.transaction_sink.append(transaction_id, read_set, write_set, container_port, RYW_subjection)
 
     def abort_tx(self,transaction_id, batch_id=''):
@@ -172,19 +174,29 @@ class WorkerSPManager:
 
     def crosstx_trigger_function(self, transaction_id: str, function_name: str) -> None:
         state = self.states[transaction_id]
-        func_info = self.function_info[function_name]
-        self.trigger_function_local(state, function_name, func_info['ip'])
+        state.lock.acquire()
+        state.parent_executed[function_name] += 1
+        runnable = self.check_runnable(state, function_name)
+        if runnable:
+            state.executed[function_name] = True
+            state.lock.release()
+            self.run_function(state, function_name)
+        else:
+            state.lock.release()
 
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         state.lock.acquire()
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
-        if state.repair:
-            # fetch subjection from redis, used in optimistic repair mode
-            upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(state.repair_states[function_name]["upstream_keys"], state.transaction_id, function_name) 
-            upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info ) 
-            state.repair_states[function_name]["up_cnt"] = upstream_waiting_count     
+        if state.repair and not state.repair_subjection_fetched[function_name]:
+            # [FIRST REPAIR] fetch subjection from redis
+            upstream_keys = state.repair_states[function_name]["upstream_keys"]
+            upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(upstream_keys, state.transaction_id, function_name) 
+            upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info )  
+            logging.info(f"[REPAIR FETCH UPSTREAM] upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
+            state.repair_subjection_upcnt[function_name] = upstream_waiting_count
+            state.repair_subjection_fetched[function_name] = True  
         runnable = self.check_runnable(state, function_name)
         # remember to release state.lock
         if runnable:
@@ -232,7 +244,7 @@ class WorkerSPManager:
         info = self.function_info[function_name]
         up_cnt = 0
         if state.repair:
-            up_cnt = state.repair_states.get(function_name, {}).get('up_cnt', 0)
+            up_cnt = state.repair_subjection_upcnt.get(function_name, 0)
             # parent count: the sum of parents in workflow graph and parents in subject table
         return state.parent_executed[function_name] == info['parent_cnt'] + up_cnt and not state.executed[function_name] 
 
@@ -250,18 +262,23 @@ class WorkerSPManager:
                 self.abort_tx(state.transaction_id,state.batch_id)
                 return
             
-        if self.OPTIMISTIC_REPAIR and state.repair:
-            downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, REPAIRED)
-            self.repo.subjection_collector.send_data_to_waiting_downstream(state.transaction_id, function_name, downstream_funcs)
-            crosstx_jobs = [
-                        gevent.spawn(self.trigger_function_cross_tx, func_info)
-                        for func_info in downstream_funcs
-            ]    
+        if self.OPTIMISTIC_REPAIR:
+            if state.repair:
+                downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, REPAIRED)
+                logging.info(f"trigger downstream_funcs waiting function: {downstream_funcs}")
+                self.repo.subjection_collector.send_data_to_waiting_downstream(state.transaction_id, function_name, downstream_funcs)
+                crosstx_jobs = [
+                            gevent.spawn(self.trigger_function_cross_tx, func_info)
+                            for func_info in downstream_funcs
+                ]   
+            else:
+                self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, RUNNING)
                  
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
         state.lock.acquire()
-        state.parent_executed[function_name] = 0
-        state.executed[function_name] = False
+        if not state.repair:
+            state.parent_executed[function_name] = 0
+            state.executed[function_name] = False
         state.lock.release()
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
@@ -274,7 +291,7 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}")
+        logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):
@@ -295,8 +312,6 @@ class WorkerSPManager:
             logging.info(f"FIRST RUN, RYW info get from func: {res['RYW_subjection']}, update RYW: {state.RYW_subjection}")
 
         state.lock.release()
-        logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
-
         return True
 
     def clear_mem(self, transaction_id):

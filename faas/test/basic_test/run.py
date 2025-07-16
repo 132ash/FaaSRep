@@ -70,7 +70,7 @@ def analyze_all(system_mode, opt):
 
         # 创建4个线程
     threads = []
-    for _ in range(4):
+    for _ in range(2):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()

@@ -8,7 +8,7 @@ print(redis_client_shadow.get("sds"))
 
 def check_redis_data():
     # 获取所有键
-    keys = redis_client_cache.keys("*")
+    keys = redis_client_shadow.keys("*")
     
     if not keys:
         print("No keys found in Redis database.")
@@ -16,7 +16,7 @@ def check_redis_data():
     # 打印每个键及其对应的值
     for key in keys:
         # value = redis_client_cache.get(key)
-        print(f"Key: {key.decode('utf-8')}")
+        print(f"Key: {key}")
         # redis_client.delete(key)
 
 def check_transaction_data():
@@ -34,4 +34,4 @@ def check_transaction_data():
     
 
 if __name__ == "__main__":
-    check_transaction_data()
+    check_redis_data()

@@ -72,11 +72,13 @@ class RepairEngine:
             if not FAST_PATH_ENABLED:
                 repair_metadata_no_fast = self.repair_info.get_repair_metadata(batch_id, '', tx_id)
             # trigger start functions
+            log_validator_message(self.logger, f"[REPAIR] repair metadata for batch {batch_id} on worker {self.worker_ip_set} is {repair_metadata_no_fast}")
+        
             for n in self.start_functions:
                 ip = self.function_pos[n]
                 port = container_port[tx_id][n]
-                trigger_jobs.append(gevent.spawn(self.trigger_function, FAST_PATH_ENABLED, self.workflow_name, tx_id, n, ip, port,batch_id, repair_metadata_no_fast))
-        gevent.joinall(trigger_jobs)   
+                trigger_jobs.append(gevent.spawn(self.trigger_function, FAST_PATH_ENABLED, self.workflow_name, tx_id, n, ip, port,batch_id, repair_metadata_no_fast) )
+        gevent.joinall(trigger_jobs)
         
 
     def trigger_function(self, FAST_PATH_ENABLED, workflow_name, transaction_id, function_name, ip, port, batch_id, repair_metadata_per_tx):
