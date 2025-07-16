@@ -64,10 +64,11 @@ class RedisCache:
         return data
     
 class RepairSidecar:
-    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, ip, port):
+    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, function_pos, port):
         self.shadow_table = shadow_table
         self.cache = cache
-        self.ip = ip
+        self.function_pos = function_pos
+        self.ip = function_pos[function]
         self.port = port
         self.function = function
 
@@ -102,7 +103,7 @@ class RepairSidecar:
                 # 获取本地 redis 中的数据
                 value = self.shadow_table.redis[self.ip].get(f"{self_tx_id}:PUT:{self.function}:{key}")
                 # 写入目标 redis
-                pipeline.set(f"{tx_id}:{func}:UPSTREAM:{key}", value)
+                pipeline.set(f"{tx_id}:UPSTREAM:{func}:{key}", value)
             pipeline.execute()
 
         threads = []
@@ -121,7 +122,7 @@ class RepairSidecar:
         for key, upstream_info in upstream_keys_info.items():
             upstream_txid = upstream_info['tx_id']
             upstream_func = upstream_info['func']
-            upstream_ip = upstream_info['ip']
+            upstream_ip = self.function_pos[upstream_func]
             upstream_fetch_results.setdefault(upstream_ip, {}).setdefault(upstream_txid, {}).setdefault(upstream_func, {'state':'', 'fetched_keys':{}})['fetched_keys'][key] = ''
 
         for upstream_ip, upstream_tx_dict in upstream_fetch_results.items():

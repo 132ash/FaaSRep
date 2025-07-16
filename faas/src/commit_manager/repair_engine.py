@@ -31,7 +31,7 @@ class RepairEngine:
         self.worker_ip_set = worker_ip_set
         self.repo = repo
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
-        self.PessimisticRepairer = PessimisticRepairer(workflow_name, self.repair_info, self.function_pos)
+        self.PessimisticRepairer = PessimisticRepairer(logger, workflow_name, self.repair_info, self.function_pos)
 
     def repair_batch(self,batch_id,container_port, read_set, write_set,tx_list, expired_keys, pessi_sink_info):
         # allocate works
@@ -46,34 +46,32 @@ class RepairEngine:
         return time.time() - start
 
     # after repair metadata is filled, trigger the start functions to repair the workflow.
-    def pessimistic_repair_finish(self, batch_id, batch_write_set,successed_tx_list_per_batch, data):
+    def pessimistic_repair_finish(self, batch_id, batch_write_set,successed_tx_list_per_batch, container_port_per_batch, data):
         fin_tx_id = data['tx_id']
         state = data['state']
         cascaded_ready_txs = data['ready_txs']
-        container_port = data.get('container_port', {})
         if state == ABORTED:
             self.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, batch_write_set, fin_tx_id)
         else:
             successed_tx_list_per_batch.append(fin_tx_id)
         expired_keys = {}
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
-        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port)     
+        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch)     
             
-    def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port={}):
+    def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port):
         repair_prepare_jobs = []
         trigger_jobs = []
         for ip in self.worker_ip_set:
             repair_metadata_local = self.repair_info.get_repair_metadata(batch_id, ip) if FAST_PATH_ENABLED else {}
             repair_prepare_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set())))
         gevent.joinall(repair_prepare_jobs) 
-            # metadata filled. Trigger start functions to repair workflow.
+        # metadata filled. Trigger start functions to repair workflow.
         repair_metadata_no_fast = {}
         for tx_id in ready_transactions:
             if not FAST_PATH_ENABLED:
                 repair_metadata_no_fast = self.repair_info.get_repair_metadata(batch_id, '', tx_id)
+            log_validator_message(self.logger, f"repairing transaction {tx_id} in batch {batch_id}, repair_metadata_no_fast:{repair_metadata_no_fast}")
             # trigger start functions
-            log_validator_message(self.logger, f"[REPAIR] repair metadata for batch {batch_id} on worker {self.worker_ip_set} is {repair_metadata_no_fast}")
-        
             for n in self.start_functions:
                 ip = self.function_pos[n]
                 port = container_port[tx_id][n]

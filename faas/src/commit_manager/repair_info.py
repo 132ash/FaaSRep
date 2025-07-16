@@ -103,8 +103,8 @@ class RepairInfo:
                     func_info = tx_info.setdefault(func, {})
                     for key, dependency in keys.items():
                         if dependency:
-                            prev_tx_id, prev_func, prev_ip = dependency
-                            func_info.setdefault('upstream_keys', {})[key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip': prev_ip}
+                            prev_tx_id, prev_func = dependency
+                            func_info.setdefault('upstream_keys', {})[key] = {'tx_id': prev_tx_id, 'func': prev_func}
                             func_info['up_cnt'] = func_info.get('up_cnt', 0) + 1
                         else:
                             func_info.setdefault('RYW_keys', {})[key] = True
@@ -114,8 +114,8 @@ class RepairInfo:
                 func_info = tx_dict.setdefault(func, {})
                 for key, dependency in keys.items():
                     if dependency:
-                        prev_tx_id, prev_func, prev_ip = dependency
-                        func_info.setdefault('upstream_keys', {})[key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip': prev_ip}
+                        prev_tx_id, prev_func = dependency
+                        func_info.setdefault('upstream_keys', {})[key] = {'tx_id': prev_tx_id, 'func': prev_func}
                         func_info['up_cnt'] = func_info.get('up_cnt', 0) + 1
                     else:
                         func_info.setdefault('RYW_keys', {})[key] = True

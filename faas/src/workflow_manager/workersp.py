@@ -192,8 +192,8 @@ class WorkerSPManager:
         if state.repair and not state.repair_subjection_fetched[function_name]:
             # [FIRST REPAIR] fetch subjection from redis
             upstream_keys = state.repair_states[function_name]["upstream_keys"]
-            upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(upstream_keys, state.transaction_id, function_name) 
-            upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info )  
+            upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(upstream_keys, state.transaction_id, function_name, self.function_pos) 
+            upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info)  
             logging.info(f"[REPAIR FETCH UPSTREAM] upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
             state.repair_subjection_upcnt[function_name] = upstream_waiting_count
             state.repair_subjection_fetched[function_name] = True  

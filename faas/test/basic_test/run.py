@@ -114,8 +114,8 @@ system_mode = ["OPTIMISTIC", "PESSIMISTIC"]
 opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
-    _system_mode= system_mode[0]
-    _opt = opt[1]
+    _system_mode= system_mode[1]
+    _opt = opt[0]
     if TESTRUN:
         run_workflow("textseq", parameters_input["textseq"])
     else:

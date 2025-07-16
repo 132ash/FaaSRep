@@ -4,7 +4,6 @@ import redis
 redis_client_shadow = redis.StrictRedis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
 redis_client_cache = redis.StrictRedis(host="127.0.0.1", port=6379, db=1)
 
-print(redis_client_shadow.get("sds"))
 
 def check_redis_data():
     # 获取所有键
@@ -14,6 +13,7 @@ def check_redis_data():
         print("No keys found in Redis database.")
         return
     # 打印每个键及其对应的值
+    # print(redis_client_shadow.get("5d92e54e-4ae7-4ba6-a4df-5ebaaa8950d8:UPSTREAM:f1:t2"))
     for key in keys:
         # value = redis_client_cache.get(key)
         print(f"Key: {key}")

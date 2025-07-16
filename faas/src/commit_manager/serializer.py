@@ -162,7 +162,7 @@ class SerializerProcess(Process):
                 else:
                     need_repair = True
                     subjection_set[tx_id][func]["dirty"] = True
-                    prev_batch_id,  prev_tx_id,  prev_func, prev_ip = prev_writers[-1]
+                    prev_batch_id,  prev_tx_id,  prev_func = prev_writers[-1]
                     if not optimistic_repair_enabled:
                         # add to prev info.
                         if batch_id != prev_batch_id:
@@ -170,10 +170,10 @@ class SerializerProcess(Process):
                             if pessi_nearest_writer['batch'][0] is None or pessi_nearest_writer['batch'][1] < self.batch_write_info[prev_batch_id]['version']:
                                 pessi_nearest_writer['batch'] = (prev_batch_id, self.batch_write_info[prev_batch_id]['version'])
                         else:
-                            if pessi_nearest_writer['tx'] is None or pessi_nearest_writer['tx'] < tx_index_inside_batch[prev_tx_id]:
+                            if pessi_nearest_writer['tx'] is None or tx_index_inside_batch[pessi_nearest_writer['tx']] < tx_index_inside_batch[prev_tx_id]:
                                 pessi_nearest_writer['tx'] = prev_tx_id    
                     else: 
-                        subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func, 'ip':prev_ip}
+                        subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func}
         if not optimistic_repair_enabled:
             nearest_batch = pessi_nearest_writer['batch'][0]
             nearest_tx = pessi_nearest_writer['tx']
@@ -193,7 +193,7 @@ class SerializerProcess(Process):
                 self.batch_write_info[batch_id]['all_write_cnt'] += 1
                 if len(self.key_writers[key]) == 0:
                     self.batch_write_info[batch_id]['ready_write_cnt'] += 1
-                self.key_writers[key].append((batch_id, tx_id, writer_func, self.function_pos[writer_func]))
+                self.key_writers[key].append((batch_id, tx_id, writer_func))
 
     def prev_batch_committed(self, batch_id):
         # check if this batch is ready to commit.
@@ -214,17 +214,17 @@ class SerializerProcess(Process):
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
                 current_key_writers = self.key_writers[key]
-                _,  writer_tx_id,  writer_func, writer_ip = current_key_writers.pop(0)
+                _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
                 self.key_version_table[key] = current_batch_write_info['version']
                 if optimistic_repair_enabled:
-                    keys_for_commit_per_ip[writer_ip].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
-                if len(current_key_writers) > 0:
-                    cascaded_batch_id, _, _, _ = current_key_writers[0]
-                    self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
-                    # only suspended batches are ready to commit cascaded.
-                    if self.prev_batch_committed(cascaded_batch_id) and cascaded_batch_id in self.commit_suspended_batches:    
-                        self.commit_suspended_batches.pop(cascaded_batch_id)         
-                        batches_ready_for_committing.append(cascaded_batch_id)
+                    keys_for_commit_per_ip[self.function_pos[writer_func]].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
+                    if len(current_key_writers) > 0:
+                        cascaded_batch_id, _, _, _ = current_key_writers[0]
+                        self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
+                        # only suspended batches are ready to commit cascaded.
+                        if cascaded_batch_id in self.commit_suspended_batches and self.prev_batch_committed(cascaded_batch_id):    
+                            self.commit_suspended_batches.pop(cascaded_batch_id)         
+                            batches_ready_for_committing.append(cascaded_batch_id)
             commit_list_per_handler.setdefault(current_handler_id, []).append((current_batch_id, current_batch_write_info['version'], keys_for_commit_per_ip))
         return True, commit_list_per_handler
 

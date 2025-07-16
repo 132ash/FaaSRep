@@ -70,14 +70,14 @@ class SubjectionCollector:
             t.join()
 
     # fetch all upstream keys from redis, and append self function into the successor list.
-    def fetch_upstream_keys(self, upstream_keys_info, self_tx_id, self_function):
+    def fetch_upstream_keys(self, upstream_keys_info, self_tx_id, self_function, function_pos):
         upstream_redis_pipelines = {} # {ip: pipelines}
         upstream_fetch_results = {} # {ip:{txid: {func: {state:xx, fetched_keys:{key: res}}}}}
 
         for key, upstream_info in upstream_keys_info.items():
             upstream_txid = upstream_info['tx_id']
             upstream_func = upstream_info['func']
-            upstream_ip = upstream_info['ip']
+            upstream_ip = function_pos[upstream_func]
             upstream_fetch_results.setdefault(upstream_ip, {}).setdefault(upstream_txid, {}).setdefault(upstream_func, {'state':'', 'fetched_keys':{}})['fetched_keys'][key] = ''
 
         for upstream_ip, upstream_tx_dict in upstream_fetch_results.items():

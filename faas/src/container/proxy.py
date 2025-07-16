@@ -58,12 +58,13 @@ class Runner:
         self.parent_cnt = 0
         self.parent_executed = 0
 
-        # infomation fetched from Redis in repair
+        # infomation used in repair
         self.repair_metadata_lock = gevent.lock.BoundedSemaphore()
         self.repair_metadata_fetched = False
         self.dirty = False
         self.keys_from_upstream = {}
         self.keys_from_RYW = {}
+        self.subjection_waiting_cnt = 0
 
         # system mode options
         self.fast_path_enabled = False
@@ -88,7 +89,7 @@ class Runner:
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
-        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.function_pos[self.function], self.port)
+        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.function_pos, self.port)
         self.container_state = RUNNING
         os.chdir(work_dir)
 
@@ -109,9 +110,11 @@ class Runner:
         set_pipeline = self.shadow_table.redis[self.host_addr].pipeline() 
         set_pipeline.multi()
         upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, transaction_id)
+        waiting_cnt = 0
+        logging.info(f"Upstream fetch results: {upstream_fetch_results}")
         for _, upstream_tx_dict in upstream_fetch_results.items():
             for _, upstream_func_dict in upstream_tx_dict.items():
-                for __cached__, func_result_info in upstream_func_dict.items():
+                for _, func_result_info in upstream_func_dict.items():
                     if func_result_info['state'] is None:
                         # If the state is None, it means the function has been commited. trigger cache update.
                         for key in func_result_info['fetched_keys'].keys():
@@ -119,13 +122,14 @@ class Runner:
                             self.cache.update_and_fetch(key)
                     elif func_result_info['state'] == RUNNING:
                         # If upstream function is still running, this func should wait for it.
-                        self.parent_cnt += 1
+                        waiting_cnt += 1
                     elif func_result_info['state'] == REPAIRED:
                         # update the fetched keys in shadow table. add fetch count.
-                        upstream_key_prefix = f"{transaction_id}:{self.function}:UPSTREAM:"
+                        upstream_key_prefix = f"{transaction_id}:UPSTREAM:{self.function}:"
                         for key, value in func_result_info['fetched_keys'].items():
                             set_pipeline.set(upstream_key_prefix+key, value)
         set_pipeline.execute()
+        return waiting_cnt
 
     # in repair mode: save the repair metadata. 
     def fetch_repair_metadata(self, transaction_id, metadata_nofast={}):
@@ -138,7 +142,6 @@ class Runner:
                 self.keys_from_RYW = metadata_nofast['RYW_keys']
                 self.dirty = metadata_nofast['dirty']
             else:
-
                 metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
                 if metadata_string:
                     repair_metadata = json.loads(metadata_string)
@@ -147,28 +150,28 @@ class Runner:
                     self.successor_port = repair_metadata['successor_port']
                     self.dirty = repair_metadata['dirty']
                     # besides metadata, the subjection from upstream should be prepared by container itself.
-                    self.prepair_subjection_before_repair(transaction_id)
-                    logging.info(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}")
+                    self.subjection_waiting_cnt = self.prepair_subjection_before_repair(transaction_id)
+                    logging.info(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt} ")
         self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):
         # not in repair mode, check is finished outside the container.
-        if not is_repair or no_parent_execution or not self.fast_path_enabled:
+        if not is_repair or not self.fast_path_enabled:
             return True
         else:
-            self.parent_executed += 1
-            logging.info(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}")
-            return self.parent_executed == self.parent_cnt
+            if not no_parent_execution:
+                self.repair_metadata_lock.acquire()
+                self.parent_executed += 1
+                self.repair_metadata_lock.release()
+            logging.info(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}, waiting_cnt: {self.subjection_waiting_cnt}")
+            return self.parent_executed == self.parent_cnt + self.subjection_waiting_cnt
         
-    def trigger_next_function(self, transaction_id, ip, port,state ,dirty=False, batch_id=""):
+    def trigger_next_function(self, transaction_id, ip, port ,dirty=False, batch_id=""):
         url = f'http://{ip}:{port}/run'
         data = {
             'batch_id': batch_id,
             'transaction_id': transaction_id,
             'repair': True,
-            'dirty':dirty,
-            'function': self.function,
-            'up_state': state,  # state of the upstream function
             }
         logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
         requests.post(url, json=data)
@@ -191,11 +194,11 @@ class Runner:
         next_trigger_tasks = []
         # Trigger all waiting downstream functions
         for func_info in downstream_funcs:
-            ip, port = func_info[2], func_info[3]
+            downstream_tx_id, ip, port = func_info[0], func_info[2], func_info[3]
             next_trigger_tasks.append(
             gevent.spawn(
                 self.trigger_next_function,
-                self.transaction_id, ip, port, self.container_state, self.dirty, batch_id
+                downstream_tx_id, ip, port, self.dirty, batch_id
                 )
             )
         # If not aborted, trigger successor functions in workflow graph.
@@ -211,7 +214,7 @@ class Runner:
                 next_trigger_tasks.append(
                     gevent.spawn(
                     self.trigger_next_function,
-                    self.transaction_id, next_ip, port, self.container_state, self.dirty, batch_id
+                    self.transaction_id, next_ip, port, self.dirty, batch_id
                     )
                 )
         gevent.joinall(next_trigger_tasks)
@@ -248,7 +251,6 @@ class Runner:
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         if is_repair:
             runner.repair_metadata_fetched = False
-            runner.parent_cnt = 0
             runner.parent_executed = 0
             if self.fast_path_enabled:
                 if aborted:

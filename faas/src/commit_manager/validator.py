@@ -40,7 +40,7 @@ class ValidatorPool:
         function_info = self.repo.get_function_info(self.repo.get_all_functions(self.workflow_name), self.workflow_name)
         for func, info in function_info.items():
             self.function_pos[func] = info['ip']
-            
+
         for i in range(self.num_validators):
             task_queue = Queue()
             serializer_return_pipe = Queue()
@@ -102,7 +102,6 @@ class ValidatorProcess(Process):
     def dispatch_serilizer_response(self):
         if not self.serializer_return_pipe.empty():
             batch_id, data = self.serializer_return_pipe.get()
-            log_validator_message(self.logger, f"[SERIALIZER] Received response for batch {batch_id}: {data}, self.response_events:{self.response_events}")
             if batch_id in self.response_events:
                 return_event = self.response_events.pop(batch_id)
                 return_event.set(data)
@@ -173,7 +172,6 @@ class ValidatorProcess(Process):
         self.response_lock.acquire()
         self.response_events[batch_id] = res_event
         self.response_lock.release()
-        log_validator_message(self.logger, f"[{op}] batch {batch_id} send to serializer, response_events:{self.response_events}")
         self.serializer_req_queue.put((self.validator_id, batch_id, op, data))
         serilizer_res = res_event.get(timeout=Serializer_timeout)
         return serilizer_res

@@ -4,6 +4,7 @@ import gevent
 import gevent.lock
 from repair_info import RepairInfo
 import sys
+from subprocess_log import log_validator_message
 
 sys.path.append('../../config')
 import config
@@ -15,8 +16,9 @@ WAITING = 3
 
 class PessimisticRepairer:
 
-    def __init__(self, workflow_name, repair_info: RepairInfo = None, function_pos=None):
+    def __init__(self,logger, workflow_name, repair_info: RepairInfo = None, function_pos=None):
         self.workflow_name = workflow_name
+        self.logger = logger
         self.repair_info = repair_info
         self.function_pos = function_pos
         self.tx_write_table_per_batch = {} 
@@ -34,7 +36,7 @@ class PessimisticRepairer:
         for tx_id in transaction_list:
             ws = batch_write_set.get(tx_id, {})
             for key, writer_func in ws.items():
-                self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = {'tx_id': tx_id, 'func': writer_func}
+                self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = (tx_id, writer_func)
                 
 
     def prepare_pessimistic_info(self,batch_id,expired_keys, ready_tx_list):
@@ -43,16 +45,19 @@ class PessimisticRepairer:
         """
         self.write_table_lock_per_batch[batch_id].acquire()
         for tx_id in ready_tx_list:
-            last_tx_idx = self.last_subjection_for_tx_per_batch[batch_id].get(tx_id, None)
+            last_tx_id = self.last_subjection_for_tx_per_batch[batch_id].get(tx_id, None)
             tx_dependency = {}
             # Find all (key, func) in the read set of tx_id
-            if last_tx_idx:
-                rs = self.tx_read_table_per_batch[tx_id]
+            if last_tx_id:
+                last_tx_idx = self.transaction_idx_per_batch[batch_id][last_tx_id]
+                rs = self.tx_read_table_per_batch[batch_id][tx_id]
                 for func, func_rs in rs.items():
                     tx_dependency[func] = {}
                     for key in func_rs.keys():
+                        if key not in self.tx_write_table_per_batch[batch_id]:
+                            continue  # If the key is not in the write table, skip it
                         # For each key, find the writer_list
-                        writer_list = self.tx_write_table_per_batch[batch_id].get(key, [])
+                        writer_list = self.tx_write_table_per_batch[batch_id][key]
                         dependency = None
                         # Search for the first non-None writer before last_tx_idx
                         for prev_idx in range(last_tx_idx, -1, -1):
@@ -61,6 +66,7 @@ class PessimisticRepairer:
                                 break
                         # Store the dependency for this (key, func)
                         tx_dependency[func][key] = dependency
+            log_validator_message(self.logger, f"[PESSIMISTIC] tx {tx_id} dependency: {tx_dependency}")
             self.repair_info.update_pessimistic_repair_metadata(batch_id, tx_id, tx_dependency, expired_keys)
         self.write_table_lock_per_batch[batch_id].release()
 
@@ -79,8 +85,7 @@ class PessimisticRepairer:
             # Find the rightmost non-None writer info
             for writer_info in writer_list[::-1]:
                 if writer_info is not None:
-                    tx_id = writer_info['tx_id']
-                    func = writer_info['func']
+                    tx_id, func = writer_info
                     ip = self.function_pos[func]
                     commit_keys_per_ip.setdefault(ip, []).append(f"{tx_id}:PUT:{func}:{key}")
                     break
@@ -94,5 +99,7 @@ class PessimisticRepairer:
         self.tx_write_table_per_batch.pop(batch_id, None)
         self.write_table_lock_per_batch.pop(batch_id, None)
         self.tx_read_table_per_batch.pop(batch_id, None)
+        
         # Remove transaction index mapping for the batch
         self.transaction_idx_per_batch.pop(batch_id, None)
+        self.last_subjection_for_tx_per_batch.pop(batch_id, None)

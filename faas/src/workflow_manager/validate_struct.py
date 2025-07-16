@@ -44,10 +44,11 @@ class PessimisticBatchState:
     def __init__(self, batch_id, tx_list, batch_size):
         self.batch_size = batch_size
         self.batch_id = batch_id
+        self.transaction_list = tx_list
         self.next_txs_after_batch = {} # {successor_batchid: [txid1, txid2, ...]}
         self.fin_consecutive_cnt = -1
         self.state_lock = gevent.lock.BoundedSemaphore()
-        self.finished_tx_list = [None] * len(tx_list)
+        self.finished_tx_list = [None] * len(tx_list) 
         self.tx_idx = {txid: idx for idx, txid in enumerate(tx_list)}
         self.pessi_transaction_info = {txid:{'next_txs':[], 'prev_fin_cnt':2, 'fin_repair':False} for txid in tx_list}
 
@@ -74,17 +75,16 @@ class PessimisticBatchState:
         self.state_lock.release()
 
     def transaction_finish(self, tx_id, ready_txs):
-        triggered_txs = []
-        ready_txs = []
+        txs_to_be_triggered_by_prev_finish = []
         finish_idx = self.tx_idx[tx_id]
         self.state_lock.acquire()
         self.finished_tx_list[self.tx_idx[tx_id]] = True
         if self.fin_consecutive_cnt == finish_idx - 1:
             while self.fin_consecutive_cnt < self.batch_size - 1 and self.finished_tx_list[self.fin_consecutive_cnt + 1] is not None:
                 self.fin_consecutive_cnt += 1
-                current_fin_tx_id = self.finished_tx_list[self.fin_consecutive_cnt]
-                triggered_txs.extend(self.pessi_transaction_info[current_fin_tx_id]['next_txs'])
-        self.trigger_successor(self, triggered_txs, ready_txs)
+                current_fin_tx_id = self.transaction_list[self.fin_consecutive_cnt]
+                txs_to_be_triggered_by_prev_finish.extend(self.pessi_transaction_info[current_fin_tx_id]['next_txs'])
+        self.trigger_successor(txs_to_be_triggered_by_prev_finish, ready_txs)
         self.state_lock.release()
 
 
@@ -116,8 +116,7 @@ class RepairingBatchState:
             if prev_batch_info:
                 self.pessimistic_state_per_batch[batch_id].modify_batch_successors(batch_id, next_txs, batch_successors)
             self.pessimistic_state_lock.release()
-        for prev_tx_id, next_txs in tx_sub.items():
-            self.pessimistic_state_per_batch[batch_id].init_tx_info(ready_txs, next_txs, batch_successors)
+        self.pessimistic_state_per_batch[batch_id].init_tx_info(ready_txs, tx_sub, batch_successors)
         return list(ready_txs.keys())
 
     def reminder_successor_tx_pessi(self, batch_id, tx_id, batch_finished):
@@ -201,7 +200,7 @@ class TransactionSink:
         self.queue = self.queue[idx:]
         self.queue_lock.release()
         batch = self.transform_batch(batch)
-        self.repairing_batch_state.register_batch(batch['batch_id'], batch['transaction_list'], idx)
+        self.repairing_batch_state.register_batch(batch['batch_id'], batch['transaction_list'],  idx)
         self.send_validate_request(batch, first_run_finish_time)
 
     def send_cascaded_repair_request_pessi(self, batch_id, tx_id, state, ready_txs):
@@ -211,10 +210,10 @@ class TransactionSink:
             "batch_id": batch_id,
             "tx_id": tx_id,
             "state": state,
-            "ready_txs": ready_txs
+            "ready_txs": ready_txs,
+            'container_port': {},
         }
-        response = requests.post(remote_url, json=data)
-        response.close()
+        requests.post(remote_url, json=data)
         
     def send_validate_request(self, batch, first_run_finish_time):
         remote_url = 'http://{}/validate'.format(VALIDATOR_ADDR)
