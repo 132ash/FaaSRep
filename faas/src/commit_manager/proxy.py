@@ -14,6 +14,7 @@ GATEWAY_ADDR = config.GATEWAY_ADDR
 VALIDATE = 1
 COMMIT = 2
 PESSIMISTIC_REPAIR_FINISH = 4
+PESSIMISTIC_CASCADED_REPAIR = 5
 
 workflows = config.FUNCTION_INFO_ADDRS.keys()
 validator_pools = {workflow: ValidatorPool(config.VALIDATORS_PER_POOL, workflow) for workflow in workflows}
@@ -35,6 +36,15 @@ def pessi_finish():
     batch_id = data['batch_id']
     validator_pools[workflow].submit(batch_id, PESSIMISTIC_REPAIR_FINISH, data)
     return json.dumps({'status': 'successed'})
+
+@app.route('/pessi_cas', methods=['POST'])
+def pessi_cascaded_repair():
+    data = request.get_json(force=True, silent=True)
+    workflow = data['workflow_name']
+    batch_id = data['batch_id']
+    validator_pools[workflow].submit(batch_id, PESSIMISTIC_CASCADED_REPAIR, data)
+    return json.dumps({'status': 'successed'})
+
     
 @app.route('/commit', methods = ['POST'])
 def transaction_commit():

@@ -66,11 +66,11 @@ def analyze_all(system_mode, opt):
     def thread_task():
         for _ in range(1):  # 每个线程调用 1 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
-            time.sleep(0.05)  # 每隔 50ms 调用一次
+            time.sleep(0.1)  # 每隔 50ms 调用一次
 
         # 创建4个线程
     threads = []
-    for _ in range(2):
+    for _ in range(4):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()
@@ -115,7 +115,7 @@ opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
     _system_mode= system_mode[1]
-    _opt = opt[0]
+    _opt = opt[1]
     if TESTRUN:
         run_workflow("textseq", parameters_input["textseq"])
     else:

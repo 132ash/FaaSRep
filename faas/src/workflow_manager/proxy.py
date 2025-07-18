@@ -63,7 +63,6 @@ class Dispatcher:
 
     def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id, state):
         self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, state)
-        self.reserve_pools[workflow_name].release(transaction_id)
 
     def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
         return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
@@ -224,7 +223,11 @@ def prepare():
 def commit():
     data = request.get_json(force=True, silent=True)
     commit_list = data['commit_list']
-    for commit_info_per_batch in commit_list:
+    if FAST_PATH:
+        worklow_name = data['workflow_name']
+        fin_tx_lists = commit_list['txs']
+        dispatcher.reserve_pools[worklow_name].release(fin_tx_lists)
+    for commit_info_per_batch in commit_list['keys']:
         keys = commit_info_per_batch['keys']
         version = commit_info_per_batch['version']
         logging.info(f"Worker commit.  commit keys: {keys}, version {version}")

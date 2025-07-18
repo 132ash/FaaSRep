@@ -7,7 +7,7 @@ import gevent.lock
 from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
-from validate_struct import TransactionSink
+from validate_struct import TransactionSink, ReservePool
 import re
 
 sys.path.append('../../config')
@@ -62,7 +62,7 @@ min_port = 20000
 
 # mode: 'optimized' vs 'normal'
 class WorkerSPManager:
-    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, transaction_sink: TransactionSink, reserve_pool:Dict, repo:Repository, node_list:list) -> None:
+    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, transaction_sink: TransactionSink, reserve_pool:ReservePool, repo:Repository, node_list:list) -> None:
         global min_port
 
         self.info_db = workflow_name + '_function_info'
@@ -77,6 +77,7 @@ class WorkerSPManager:
         self.func = self.repo.get_current_node_functions(self.host_addr, self.info_db)
         self.function_info = {}
         self.function_pos = {}
+        self.reserve_pool:ReservePool = reserve_pool
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
             self.function_pos[function_name] = extract_ip(self.function_info[function_name]['ip'])
@@ -279,6 +280,7 @@ class WorkerSPManager:
         if not state.repair:
             state.parent_executed[function_name] = 0
             state.executed[function_name] = False
+        
         state.lock.release()
         # trigger downstream functions, including the ones in write relation table.
         jobs = [

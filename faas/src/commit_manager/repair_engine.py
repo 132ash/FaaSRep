@@ -29,6 +29,8 @@ class RepairEngine:
         self.workflow_name = workflow_name
         self.function_pos = function_pos
         self.worker_ip_set = worker_ip_set
+        self.pessi_register_lock = gevent.lock.BoundedSemaphore()
+
         self.repo = repo
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
         self.PessimisticRepairer = PessimisticRepairer(logger, workflow_name, self.repair_info, self.function_pos)
@@ -37,9 +39,11 @@ class RepairEngine:
         # allocate works
         start = time.time()
         if not OPTIMISTIC_REPAIR:
+            self.pessi_register_lock.acquire()
             self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
             ready_txs = self.register_on_sink(batch_id, pessi_sink_info)
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)
+            self.pessi_register_lock.release()
         else:
             ready_txs = tx_list
         self.repair_transactions(batch_id, ready_txs, expired_keys, container_port)
@@ -54,10 +58,14 @@ class RepairEngine:
             self.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, batch_write_set, fin_tx_id)
         else:
             successed_tx_list_per_batch.append(fin_tx_id)
+        if cascaded_ready_txs:
+            self.send_pessimistic_repair_req(batch_id, container_port_per_batch, cascaded_ready_txs)  
+                
+    def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
-        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch)     
-            
+        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch)
+
     def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port):
         repair_prepare_jobs = []
         trigger_jobs = []
@@ -106,8 +114,8 @@ class RepairEngine:
         else:
             url = f'http://{ip}/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'] }
-        log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}")
         res = requests.post(url, json=data).json()
+        log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
         return res['ready_txs']
 
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}

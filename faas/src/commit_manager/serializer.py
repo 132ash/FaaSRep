@@ -154,7 +154,6 @@ class SerializerProcess(Process):
                 # prev_writer_tuple: (batch_id, tx_id, func) 
                 if not prev_writers:
                     # expired key.
-                    log_message(f"Key {key} compare version. version={version}, key_version={self.key_version_table.get(key)}")
                     if version < self.key_version_table.get(key):
                         expired_set[tx_id][func][key] = True
                         subjection_set[tx_id][func]["dirty"] = True
@@ -199,6 +198,7 @@ class SerializerProcess(Process):
         # check if this batch is ready to commit.
         return self.batch_write_info[batch_id]['ready_write_cnt'] == self.batch_write_info[batch_id]['all_write_cnt']
 
+# TODO: pessi_finish is stuck by this. check code.
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
             return False, {}
@@ -219,7 +219,7 @@ class SerializerProcess(Process):
                 if optimistic_repair_enabled:
                     keys_for_commit_per_ip[self.function_pos[writer_func]].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
                     if len(current_key_writers) > 0:
-                        cascaded_batch_id, _, _, _ = current_key_writers[0]
+                        cascaded_batch_id, _, _ = current_key_writers[0]
                         self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
                         # only suspended batches are ready to commit cascaded.
                         if cascaded_batch_id in self.commit_suspended_batches and self.prev_batch_committed(cascaded_batch_id):    

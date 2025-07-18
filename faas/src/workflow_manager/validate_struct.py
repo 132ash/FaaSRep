@@ -34,12 +34,13 @@ class ReservePool:
         self.pool[transaction_id]["containers"].append(container)
         self.pool[transaction_id]["lock"].release()
 
-    def release(self, transaction_id):
-        containers = self.pool.get(transaction_id, {}).get("containers", [])
-        for container in containers:
-            container.return_to_pool()
-        self.pool.pop(transaction_id, None)
-
+    def release(self, fin_tx_list):
+        for transaction_id in fin_tx_list:
+            if transaction_id in self.pool:
+                for container in self.pool[transaction_id]["containers"]:
+                    container.return_to_pool()
+                self.pool.pop(transaction_id, None)
+    
 class PessimisticBatchState:
     def __init__(self, batch_id, tx_list, batch_size):
         self.batch_size = batch_size
@@ -50,23 +51,23 @@ class PessimisticBatchState:
         self.state_lock = gevent.lock.BoundedSemaphore()
         self.finished_tx_list = [None] * len(tx_list) 
         self.tx_idx = {txid: idx for idx, txid in enumerate(tx_list)}
-        self.pessi_transaction_info = {txid:{'next_txs':[], 'prev_fin_cnt':2, 'fin_repair':False} for txid in tx_list}
+        self.pessi_transaction_info = {txid:{'next_txs':[], 'prev_fin_cnt':0, 'fin_repair':False} for txid in tx_list}
 
     def trigger_successor(self, next_trigger_txs, ready_txs):
         for tx_id in next_trigger_txs:
             self.pessi_transaction_info[tx_id]['prev_fin_cnt'] -= 1
             if self.pessi_transaction_info[tx_id]['prev_fin_cnt'] == 0:
-                ready_txs.append(tx_id)
-
+                ready_txs.setdefault(self.batch_id, []).append(tx_id)
+       
     def init_tx_info(self, ready_txs, tx_sub, batch_successors):
         for tx_id in batch_successors:
             ready_txs.pop(tx_id, None)
-            self.pessi_transaction_info[tx_id]['prev_fin_cnt'] -= 1
+            self.pessi_transaction_info[tx_id]['prev_fin_cnt'] += 1
         for prev_tx_id, next_txs in tx_sub.items():
             self.pessi_transaction_info[prev_tx_id]['next_txs'] = next_txs
             for tx_id in next_txs:
                 ready_txs.pop(tx_id, None)
-                self.pessi_transaction_info[tx_id]['prev_fin_cnt'] -= 1
+                self.pessi_transaction_info[tx_id]['prev_fin_cnt'] += 1
 
     def modify_batch_successors(self, next_batch_id, next_batch_txs, batch_successors):
         batch_successors.extend(next_batch_txs)
@@ -93,14 +94,17 @@ class RepairingBatchState:
         self.pessimistic_state_per_batch:Dict[str, PessimisticBatchState] = {}
         self.transaction_list_per_batch = {}
         self.tx_finished_table_per_batch = {}
-        self.pessimistic_state_lock = gevent.lock.BoundedSemaphore()
+        self.state_lock  = gevent.lock.BoundedSemaphore()
         self.workflow_name = workflow_name
 
     def register_batch(self, batch_id, tx_list, batch_size):
+        self.state_lock.acquire()
         self.transaction_list_per_batch[batch_id] = tx_list
         self.tx_finished_table_per_batch[batch_id] = {'total':batch_size, "finished": 0, "lock": gevent.lock.BoundedSemaphore()}     
         if PESSIMISTIC_REPAIR:
             self.pessimistic_state_per_batch[batch_id] = PessimisticBatchState(batch_id, tx_list, batch_size)
+        self.state_lock.release()
+        logging.info(f"[REPAIR REGISTER] tx_finished_table_per_batch: {self.tx_finished_table_per_batch}")
             
     def update_pessimistic_subjection_info(self, batch_id:str, batch_sub, tx_sub):
         """
@@ -111,26 +115,26 @@ class RepairingBatchState:
         ready_txs = {txid: True for txid in self.transaction_list_per_batch[batch_id]}
         batch_successors = []
         for prev_batch_id, next_txs in batch_sub.items():
-            self.pessimistic_state_lock.acquire()
+            self.state_lock.acquire()
             prev_batch_info = self.pessimistic_state_per_batch.get(prev_batch_id, None)
             if prev_batch_info:
-                self.pessimistic_state_per_batch[batch_id].modify_batch_successors(batch_id, next_txs, batch_successors)
-            self.pessimistic_state_lock.release()
+                self.pessimistic_state_per_batch[prev_batch_id].modify_batch_successors(batch_id, next_txs, batch_successors)
+            self.state_lock.release()
         self.pessimistic_state_per_batch[batch_id].init_tx_info(ready_txs, tx_sub, batch_successors)
         return list(ready_txs.keys())
 
     def reminder_successor_tx_pessi(self, batch_id, tx_id, batch_finished):
-        ready_txs = []
-        batch_trigger_txs = []
+        ready_txs = {}
         if batch_finished:
-            self.pessimistic_state_lock.acquire()
+            self.state_lock.acquire()
             batch_trigger_txs = self.pessimistic_state_per_batch[batch_id].next_txs_after_batch
+            logging.info(f"[PESSIMISTIC REMINDER] finish batch_id: {batch_id}, batch_trigger_txs: {batch_trigger_txs}")
             for next_batch_id, next_trigger_txs in batch_trigger_txs.items():
                 self.pessimistic_state_per_batch[next_batch_id].state_lock.acquire()
                 self.pessimistic_state_per_batch[next_batch_id].trigger_successor(next_trigger_txs, ready_txs)
                 self.pessimistic_state_per_batch[next_batch_id].state_lock.release()
             self.tx_finished_table_per_batch.pop(batch_id)
-            self.pessimistic_state_lock.release()
+            self.state_lock.release()
         else:
             self.pessimistic_state_per_batch[batch_id].transaction_finish(tx_id, ready_txs)
         return ready_txs 
@@ -140,7 +144,7 @@ class RepairingBatchState:
         self.tx_finished_table_per_batch[batch_id]["finished"] += 1
         batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
         self.tx_finished_table_per_batch[batch_id]['lock'].release()
-        ready_successor_tx = []
+        ready_successor_tx = {}
         if PESSIMISTIC_REPAIR:
             ready_successor_tx = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
         if batch_finished:
@@ -203,16 +207,27 @@ class TransactionSink:
         self.repairing_batch_state.register_batch(batch['batch_id'], batch['transaction_list'],  idx)
         self.send_validate_request(batch, first_run_finish_time)
 
-    def send_cascaded_repair_request_pessi(self, batch_id, tx_id, state, ready_txs):
+    def cascaded_pessi_repair(self, batch_id, ready_txs):
+        remote_url = 'http://{}/pessi_cas'.format(VALIDATOR_ADDR)
+        data = {
+            "workflow_name": self.workflow_name,
+            "batch_id": batch_id,
+            "ready_txs": ready_txs,
+            'container_port': {},
+        }
+        requests.post(remote_url, json=data)
+
+    def pessi_repair_finish(self, batch_id, tx_id, state, ready_txs_inside_batch, batch_finished):
         remote_url = 'http://{}/pessi_fin'.format(VALIDATOR_ADDR)
         data = {
             "workflow_name": self.workflow_name,
             "batch_id": batch_id,
             "tx_id": tx_id,
             "state": state,
-            "ready_txs": ready_txs,
-            'container_port': {},
+            "ready_txs": ready_txs_inside_batch,
+            'batch_finish': batch_finished
         }
+        logging.info(f"[PESSI FINISH], data:{data}")
         requests.post(remote_url, json=data)
         
     def send_validate_request(self, batch, first_run_finish_time):
@@ -223,7 +238,7 @@ class TransactionSink:
             "batch_id": batch["batch_id"],
             "first_run_finish_time": first_run_finish_time
         }
-        logging.info(f"[VALIDATE] batch_id:{batch['batch_id']}, data:{data}")
+        logging.info(f"[VALIDATE] batch_id:{batch['batch_id']}")
         response = requests.post(remote_url, json=data)
         response.close() 
         
@@ -240,12 +255,16 @@ class TransactionSink:
         trigger_jobs = []
         batch_finished, ready_successors = self.repairing_batch_state.after_transaction_finish(batch_id, transaction_id)
         if PESSIMISTIC_REPAIR:
-            trigger_jobs.append(gevent.spawn(self.send_cascaded_repair_request_pessi,batch_id, transaction_id, state, ready_successors))
-        if batch_finished:
+            self_next_txs = ready_successors.pop(batch_id, [])
+            trigger_jobs.append(gevent.spawn(self.pessi_repair_finish, batch_id, transaction_id, state, self_next_txs, batch_finished))
+            for next_batch_id, ready_txs in ready_successors.items():
+                trigger_jobs.append(gevent.spawn(self.cascaded_pessi_repair, next_batch_id, ready_txs))
+        elif batch_finished:
             trigger_jobs.append(gevent.spawn(self.commit_batch, batch_id))
         gevent.joinall(trigger_jobs)
 
     # called only in pessimistic repair, to update the subjection info of the batch.
     def register_pessimistic_info(self, batch_id, batch_sub, tx_sub):
+        logging.info(f"[PESSIMISTIC REGISTER] batch_id: {batch_id}, batch_sub: {batch_sub}, tx_sub: {tx_sub}")
         return {'ready_txs':self.repairing_batch_state.update_pessimistic_subjection_info(batch_id, batch_sub, tx_sub)}
         
