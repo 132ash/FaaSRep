@@ -3,12 +3,10 @@ import os
 
 # data structure for function info
 class FunctionInfo:
-    def __init__(self, workflow_name, function_name, img_name, max_containers, input, output):
+    def __init__(self, workflow_name, function_name, img_name, max_containers):
         self.workflow_name = workflow_name
         self.function_name = function_name
         self.img_name = img_name
-        self.input = input
-        self.output = output
         self.max_containers = max_containers
 
 def generate_image(config_path, function_name, packages):
@@ -35,8 +33,6 @@ def parse(config_path):
         for c in config['functions']:
             function_name = c['name']
             img_name = c['image'] 
-            input = c['input']
-            output = c['output']
             info = FunctionInfo(workflow_name, function_name,
                               img_name,
                               int(max_containers))

@@ -57,8 +57,8 @@ class Dispatcher:
        self.node_list = repo.get_all_addrs('common')
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}, snapshot_interval=[]) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set,snapshot_interval)
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, write_set, lock_set) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, write_set,lock_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
