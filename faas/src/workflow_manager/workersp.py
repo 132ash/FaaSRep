@@ -56,6 +56,7 @@ class WorkerSPManager:
         self.info_db = workflow_name + '_function_info'
         self.common_db = 'common'
         self.meta_db = workflow_name + '_workflow_metadata'
+        self.repo = repo
 
         self.lock = gevent.lock.BoundedSemaphore() # guard self.states
         self.host_addr = host_addr
@@ -66,14 +67,13 @@ class WorkerSPManager:
         self.function_pos = {}
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
-            self.function_pos[function_name] = self.function_info[function_name]['ip']
-        self.repo = repo
+            self.function_pos[function_name] = extract_ip(self.function_info[function_name]['ip'])
         self.VALIDATOR_ADDR = config.VALIDATOR_ADDR
         self.GATEWAY_ADDR = config.GATEWAY_ADDR
 
         self.node_list = node_list
         
-        self.function_manager = FunctionManager(function_info_addr, min_port, self.function_pos, self.node_list)
+        self.function_manager = FunctionManager(workflow_name, function_info_addr, min_port, self.function_pos, self.node_list)
         # repairing batches and finished transactions
         self.repair_table: Dict[str, int] = {}
         min_port += 5000
@@ -182,16 +182,6 @@ class WorkerSPManager:
             'snapshot_interval': state.snapshot_interval
         }
         requests.post(remote_url, json=data)
-
-    def trigger_function_cross_tx(self, func_info):
-        downstream_tx_id, function_name, remote_addr = func_info[0], func_info[1], func_info[2]
-        remote_url = 'http://{}:7000/crosstx_req'.format(remote_addr)
-        data = {
-            'transaction_id': downstream_tx_id,
-            'function_name': function_name,
-            'workflow_name': self.workflow_name
-        }
-        requests.post(remote_url, json=data)
     
     # check if a function's parents are all finished
     # If in repair mode, add upstream parents 
@@ -223,7 +213,7 @@ class WorkerSPManager:
         end = time.time()
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")
-            return False, res['lock_set']
+            return False
             
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
@@ -234,9 +224,9 @@ class WorkerSPManager:
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         state.lock.release()
-        logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, snapshot_interval:{res['snapshot_interval']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+        logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, snapshot_interval:{res['snapshot_interval']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
-        return True, res['lock_set']
+        return True
 
     def clear_mem(self, transaction_id):
         self.repo.clear_mem(transaction_id)

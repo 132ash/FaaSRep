@@ -49,10 +49,10 @@ class Dispatcher:
        repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.node_list = repo.get_all_addrs('common')
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
+       self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set, batch_id, RYW_subjection,repair, repair_states, lock_set={}, snapshot_interval=[]) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set, batch_id, RYW_subjection, repair, repair_states,lock_set,snapshot_interval)
+    def get_state(self, workflow_name, retry_after_abort, transaction_id, write_set, snapshot_interval) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, write_set, snapshot_interval)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -77,15 +77,6 @@ class Dispatcher:
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 if config.FILLUP_CACHE:
     repo.fillup_cache()
-
-
-@app.route('/stop', methods = ['POST'])
-def stop():
-    data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    workflow_name = data['workflow_name']
-    logging.info(f"Stopping transaction {transaction_id} in workflow {workflow_name}")
-    dispatcher.stop_transaction(workflow_name, transaction_id)
 
 @app.route('/abort', methods = ['POST'])
 def abort():
@@ -113,11 +104,11 @@ def req():
     retry_after_abort = data.get('retry', False)
     write_set = data.get('write_set', {})
     snapshot_interval = data.get('snapshot_interval', default_FaaSTCC_snapshot_interval)
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, write_set, snapshot_interval)
+    state = dispatcher.get_state(workflow_name, retry_after_abort, transaction_id, write_set, snapshot_interval)
     if state is None:
         dispatcher.FaaSTCC_abort(workflow_name, transaction_id)
         return
-    logging.info(f"request [{transaction_id}],  workflow_name: {workflow_name}, function_name: {function_name},snapshot interval:{state.snapshot_interval}, get state latency:{time.time()-start}")
+    logging.info(f"request [{transaction_id}],  workflow_name: {workflow_name}, function_name: {function_name},snapshot interval:{state.snapshot_interval}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})

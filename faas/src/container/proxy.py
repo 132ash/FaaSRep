@@ -13,7 +13,7 @@ from flask import Flask, request
 from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
-from redis_component import RedisShadowTable, RedisCache, RepairSidecar
+from redis_component import RedisShadowTable, RedisCache
 
 # 配置日志记录
 logging.basicConfig(
@@ -92,13 +92,13 @@ class Runner:
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
-        try:
-            exec(self.code, self.ctx)
-            # run function
-            out = eval('main()', self.ctx)               
-        except Exception as e:
-            aborted = True
-            msg = json.dumps({'Abort': True, 'error': str(e)})
+        # try:
+        exec(self.code, self.ctx)
+        # run function
+        out = eval('main()', self.ctx)               
+        # except Exception as e:
+        #     aborted = True
+        #     msg = json.dumps({'Abort': True, 'error': str(e)})
         io_latency = 0
         io_latency = store.io_latency
         return aborted, msg, TxMetaData_thisFunc["write_set"], io_latency

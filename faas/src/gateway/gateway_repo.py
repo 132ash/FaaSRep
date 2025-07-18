@@ -32,7 +32,7 @@ class Repository:
         self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
         
         self.redis = {
-            host : redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB)
+            host : redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
                 for host in addrs
             }
  
@@ -127,7 +127,7 @@ class Repository:
         else:
             for k in keys:
                 redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
-                result[k] = int(self.redis[redis_ip][redis_key].decode('utf-8')) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key].decode('utf-8')
+                result[k] = int(self.redis[redis_ip][redis_key]) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key]
              
         return result
     

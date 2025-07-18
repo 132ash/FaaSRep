@@ -11,5 +11,5 @@ def main():
     random.shuffle(shuffled_content)
     shuffled_content = ''.join(shuffled_content)
     part_size = len(shuffled_content) // 3
-    store.put('t3', shuffled_content[0 : part_size])
-    store.ret({"t4":shuffled_content[part_size:2*part_size]})
+    store.put('t2', shuffled_content[0 : part_size])
+    store.ret({"t3":shuffled_content[part_size:2*part_size]})

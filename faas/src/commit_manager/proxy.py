@@ -21,7 +21,8 @@ def faastcc_get():
     version_target = data['version']
     workflow = data['workflow_name']
     nearest_version, promise = FaaSTCC_storage_layers[workflow].FaaSTCC_get(version_target, key)
-    return json.dumps({'nearest_version': nearest_version, 'promise': promise})
+    print(f"FaaSTCC_get: {key} with target version {version_target}, nearest version is {nearest_version}, promise is {promise}")
+    return json.dumps({'version': nearest_version, 'promise': promise})
     
 @app.route('/commit', methods = ['POST'])
 def transaction_commit():

@@ -26,7 +26,7 @@ class Repository:
         response = table.scan()
         items = response.get('Items', [])
         try:
-            global_table_dict = {item['key']: {'version':item['version'], 'writers':[]} for item in items}
+            global_table_dict = {item['key']: item['version'] for item in items}
         except KeyError:
             for i in items:
                 print(i['key'])

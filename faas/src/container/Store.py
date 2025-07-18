@@ -3,7 +3,7 @@ monkey.patch_all()
 from redis_component import RedisShadowTable, RedisCache
 import os
 import threading
-from FaaSTCC_store import FaaSTCC_Store
+from FaaSTCC_store import FaaSTCCStore
 import time
 import sys
 import logging
@@ -36,7 +36,7 @@ class Store:
         self.redis_cache = cache
         self.function_pos = function_pos
         self.db_server = db_server
-        self.FaaSTCC_Store = FaaSTCC_Store(workflow, validator_addr, self.redis_shadow_table, function_pos, db_server)
+        self.FaaSTCC_Store = FaaSTCCStore(workflow, validator_addr, self.redis_shadow_table, function_pos, db_server)
        
 
     def runtime_init(self, input, output, transaction_id, metadata):
@@ -57,9 +57,9 @@ class Store:
     
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
-            return self.function_pos[self.function_name]['ip']
+            return self.function_pos[self.function_name]
         else:
-            return self.function_pos[upstream]['ip']
+            return self.function_pos[upstream]
         
     def abort_tx(self):
         raise Exception("Transaction abort triggered by itself.")

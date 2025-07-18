@@ -14,21 +14,21 @@ VALIDATOR_ADDR = '192.168.162.132:9000'
 
 # workflow setting
 WORKFLOW_YAML_ADDR = {
-                    'textseq': '../../../../benchmark/textseq',
+                    'textseq': '/home/ash/FaaSnap/benchmark/textseq',
                     # "sectestflow": '/home/ash/FaaSnap/benchmark/sectestflow/workflow.yaml',
                     # "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"
                     # #   'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'         
                       }
 FUNCTION_INFO_ADDRS = { 
-                         'textseq': '../../../../benchmark/textseq'
+                         'textseq': '/home/ash/FaaSnap/benchmark/textseq'
 #                         'sectestflow': '../../../../benchmark/sectestflow',
 #                         'testflow': '../../../../benchmark/testflow',
                        }
 # cache setting
 CLEAR_MEM = False
-FILLUP_CACHE = True
+FILLUP_CACHE = False
 EXPIRED_CACHE = True
-DEFAULT_CONTAINER_NUM = 3
+DEFAULT_CONTAINER_NUM = 1
 
 # validator setting
 VALIDATORS_PER_POOL = 2

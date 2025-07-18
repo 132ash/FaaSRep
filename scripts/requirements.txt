@@ -7,4 +7,3 @@ psutil
 pandas
 PyYAML
 boto3
-awscli

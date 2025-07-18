@@ -6,7 +6,7 @@ functions:
             from: GLOBAL
             type: str
     output:
-        t4:
+        t3:
             type: str
     next: 
         type: pass
@@ -15,11 +15,11 @@ functions:
   - name: f2
     source: f2
     input: 
-        t4:
+        t3:
             from: f1
             type: str
     output:
-        t7:
+        t5:
             type: str
     next: 
         type: pass
@@ -28,11 +28,11 @@ functions:
   - name: f3
     source: f3
     input: 
-        t7:
+        t5:
             from: f2
             type: str
     output:
-        t10:
+        t7:
             type: str
     next: 
         type: pass
@@ -41,11 +41,11 @@ functions:
   - name: f4
     source: f4
     input: 
-        t10:
+        t7:
             from: f3
             type: str
     output:
-        t13:
+        t9:
             type: str
     next: 
         type: pass
@@ -54,11 +54,11 @@ functions:
   - name: f5
     source: f5
     input: 
-        t13:
+        t9:
             from: f4
             type: str
     output:
-        t16:
+        t11:
             type: str
     next: 
         type: FINISH

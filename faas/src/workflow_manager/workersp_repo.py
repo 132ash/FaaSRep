@@ -53,10 +53,8 @@ class Repository:
         self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.CACHE_DB)
         self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)
         self.couch = couchdb.Server(couchdb_url)
-        self.shadowtable_redis_all_addr:Dict[str, redis.StrictRedis] =  {
-                    host:redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
-                    for host in self.get_all_addrs('common')
-                    }
+        self.shadowtable_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
+                    
         
     # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
     def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
@@ -96,15 +94,15 @@ class Repository:
     def clear_mem(self, transaction_id=""):
         if transaction_id:
             print(f"clearing shadow table for {transaction_id}")
-            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")
+            keys = self.shadowtable_redis.keys(f"{transaction_id}:*")
             if keys:
-                pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+                pipe = self.shadowtable_redis.pipeline()
                 for key in keys:
                     pipe.delete(key)
                 pipe.execute()
         else:
             print("clearing all shadow tables and cache")
-            self.shadowtable_redis_all_addr[self.ip].flushall(True)
+            self.shadowtable_redis.flushall(True)
             self.cache_redis.flushall(True)
             remain_keys_len = len(self.cache_redis.keys("*")) 
             print(f"clearing caches, remaining:{remain_keys_len}")
@@ -137,9 +135,9 @@ class Repository:
         for k in keys:
             redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
             if output[k]["type"] == "int":
-                result[k] = int(self.shadowtable_redis_all_addr[self.ip][redis_key])
+                result[k] = int(self.shadowtable_redis[redis_key])
             else:
-                result[k] = self.shadowtable_redis_all_addr[self.ip][redis_key]
+                result[k] = self.shadowtable_redis[redis_key]
         return result
 
     def update_cache(self, keys, version='', from_db=True):
@@ -151,7 +149,7 @@ class Repository:
         else:
             pipe = self.cache_redis.pipeline()
             for key in keys:
-                value = self.shadowtable_redis_all_addr[self.ip].get(key)
+                value = self.shadowtable_redis.get(key)
                 if value:
                     data = {"value": value, "version": version}
                     pipe.set(key, json.dumps(data))
@@ -164,19 +162,19 @@ class Repository:
                 repair_info = repair_metadata[txid][func]
                 repair_info
                 redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
-                self.shadowtable_redis_all_addr[self.ip][redis_key] = json.dumps(repair_metadata[txid][func])
+                self.shadowtable_redis[redis_key] = json.dumps(repair_metadata[txid][func])
 
     def get_global_function_pos(self, batch_id):
         func_pos_key =  self.param_wrapper(batch_id, 'POS')
         # get the function position from redis
-        func_pos = json.loads(self.shadowtable_redis_all_addr[self.ip][func_pos_key])
+        func_pos = json.loads(self.shadowtable_redis[func_pos_key])
         return func_pos
 
     # commit keys to DB, flush cache, and delete shadow table entries.
     def commit_tx_writes(self, commit_key_list, tx_list, version):
         if config.FaaSTCC:
-            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{tx_list[0]}:PUT:*")
-            shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+            keys = self.shadowtable_redis.keys(f"{tx_list[0]}:PUT:*")
+            shadow_table_pipe = self.shadowtable_redis.pipeline()
             shadow_table_pipe.multi()
             for redis_key in keys:
                 shadow_table_pipe.get(redis_key)
@@ -189,7 +187,7 @@ class Repository:
             cache_pipe.multi()
             for redis_key in commit_key_list:
                 key = self.param_decode(redis_key)
-                value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
+                value = self.shadowtable_redis.get(redis_key)
                 cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
                 # 调用 store_key_to_db 存储到数据库中
                 self.data_db.store_data_to_db(key, version, value)

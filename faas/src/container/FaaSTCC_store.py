@@ -1,10 +1,11 @@
 from redis_component import RedisShadowTable
+from boto3.dynamodb.conditions import Key
 import container_config
 import redis
 import requests
 import json
 
-class FaaSTCC_Store:
+class FaaSTCCStore:
     def __init__(self, workflow, validator_addr,redis_shadow_table:RedisShadowTable, function_pos, db_server):
         self.workflow = workflow
         self.validator_addr = validator_addr
@@ -42,7 +43,7 @@ class FaaSTCC_Store:
             value, version, promise = self.get_from_storage(key, self.snapshot_interval[1])
             self.update_cache(key, value, version, promise)
         else:
-            value_tuple = json.loads(value_tuple.decode('utf-8'))
+            value_tuple = json.loads(value_tuple)
             value = value_tuple['value']
             version = value_tuple['version']
             promise = value_tuple['promise']
@@ -64,11 +65,11 @@ class FaaSTCC_Store:
         version = response['version']
         promise = response['promise']
         response = self.data_db.get_item(
-                    Key={
-                        'key': key,
-                        'version': version
-                    }
-                )
+            Key={
+                'key': key,
+                'version': version
+            }
+        )
         item = response.get('Item')
         value = item['value']
         return value, version, promise
