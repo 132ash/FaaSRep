@@ -82,13 +82,13 @@ class Runner:
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
         self.ctx = {'function': self.function, 'store': store}
         # pre-exec
-        # try:
-        exec(self.code, self.ctx)
-        # run function
-        out = eval('main()', self.ctx)               
-        # except Exception as e:
-        #     aborted = True
-        #     msg = json.dumps({'Abort': True, 'error': str(e), 'lock_set': self.lock_set})       
+        try:
+            exec(self.code, self.ctx)
+            # run function
+            out = eval('main()', self.ctx)               
+        except Exception as e:
+            aborted = True
+            msg = json.dumps({'Abort': True, 'error': str(e), 'lock_set': self.lock_set})       
 
         io_latency = store.io_latency
         lock_latency = store.lock_latency
@@ -100,7 +100,7 @@ proxy = Flask(__name__)
 proxy.status = 'new'
 proxy.debug = False
 runner = Runner()
-store = Store(container_config.CACHE_HOST)
+store = Store()
 
 
 @proxy.route('/status', methods=['GET'])

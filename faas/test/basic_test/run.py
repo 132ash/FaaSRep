@@ -61,12 +61,11 @@ def run_workflow(workflow_name, parameters = {}):
     return rep.json()
 
 def get_function_latency(txid):
-    func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
+    func_exec_latency, func_io_latency, func_lock_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io'), repo.get_latencies(txid, 'lock')
     exec_time = sum(func_exec_latency) 
     io_time = sum(func_io_latency) 
-    print(f"func_exec_latency: {func_exec_latency}")
-    print(f"func_io_latency: {func_io_latency}")
-    return exec_time, io_time
+    lock_time = sum(func_lock_latency)
+    return exec_time, io_time, lock_time
 
 
 def analyze_workflow(workflow):
@@ -76,7 +75,7 @@ def analyze_workflow(workflow):
     validate_latency = rep['validate_latency'] 
     e2e_latency = rep['e2e_latency']  
     first_run_latency = rep['first_run_latency']
-    func_exec_time_test, func_io_time_test = get_function_latency(txid)
+    func_exec_time_test, func_io_time_test, lock_latency = get_function_latency(txid)
     func_io_time = func_io_time_test
     func_exec_time = func_exec_time_test 
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
@@ -86,13 +85,13 @@ def analyze_all(_baseline, _mode):
 
         # 创建线程函数
     def thread_task():
-        for _ in range(1):  # 每个线程调用 2 次
+        for _ in range(5):  # 每个线程调用 2 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
             time.sleep(0.05)  # 每隔 50ms 调用一次
 
         # 创建三个线程
     threads = []
-    for _ in range(2):
+    for _ in range(4):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()
@@ -133,13 +132,13 @@ def analyze_all(_baseline, _mode):
    
 
 TESTRUN = False
-baseline = ["basic", "repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
-mode = ["NOCACHE + SMALL", "NOCACHE + LARGE", "CACHE + LARGE", "CACHE + SMALL"]
+baseline = ["remote lock"]
+mode = ["NOCACHE + SMALL"]
 
 if __name__ == '__main__':
     _baseline = baseline[0]
-    _mode = mode[1]
-    if mode == "remote lock":
+    _mode = mode[0]
+    if _baseline == "remote lock":
         release_lock()
     if TESTRUN:
         run_workflow("textseq", parameters_input["textseq"])

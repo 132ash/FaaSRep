@@ -38,6 +38,8 @@ class Store:
         self.write_set = metadata['write_set']
         self.lock_set = metadata['lock_set']
         self.beldi_store.runtime_init(transaction_id, self.lock_set)
+        self.io_latency = 0
+        self.lock_latency = 0
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode):
@@ -46,9 +48,10 @@ class Store:
     def abort_tx(self):
         raise Exception("Transaction abort triggered by itself.")
 
-    def fetch_from_mem(self, k, param_key):
-        value, _ = self.beldi_store.get(param_key, self.function_name)
-        value = int(value)
+    def fetch_from_mem(self, k, param_key, upstream, param_type):
+        value, _ = self.beldi_store.get(param_key, upstream)
+        if param_type == 'int':
+            value = int(value)
         self.fetch_dict[k] = value
 
     def fetch_input(self):

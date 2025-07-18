@@ -1,15 +1,14 @@
 from gevent import event
 import sys
-import requests
+from gateway_repo import Repository
 sys.path.append('../../config')
 import config
 
-VALIDATOR_ADDR = config.VALIDATOR_ADDR
-
 
 class RunningTXTable:
-    def __init__(self):
+    def __init__(self, repo:Repository):
         self.running_txs = {}
+        self.repo:Repository = repo
     
     def registerTX(self, workflow, tx_id, tx_params):
         self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'concord':False}
@@ -40,21 +39,17 @@ class RunningTXTable:
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
 
-    def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
+    def notifyTX(self, transaction_id, first_run_finish_time, abort = False):
         if abort:
-            if config.CONCORD:
-                print(f"CONCORD: transaction {transaction_id_list[0]} aborted.")
-                self.concord_abort(transaction_id_list[0])
-                return
-            self.running_txs[transaction_id_list[0]]['abort'] = True
-            self.running_txs[transaction_id_list[0]]['finished'] = True
-            self.running_txs[transaction_id_list[0]]['cond'].set()
+            self.repo.delete_latency(transaction_id)
+            self.running_txs[transaction_id]['abort'] = True
+            self.running_txs[transaction_id]['finished'] = True
+            self.running_txs[transaction_id]['cond'].set()
         else:
-            for tx_id in transaction_id_list:
-                condition = self.running_txs[tx_id]['cond']
-                self.running_txs[tx_id]['finished'] = True
-                self.running_txs[tx_id]["first_run_finish_time"] = first_run_finish_time
-                self.running_txs[tx_id]["validate_latency"] = validate_latency
-                self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
-                condition.set()
-                print(f"notified {tx_id}")
+            condition = self.running_txs[transaction_id]['cond']
+            self.running_txs[transaction_id]['finished'] = True
+            self.running_txs[transaction_id]["first_run_finish_time"] = first_run_finish_time
+            self.running_txs[transaction_id]["validate_latency"] = 0
+            self.running_txs[transaction_id]['validate_time_inside_validator'] = 0
+            condition.set()
+            print(f"notified {transaction_id}")

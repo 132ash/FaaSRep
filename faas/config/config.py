@@ -27,7 +27,7 @@ FUNCTION_INFO_ADDRS = {
 CLEAR_MEM = False
 FILLUP_CACHE = True
 EXPIRED_CACHE = True
-DEFAULT_CONTAINER_NUM = 1
+DEFAULT_CONTAINER_NUM = 4
 
 # validator setting
 VALIDATORS_PER_POOL = 2
@@ -35,15 +35,6 @@ VALIDATORS_PER_POOL = 2
 # batch setting
 BATCH_SIZE = 1
 BATCH_INTERVAL = 0.005
-
-# mode setting
-BASIC = True
-REPAIR = False
-FAST_PATH = False
-REMOTE_LOCK = False
-OPTIMISTIC_REPAIR = True
-FAASTCC = False
-CONCORD = False
 
 # repair setting
 RUNNING = 1

@@ -39,13 +39,6 @@ import config
 validate_interval = 0.005 # 200 qps at most
 default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
 
-
-REPAIR_ENABLED = config.REPAIR
-FAST_PATH = config.FAST_PATH
-REMOTE_LOCK = config.REMOTE_LOCK
-PESSIMISTIC_REPAIR = config.PESSIMISTIC_REPAIR
-FAASTCC = config.FAASTCC
-
 REPAIRED = 1
 ABORTED = 2
 
@@ -74,16 +67,6 @@ class Dispatcher:
 
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
-if config.FILLUP_CACHE:
-    repo.fillup_cache()
-
-@app.route('/stop', methods = ['POST'])
-def stop():
-    data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    workflow_name = data['workflow_name']
-    logging.info(f"Stopping transaction {transaction_id} in workflow {workflow_name}")
-    dispatcher.stop_transaction(workflow_name, transaction_id)
 
 @app.route('/abort', methods = ['POST'])
 def abort():

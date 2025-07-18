@@ -57,6 +57,7 @@ class WorkerSPManager:
         self.info_db = workflow_name + '_function_info'
         self.common_db = 'common'
         self.meta_db = workflow_name + '_workflow_metadata'
+        self.repo = repo
 
         self.lock = gevent.lock.BoundedSemaphore() # guard self.states
         self.host_addr = host_addr
@@ -68,11 +69,10 @@ class WorkerSPManager:
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
             self.function_pos[function_name] = self.function_info[function_name]['ip']
-        self.repo = repo
 
         self.node_list = node_list
         
-        self.function_manager = FunctionManager(function_info_addr,  min_port)
+        self.function_manager = FunctionManager(workflow_name, function_info_addr,  min_port)
         # repairing batches and finished transactions
         self.repair_table: Dict[str, int] = {}
         min_port += 5000
@@ -119,6 +119,7 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             self.repo.beldi_commit(state.transaction_id, state.lock_set)
+            self.abort_or_commit_tx(state.transaction_id, False)
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -158,13 +159,13 @@ class WorkerSPManager:
         }
         requests.post(remote_url, json=data)
 
-    def abort_tx(self, transaction_id):
+    def abort_or_commit_tx(self, transaction_id, aborted):
         # trigger next run of the transaction under pessimistic repair mode
         notify_url = "http://{}/notify".format(self.GATEWAY_ADDR)
         payload = {
-            'transaction_id_list': [[transaction_id]],
-            'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
-            'abort': True
+            'transaction_id': transaction_id,
+            'first_run_finish_time': time.time(),  # first_run_finish_time, start_time, validate_time_inside_validator
+            'abort': aborted
         }
         requests.post(notify_url, json=payload)
 
@@ -182,7 +183,7 @@ class WorkerSPManager:
         successful, lock_set = self.run_normal(state, info)
         if not successful:
             self.repo.release_lock(state.transaction_id, lock_set)
-            self.abort_tx(state.transaction_id)
+            self.abort_or_commit_tx(state.transaction_id, True)
             return
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
@@ -209,6 +210,8 @@ class WorkerSPManager:
         state.lock_set.update(res['lock_set'])
         state.lock.release()
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
         return True, res['lock_set']

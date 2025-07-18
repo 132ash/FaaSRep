@@ -22,6 +22,7 @@ from gateway_repo import Repository
 from transaction_info import RunningTXTable
 import requests
 import time
+import gevent.lock
 
 sys.path.append('../../config')
 import config
@@ -31,10 +32,12 @@ CLEAR_MEM = config.CLEAR_MEM
 
 app = Flask(__name__)
 repo = Repository()
-txTable = RunningTXTable()
+txTable = RunningTXTable(repo)
 
+metadata_lock = gevent.lock.BoundedSemaphore()
 workflow_metadata  =  {}
 def get_workflow_metadata(workflow_name):
+    metadata_lock.acquire()
     if workflow_name not in workflow_metadata:
         workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
         workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
@@ -42,6 +45,7 @@ def get_workflow_metadata(workflow_name):
             info = repo.get_function_info(func, workflow_name + '_function_info')
             workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
+    metadata_lock.release()
     return workflow_metadata[workflow_name]
 
 def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
@@ -71,7 +75,6 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
         repo.create_request_doc(transaction_id)
     # allocate works
     start_functions = workflow_metadata['start_functions']
-    print(f"start_functions: {start_functions}")
     start = time.time()
     jobs = []
     for n in start_functions:
@@ -109,7 +112,7 @@ def run():
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
@@ -126,16 +129,15 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id_lists = data['transaction_id_list']
-    timestamps = data['timestamps']
-    for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
-        if data.get('abort', False):
-            logging.info(f"transaction {transaction_id_list[0]} aborted.")
-            txTable.notifyTX(transaction_id_list, 0,0, 0, True)
-        else:
-            first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch
-            end_time = time.time()
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - start_time, validate_time_inside_validator)  
+    transaction_id = data['transaction_id']
+    first_run_finish_time = data['first_run_finish_time']
+    
+    if data.get('abort', False):
+        logging.info(f"transaction {transaction_id} aborted.")
+        txTable.notifyTX(transaction_id, 0, True)
+    else:
+        first_run_finish_time = data['first_run_finish_time']
+        txTable.notifyTX(transaction_id, first_run_finish_time)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

@@ -109,7 +109,6 @@ class Repository:
         shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
         for k in keys:
             dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
-            print(f"fetching {dynamo_key} from {transaction_id}_shadow_table")
             response = shadow_table.get_item(
                 Key={
                     'key': dynamo_key
@@ -140,6 +139,13 @@ class Repository:
                 },
                 ReturnValues="UPDATED_NEW"
             )
+
+    def delete_latency(self, transaction_id):
+        latency_db = self.couch['workflow_latency']
+        for _id in self.couch['workflow_latency']:
+            doc = self.couch['workflow_latency'][_id]
+            if doc['transaction_id'] == transaction_id:
+                latency_db.delete(doc)
 
     def create_shadow_table(self, transaction_id):
         table_name = f"{transaction_id}_shadow_table"
