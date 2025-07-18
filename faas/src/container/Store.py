@@ -45,8 +45,7 @@ class Store:
         self.output = output
         self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
-        self.snapshot_interval = metadata['snapshot_interval']
-        self.FaaSTCC_Store.runtime_init(self.transaction_id ,self.snapshot_interval, self.read_set)
+        self.FaaSTCC_Store.runtime_init(self.transaction_id ,metadata['snapshot_interval'], self.read_set)
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode, txid=None):

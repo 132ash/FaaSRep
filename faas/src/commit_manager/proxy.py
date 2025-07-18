@@ -28,7 +28,8 @@ def faastcc_get():
 def transaction_commit():
     data = request.get_json(force=True, silent=True)
     version = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-    FaaSTCC_storage_layers[data['workflow_name']].FaaSTCC_commit(data['transaction_id'], data['write_set'], version)
+    first_run_finish_time = data['first_run_finish_time']
+    FaaSTCC_storage_layers[data['workflow_name']].FaaSTCC_commit(data['transaction_id'], data['write_set'], version, first_run_finish_time)
     return json.dumps({'status': 'successed'})
 
 

@@ -118,10 +118,11 @@ class WorkerSPManager:
 
 
     def FaaSTCC_commit(self, transaction_id: str, write_set: Dict[str, int]) -> None:
-        commiter_url = 'http://{}:7000/commit'.format(self.VALIDATOR_ADDR)
+        commiter_url = 'http://{}/commit'.format(self.VALIDATOR_ADDR)
         data = {
             'transaction_id': transaction_id,
             'workflow_name': self.workflow_name,
+            'first_run_finish_time': time.time(),
             'write_set': write_set,
         }
         requests.post(commiter_url, json=data)
@@ -208,7 +209,6 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.snapshot_interval)
         end = time.time()
         if res.get("Abort", False):
@@ -221,6 +221,7 @@ class WorkerSPManager:
 
         state.write_set.update(res["write_set"])
         state.snapshot_interval = res['snapshot_interval']
+        logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set},snapshot_interval:{state.snapshot_interval} ")
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         state.lock.release()

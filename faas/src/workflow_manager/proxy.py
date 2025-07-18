@@ -35,7 +35,7 @@ repo = workersp_repo.Repository()
 sys.path.append('../../config')
 import config
 
-default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
+default_FaaSTCC_snapshot_interval = [datetime(1000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
 
 
 
@@ -108,7 +108,6 @@ def req():
     if state is None:
         dispatcher.FaaSTCC_abort(workflow_name, transaction_id)
         return
-    logging.info(f"request [{transaction_id}],  workflow_name: {workflow_name}, function_name: {function_name},snapshot interval:{state.snapshot_interval}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -127,11 +126,10 @@ def clear():
 def commit():
     data = request.get_json(force=True, silent=True)
     version = data['version']
-    tx_list = data['txs']
-    commit_key_list = data.get('keys', [])
+    transaction_id = data['transaction_id']
     # release the containers reserved into container pool.
-    logging.info(f"Worker commit. all transactions:{tx_list} commit_key_list: {commit_key_list}, version {version}")
-    repo.commit_tx_writes(commit_key_list, tx_list, version)
+    logging.info(f"Worker commit. transaction:{transaction_id}, version {version}")
+    repo.commit_tx_writes(transaction_id, version)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

@@ -19,6 +19,7 @@ logging.basicConfig(
 monkey.patch_all()
 from flask import Flask, request
 from gateway_repo import Repository
+from gevent.lock import BoundedSemaphore
 from transaction_info import RunningTXTable
 import requests
 import time
@@ -34,7 +35,9 @@ repo = Repository()
 txTable = RunningTXTable()
 
 workflow_metadata  =  {}
+metadata_lock = BoundedSemaphore()
 def get_workflow_metadata(workflow_name):
+    metadata_lock.acquire()
     if workflow_name not in workflow_metadata:
         workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
         workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
@@ -42,6 +45,7 @@ def get_workflow_metadata(workflow_name):
             info = repo.get_function_info(func, workflow_name + '_function_info')
             workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
+    metadata_lock.release()
     return workflow_metadata[workflow_name]
 
 def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
@@ -74,6 +78,7 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     print(f"start_functions: {start_functions}")
     start = time.time()
     jobs = []
+    print(f"function_ip:{workflow_metadata['function_ip']}")
     for n in start_functions:
         ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
@@ -100,12 +105,11 @@ def run():
     retry = False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
-        exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
+        run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
             txTable.resetTX(transaction_id)
         retry = True
-    logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()

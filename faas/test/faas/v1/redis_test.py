@@ -1,10 +1,10 @@
 import redis
+import json
 
 # 设置 Redis 客户端
 redis_client_shadow = redis.StrictRedis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
-redis_client_cache = redis.StrictRedis(host="127.0.0.1", port=6379, db=1)
+redis_client_cache = redis.StrictRedis(host="127.0.0.1", port=6379, db=1, decode_responses=True)
 
-print(redis_client_shadow.get("sds"))
 
 def check_redis_data():
     # 获取所有键
@@ -14,9 +14,13 @@ def check_redis_data():
         print("No keys found in Redis database.")
         return
     # 打印每个键及其对应的值
+    print(keys)
     for key in keys:
+        value_tuple = json.loads(redis_client_cache[key])
+        version = value_tuple['version']
+        promise = value_tuple['promise']
         # value = redis_client_cache.get(key)
-        print(f"Key: {key.decode('utf-8')}")
+        print(f"Key: {key}, Version: {version}, Promise: {promise}")
         # redis_client.delete(key)
 
 def check_transaction_data():
@@ -34,4 +38,4 @@ def check_transaction_data():
     
 
 if __name__ == "__main__":
-    check_transaction_data()
+    check_redis_data()

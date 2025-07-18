@@ -1,9 +1,9 @@
 from redis_component import RedisShadowTable
-from boto3.dynamodb.conditions import Key
 import container_config
 import redis
 import requests
 import json
+import logging
 
 class FaaSTCCStore:
     def __init__(self, workflow, validator_addr,redis_shadow_table:RedisShadowTable, function_pos, db_server):
@@ -52,7 +52,9 @@ class FaaSTCCStore:
             elif promise < self.snapshot_interval[0]:
                 value, version, promise = self.get_from_storage(key, self.snapshot_interval[1])
                 self.update_cache(key, value, version, promise)
-        self.snapshot_interval = [max(self.snapshot_interval[0], version), min(self.snapshot_interval[1], promise)]
+        self.snapshot_interval[0] = max(self.snapshot_interval[0], version)
+        self.snapshot_interval[1] = min(self.snapshot_interval[1], promise)
+        logging.info(f"[{key}] get version {version}, promise {promise}, update snapshot interval: {self.snapshot_interval}")
         return value
     
     def get_from_storage(self, key, version):

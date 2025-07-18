@@ -64,13 +64,13 @@ def analyze_all(system_mode, opt):
 
         # 创建线程函数
     def thread_task():
-        for _ in range(1):  # 每个线程调用 1 次
+        for _ in range(5):  # 每个线程调用 10 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
-            time.sleep(0.05)  # 每隔 50ms 调用一次
+            time.sleep(0.025)  # 每隔 25ms 调用一次
 
         # 创建4个线程
     threads = []
-    for _ in range(1):
+    for _ in range(4):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()

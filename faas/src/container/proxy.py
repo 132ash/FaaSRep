@@ -99,9 +99,8 @@ class Runner:
         # except Exception as e:
         #     aborted = True
         #     msg = json.dumps({'Abort': True, 'error': str(e)})
-        io_latency = 0
         io_latency = store.io_latency
-        return aborted, msg, TxMetaData_thisFunc["write_set"], io_latency
+        return aborted, msg, TxMetaData_thisFunc["write_set"], TxMetaData_thisFunc['snapshot_interval'], io_latency
 
 
 proxy = Flask(__name__)
@@ -145,7 +144,7 @@ def run():
     runner.save(transaction_id, inp['write_set'], snapshot_interval)
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
-    aborted, abort_msg, ws, io_latency = runner.run(transaction_id)
+    aborted, abort_msg, ws, snapshot_interval, io_latency = runner.run(transaction_id)
     if aborted:
         return abort_msg
 
