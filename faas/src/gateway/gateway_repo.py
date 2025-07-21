@@ -58,6 +58,13 @@ class Repository:
             if 'addrs' in doc:
                 return doc['addrs']
             
+    def delete_latency(self, transaction_id):
+        latency_db = self.couch['workflow_latency']
+        for _id in self.couch['workflow_latency']:
+            doc = self.couch['workflow_latency'][_id]
+            if doc['transaction_id'] == transaction_id:
+                latency_db.delete(doc)
+            
     def get_tx_result(self, transaction_id):
         db = self.couch["results"]
         try:

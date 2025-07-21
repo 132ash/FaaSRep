@@ -32,7 +32,7 @@ CLEAR_MEM = config.CLEAR_MEM
 
 app = Flask(__name__)
 repo = Repository()
-txTable = RunningTXTable()
+txTable = RunningTXTable(repo)
 
 workflow_metadata  =  {}
 metadata_lock = BoundedSemaphore()

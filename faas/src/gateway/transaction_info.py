@@ -2,14 +2,16 @@ from gevent import event
 import sys
 import requests
 sys.path.append('../../config')
+from gateway_repo import Repository
 import config
 
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
 
 
 class RunningTXTable:
-    def __init__(self):
+    def __init__(self, repo:Repository):
         self.running_txs = {}
+        self.repo:Repository = repo
     
     def registerTX(self, workflow, tx_id, tx_params):
         self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event()}
@@ -42,6 +44,7 @@ class RunningTXTable:
 
     def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
         if abort:
+            self.repo.delete_latency(transaction_id_list[0])
             self.running_txs[transaction_id_list[0]]['abort'] = True
             self.running_txs[transaction_id_list[0]]['finished'] = True
             self.running_txs[transaction_id_list[0]]['cond'].set()
