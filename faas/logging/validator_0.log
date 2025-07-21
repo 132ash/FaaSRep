@@ -1,0 +1,232 @@
+[2025-07-18 04:01:23.757] [1] processing batch 67acaeb8-1f96-4c20-9d51-b41824e7a990
+[2025-07-18 04:01:23.764] [PESSIMISTIC] Registering repair info for batch 67acaeb8-1f96-4c20-9d51-b41824e7a990 with transactions: ['67acaeb8-1f96-4c20-9d51-b41824e7a990', 'cd8ee5f0-0ccb-4d1d-9a8d-3a9d8853b02d']
+[2025-07-18 04:01:23.781] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 67acaeb8-1f96-4c20-9d51-b41824e7a990, data: {'batch_id': '67acaeb8-1f96-4c20-9d51-b41824e7a990', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'67acaeb8-1f96-4c20-9d51-b41824e7a990': ['cd8ee5f0-0ccb-4d1d-9a8d-3a9d8853b02d']}}, ready_txs: ['67acaeb8-1f96-4c20-9d51-b41824e7a990']
+[2025-07-18 04:01:23.781] [PESSIMISTIC] tx 67acaeb8-1f96-4c20-9d51-b41824e7a990 dependency: {}
+[2025-07-18 04:01:23.790] repairing transaction 67acaeb8-1f96-4c20-9d51-b41824e7a990 in batch 67acaeb8-1f96-4c20-9d51-b41824e7a990, repair_metadata_no_fast:{}
+[2025-07-18 04:01:23.846] [1] processing batch 86992876-7acc-4bb5-9542-3bf2b6e8b8e2
+[2025-07-18 04:01:23.849] [PESSIMISTIC] Registering repair info for batch 86992876-7acc-4bb5-9542-3bf2b6e8b8e2 with transactions: ['86992876-7acc-4bb5-9542-3bf2b6e8b8e2', 'c5dbfc27-f522-4a2c-8fe5-25e5add7e0f2']
+[2025-07-18 04:01:23.860] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 86992876-7acc-4bb5-9542-3bf2b6e8b8e2, data: {'batch_id': '86992876-7acc-4bb5-9542-3bf2b6e8b8e2', 'workflow_name': 'textseq', 'batch_sub': {'67acaeb8-1f96-4c20-9d51-b41824e7a990': ['86992876-7acc-4bb5-9542-3bf2b6e8b8e2']}, 'tx_sub': {'86992876-7acc-4bb5-9542-3bf2b6e8b8e2': ['c5dbfc27-f522-4a2c-8fe5-25e5add7e0f2']}}, ready_txs: []
+[2025-07-18 04:01:23.898] [4] processing batch 67acaeb8-1f96-4c20-9d51-b41824e7a990
+[2025-07-18 04:01:23.898] [PESSIMISTIC] tx cd8ee5f0-0ccb-4d1d-9a8d-3a9d8853b02d dependency: {'f1': {'t2': ('67acaeb8-1f96-4c20-9d51-b41824e7a990', 'f1')}, 'f2': {'t4': ('67acaeb8-1f96-4c20-9d51-b41824e7a990', 'f2')}, 'f3': {'t6': ('67acaeb8-1f96-4c20-9d51-b41824e7a990', 'f3')}, 'f4': {'t8': ('67acaeb8-1f96-4c20-9d51-b41824e7a990', 'f4')}, 'f5': {'t10': ('67acaeb8-1f96-4c20-9d51-b41824e7a990', 'f5')}}
+[2025-07-18 04:01:23.917] repairing transaction cd8ee5f0-0ccb-4d1d-9a8d-3a9d8853b02d in batch 67acaeb8-1f96-4c20-9d51-b41824e7a990, repair_metadata_no_fast:{}
+[2025-07-18 04:01:24.078] [4] processing batch 67acaeb8-1f96-4c20-9d51-b41824e7a990
+[2025-07-18 04:01:24.083] [2] processing batch 67acaeb8-1f96-4c20-9d51-b41824e7a990
+[2025-07-18 04:01:24.959] [1] processing batch 30053c1f-e0c4-48f5-8a5d-c22be6d5b286
+[2025-07-18 04:01:24.964] [PESSIMISTIC] Registering repair info for batch 30053c1f-e0c4-48f5-8a5d-c22be6d5b286 with transactions: ['30053c1f-e0c4-48f5-8a5d-c22be6d5b286', 'd6442219-d378-45f5-8bf5-6bcad159a7da']
+[2025-07-18 04:01:24.969] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 30053c1f-e0c4-48f5-8a5d-c22be6d5b286, data: {'batch_id': '30053c1f-e0c4-48f5-8a5d-c22be6d5b286', 'workflow_name': 'textseq', 'batch_sub': {'86992876-7acc-4bb5-9542-3bf2b6e8b8e2': ['30053c1f-e0c4-48f5-8a5d-c22be6d5b286']}, 'tx_sub': {'30053c1f-e0c4-48f5-8a5d-c22be6d5b286': ['d6442219-d378-45f5-8bf5-6bcad159a7da']}}, ready_txs: []
+[2025-07-18 04:11:26.204] [1] processing batch 120b6ef8-d0a6-44a9-9505-bfeba247e120
+[2025-07-18 04:11:26.208] [PESSIMISTIC] Registering repair info for batch 120b6ef8-d0a6-44a9-9505-bfeba247e120 with transactions: ['120b6ef8-d0a6-44a9-9505-bfeba247e120', 'dce445a0-66ce-41c9-9a0c-93d769794135']
+[2025-07-18 04:11:26.215] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 120b6ef8-d0a6-44a9-9505-bfeba247e120, data: {'batch_id': '120b6ef8-d0a6-44a9-9505-bfeba247e120', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'120b6ef8-d0a6-44a9-9505-bfeba247e120': ['dce445a0-66ce-41c9-9a0c-93d769794135']}}, ready_txs: ['120b6ef8-d0a6-44a9-9505-bfeba247e120']
+[2025-07-18 04:11:26.216] [PESSIMISTIC] tx 120b6ef8-d0a6-44a9-9505-bfeba247e120 dependency: {}
+[2025-07-18 04:11:26.226] repairing transaction 120b6ef8-d0a6-44a9-9505-bfeba247e120 in batch 120b6ef8-d0a6-44a9-9505-bfeba247e120, repair_metadata_no_fast:{}
+[2025-07-18 04:11:26.250] [1] processing batch 2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf
+[2025-07-18 04:11:26.251] [PESSIMISTIC] Registering repair info for batch 2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf with transactions: ['2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf', '18b2c649-717e-435a-bdae-aa55893770cb']
+[2025-07-18 04:11:26.255] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf, data: {'batch_id': '2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf', 'workflow_name': 'textseq', 'batch_sub': {'120b6ef8-d0a6-44a9-9505-bfeba247e120': ['2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf']}, 'tx_sub': {'2cf3fd80-5c01-4a7c-9a00-d26ea65bb7cf': ['18b2c649-717e-435a-bdae-aa55893770cb']}}, ready_txs: []
+[2025-07-18 04:11:26.377] [4] processing batch 120b6ef8-d0a6-44a9-9505-bfeba247e120
+[2025-07-18 04:11:26.378] [PESSIMISTIC] tx dce445a0-66ce-41c9-9a0c-93d769794135 dependency: {'f1': {'t2': ('120b6ef8-d0a6-44a9-9505-bfeba247e120', 'f1')}, 'f2': {'t4': ('120b6ef8-d0a6-44a9-9505-bfeba247e120', 'f2')}, 'f3': {'t6': ('120b6ef8-d0a6-44a9-9505-bfeba247e120', 'f3')}, 'f4': {'t8': ('120b6ef8-d0a6-44a9-9505-bfeba247e120', 'f4')}, 'f5': {'t10': ('120b6ef8-d0a6-44a9-9505-bfeba247e120', 'f5')}}
+[2025-07-18 04:11:26.387] repairing transaction dce445a0-66ce-41c9-9a0c-93d769794135 in batch 120b6ef8-d0a6-44a9-9505-bfeba247e120, repair_metadata_no_fast:{}
+[2025-07-18 04:11:26.618] [4] processing batch 120b6ef8-d0a6-44a9-9505-bfeba247e120
+[2025-07-18 04:11:26.625] [2] processing batch 120b6ef8-d0a6-44a9-9505-bfeba247e120
+[2025-07-18 04:17:08.694] [1] processing batch a1c64d63-ea5e-499d-8154-e6a244896911
+[2025-07-18 04:17:08.696] [PESSIMISTIC] Registering repair info for batch a1c64d63-ea5e-499d-8154-e6a244896911 with transactions: ['a1c64d63-ea5e-499d-8154-e6a244896911', 'a186b0d3-e85a-4a4d-b413-68751702cb56']
+[2025-07-18 04:17:08.702] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: a1c64d63-ea5e-499d-8154-e6a244896911, data: {'batch_id': 'a1c64d63-ea5e-499d-8154-e6a244896911', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'a1c64d63-ea5e-499d-8154-e6a244896911': ['a186b0d3-e85a-4a4d-b413-68751702cb56']}}, ready_txs: ['a1c64d63-ea5e-499d-8154-e6a244896911']
+[2025-07-18 04:17:08.702] [PESSIMISTIC] tx a1c64d63-ea5e-499d-8154-e6a244896911 dependency: {}
+[2025-07-18 04:17:08.710] repairing transaction a1c64d63-ea5e-499d-8154-e6a244896911 in batch a1c64d63-ea5e-499d-8154-e6a244896911, repair_metadata_no_fast:{}
+[2025-07-18 04:17:08.804] [1] processing batch 6d9b9c75-4337-4e02-ab97-13b8720e7a60
+[2025-07-18 04:17:08.807] [PESSIMISTIC] Registering repair info for batch 6d9b9c75-4337-4e02-ab97-13b8720e7a60 with transactions: ['6d9b9c75-4337-4e02-ab97-13b8720e7a60', 'c976a155-6ca2-425e-bd99-699c2befce1d']
+[2025-07-18 04:17:08.812] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 6d9b9c75-4337-4e02-ab97-13b8720e7a60, data: {'batch_id': '6d9b9c75-4337-4e02-ab97-13b8720e7a60', 'workflow_name': 'textseq', 'batch_sub': {'a1c64d63-ea5e-499d-8154-e6a244896911': ['6d9b9c75-4337-4e02-ab97-13b8720e7a60']}, 'tx_sub': {'6d9b9c75-4337-4e02-ab97-13b8720e7a60': ['c976a155-6ca2-425e-bd99-699c2befce1d']}}, ready_txs: []
+[2025-07-18 04:17:08.863] [4] processing batch a1c64d63-ea5e-499d-8154-e6a244896911
+[2025-07-18 04:17:08.864] [PESSIMISTIC] tx a186b0d3-e85a-4a4d-b413-68751702cb56 dependency: {'f1': {'t2': ('a1c64d63-ea5e-499d-8154-e6a244896911', 'f1')}, 'f2': {'t4': ('a1c64d63-ea5e-499d-8154-e6a244896911', 'f2')}, 'f3': {'t6': ('a1c64d63-ea5e-499d-8154-e6a244896911', 'f3')}, 'f4': {'t8': ('a1c64d63-ea5e-499d-8154-e6a244896911', 'f4')}, 'f5': {'t10': ('a1c64d63-ea5e-499d-8154-e6a244896911', 'f5')}}
+[2025-07-18 04:17:08.871] repairing transaction a186b0d3-e85a-4a4d-b413-68751702cb56 in batch a1c64d63-ea5e-499d-8154-e6a244896911, repair_metadata_no_fast:{}
+[2025-07-18 04:17:09.065] [4] processing batch a1c64d63-ea5e-499d-8154-e6a244896911
+[2025-07-18 04:17:09.071] [2] processing batch a1c64d63-ea5e-499d-8154-e6a244896911
+[2025-07-18 04:22:47.016] [1] processing batch 253206a2-7268-4baa-81ac-3fceb8fb9647
+[2025-07-18 04:22:47.021] [PESSIMISTIC] Registering repair info for batch 253206a2-7268-4baa-81ac-3fceb8fb9647 with transactions: ['253206a2-7268-4baa-81ac-3fceb8fb9647', '0f2a939f-7bd2-4861-bbea-9085e138fb50']
+[2025-07-18 04:22:47.028] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 253206a2-7268-4baa-81ac-3fceb8fb9647, data: {'batch_id': '253206a2-7268-4baa-81ac-3fceb8fb9647', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'253206a2-7268-4baa-81ac-3fceb8fb9647': ['0f2a939f-7bd2-4861-bbea-9085e138fb50']}}, ready_txs: ['253206a2-7268-4baa-81ac-3fceb8fb9647']
+[2025-07-18 04:22:47.028] [PESSIMISTIC] tx 253206a2-7268-4baa-81ac-3fceb8fb9647 dependency: {}
+[2025-07-18 04:22:47.037] repairing transaction 253206a2-7268-4baa-81ac-3fceb8fb9647 in batch 253206a2-7268-4baa-81ac-3fceb8fb9647, repair_metadata_no_fast:{}
+[2025-07-18 04:22:47.162] [4] processing batch 253206a2-7268-4baa-81ac-3fceb8fb9647
+[2025-07-18 04:22:47.162] [PESSIMISTIC] tx 0f2a939f-7bd2-4861-bbea-9085e138fb50 dependency: {'f1': {'t2': ('253206a2-7268-4baa-81ac-3fceb8fb9647', 'f1')}, 'f2': {'t4': ('253206a2-7268-4baa-81ac-3fceb8fb9647', 'f2')}, 'f3': {'t6': ('253206a2-7268-4baa-81ac-3fceb8fb9647', 'f3')}, 'f4': {'t8': ('253206a2-7268-4baa-81ac-3fceb8fb9647', 'f4')}, 'f5': {'t10': ('253206a2-7268-4baa-81ac-3fceb8fb9647', 'f5')}}
+[2025-07-18 04:22:47.170] repairing transaction 0f2a939f-7bd2-4861-bbea-9085e138fb50 in batch 253206a2-7268-4baa-81ac-3fceb8fb9647, repair_metadata_no_fast:{}
+[2025-07-18 04:22:47.437] [2] processing batch 253206a2-7268-4baa-81ac-3fceb8fb9647
+[2025-07-18 04:22:47.443] [4] processing batch 253206a2-7268-4baa-81ac-3fceb8fb9647
+[2025-07-18 04:28:18.895] [1] processing batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d
+[2025-07-18 04:28:18.898] [PESSIMISTIC] Registering repair info for batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d with transactions: ['d79a0c8a-0032-4db7-8be2-a5e74a7b316d', '4f4574ae-2902-4ff5-92a6-1104d4337ec6']
+[2025-07-18 04:28:18.912] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: d79a0c8a-0032-4db7-8be2-a5e74a7b316d, data: {'batch_id': 'd79a0c8a-0032-4db7-8be2-a5e74a7b316d', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'d79a0c8a-0032-4db7-8be2-a5e74a7b316d': ['4f4574ae-2902-4ff5-92a6-1104d4337ec6']}}, ready_txs: ['d79a0c8a-0032-4db7-8be2-a5e74a7b316d']
+[2025-07-18 04:28:18.914] [PESSIMISTIC] tx d79a0c8a-0032-4db7-8be2-a5e74a7b316d dependency: {}
+[2025-07-18 04:28:18.927] repairing transaction d79a0c8a-0032-4db7-8be2-a5e74a7b316d in batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d, repair_metadata_no_fast:{}
+[2025-07-18 04:28:18.991] [1] processing batch 7ff25c06-9b30-4c89-a804-79f3b070d755
+[2025-07-18 04:28:18.997] [PESSIMISTIC] Registering repair info for batch 7ff25c06-9b30-4c89-a804-79f3b070d755 with transactions: ['7ff25c06-9b30-4c89-a804-79f3b070d755', 'b4df98eb-0d45-458e-af37-951e741d32a2']
+[2025-07-18 04:28:19.002] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 7ff25c06-9b30-4c89-a804-79f3b070d755, data: {'batch_id': '7ff25c06-9b30-4c89-a804-79f3b070d755', 'workflow_name': 'textseq', 'batch_sub': {'d79a0c8a-0032-4db7-8be2-a5e74a7b316d': ['7ff25c06-9b30-4c89-a804-79f3b070d755']}, 'tx_sub': {'7ff25c06-9b30-4c89-a804-79f3b070d755': ['b4df98eb-0d45-458e-af37-951e741d32a2']}}, ready_txs: []
+[2025-07-18 04:28:19.120] [4] processing batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d
+[2025-07-18 04:28:19.120] [PESSIMISTIC] tx 4f4574ae-2902-4ff5-92a6-1104d4337ec6 dependency: {'f1': {'t2': ('d79a0c8a-0032-4db7-8be2-a5e74a7b316d', 'f1')}, 'f2': {'t4': ('d79a0c8a-0032-4db7-8be2-a5e74a7b316d', 'f2')}, 'f3': {'t6': ('d79a0c8a-0032-4db7-8be2-a5e74a7b316d', 'f3')}, 'f4': {'t8': ('d79a0c8a-0032-4db7-8be2-a5e74a7b316d', 'f4')}, 'f5': {'t10': ('d79a0c8a-0032-4db7-8be2-a5e74a7b316d', 'f5')}}
+[2025-07-18 04:28:19.126] repairing transaction 4f4574ae-2902-4ff5-92a6-1104d4337ec6 in batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d, repair_metadata_no_fast:{}
+[2025-07-18 04:28:19.370] [4] processing batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d
+[2025-07-18 04:28:19.377] [2] processing batch d79a0c8a-0032-4db7-8be2-a5e74a7b316d
+[2025-07-18 04:32:16.955] [1] processing batch 0912cb20-e191-4c78-834d-543871d55e6f
+[2025-07-18 04:32:16.957] [PESSIMISTIC] Registering repair info for batch 0912cb20-e191-4c78-834d-543871d55e6f with transactions: ['0912cb20-e191-4c78-834d-543871d55e6f', '9239b5f6-3b56-40f2-b125-597dcf9baf45']
+[2025-07-18 04:32:16.965] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 0912cb20-e191-4c78-834d-543871d55e6f, data: {'batch_id': '0912cb20-e191-4c78-834d-543871d55e6f', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'0912cb20-e191-4c78-834d-543871d55e6f': ['9239b5f6-3b56-40f2-b125-597dcf9baf45']}}, ready_txs: ['0912cb20-e191-4c78-834d-543871d55e6f']
+[2025-07-18 04:32:16.966] [PESSIMISTIC] tx 0912cb20-e191-4c78-834d-543871d55e6f dependency: {}
+[2025-07-18 04:32:16.976] repairing transaction 0912cb20-e191-4c78-834d-543871d55e6f in batch 0912cb20-e191-4c78-834d-543871d55e6f, repair_metadata_no_fast:{}
+[2025-07-18 04:32:17.039] [1] processing batch 3ce42487-87a0-4fd0-96f6-d275d93683e4
+[2025-07-18 04:32:17.041] [PESSIMISTIC] Registering repair info for batch 3ce42487-87a0-4fd0-96f6-d275d93683e4 with transactions: ['3ce42487-87a0-4fd0-96f6-d275d93683e4', '825d33fc-a353-473f-91c7-13b8432c7061']
+[2025-07-18 04:32:17.106] [4] processing batch 0912cb20-e191-4c78-834d-543871d55e6f
+[2025-07-18 04:32:17.107] [PESSIMISTIC] tx 9239b5f6-3b56-40f2-b125-597dcf9baf45 dependency: {'f1': {'t2': ('0912cb20-e191-4c78-834d-543871d55e6f', 'f1')}, 'f2': {'t4': ('0912cb20-e191-4c78-834d-543871d55e6f', 'f2')}, 'f3': {'t6': ('0912cb20-e191-4c78-834d-543871d55e6f', 'f3')}, 'f4': {'t8': ('0912cb20-e191-4c78-834d-543871d55e6f', 'f4')}, 'f5': {'t10': ('0912cb20-e191-4c78-834d-543871d55e6f', 'f5')}}
+[2025-07-18 04:32:17.114] repairing transaction 9239b5f6-3b56-40f2-b125-597dcf9baf45 in batch 0912cb20-e191-4c78-834d-543871d55e6f, repair_metadata_no_fast:{}
+[2025-07-18 04:33:29.639] [1] processing batch 45a061fc-7568-47f8-aadf-99705fe9e3a2
+[2025-07-18 04:33:29.679] [1] processing batch c1113e10-8f4e-4aeb-869b-91e9d9d6d35f
+[2025-07-18 04:33:29.726] [PESSIMISTIC] Registering repair info for batch 45a061fc-7568-47f8-aadf-99705fe9e3a2 with transactions: ['45a061fc-7568-47f8-aadf-99705fe9e3a2', '53adc76e-0d11-49e5-97d4-91104419cb23']
+[2025-07-18 04:33:29.733] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 45a061fc-7568-47f8-aadf-99705fe9e3a2, data: {'batch_id': '45a061fc-7568-47f8-aadf-99705fe9e3a2', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'45a061fc-7568-47f8-aadf-99705fe9e3a2': ['53adc76e-0d11-49e5-97d4-91104419cb23']}}, ready_txs: ['45a061fc-7568-47f8-aadf-99705fe9e3a2']
+[2025-07-18 04:33:29.733] [PESSIMISTIC] tx 45a061fc-7568-47f8-aadf-99705fe9e3a2 dependency: {}
+[2025-07-18 04:33:29.734] [PESSIMISTIC] Registering repair info for batch c1113e10-8f4e-4aeb-869b-91e9d9d6d35f with transactions: ['c1113e10-8f4e-4aeb-869b-91e9d9d6d35f', '12b12184-7de1-41e5-b508-5abbb1ac80ad']
+[2025-07-18 04:33:29.739] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: c1113e10-8f4e-4aeb-869b-91e9d9d6d35f, data: {'batch_id': 'c1113e10-8f4e-4aeb-869b-91e9d9d6d35f', 'workflow_name': 'textseq', 'batch_sub': {'45a061fc-7568-47f8-aadf-99705fe9e3a2': ['c1113e10-8f4e-4aeb-869b-91e9d9d6d35f']}, 'tx_sub': {'c1113e10-8f4e-4aeb-869b-91e9d9d6d35f': ['12b12184-7de1-41e5-b508-5abbb1ac80ad']}}, ready_txs: []
+[2025-07-18 04:33:29.742] repairing transaction 45a061fc-7568-47f8-aadf-99705fe9e3a2 in batch 45a061fc-7568-47f8-aadf-99705fe9e3a2, repair_metadata_no_fast:{}
+[2025-07-18 04:33:29.855] [4] processing batch 45a061fc-7568-47f8-aadf-99705fe9e3a2
+[2025-07-18 04:33:29.855] [PESSIMISTIC] tx 53adc76e-0d11-49e5-97d4-91104419cb23 dependency: {'f1': {'t2': ('45a061fc-7568-47f8-aadf-99705fe9e3a2', 'f1')}, 'f2': {'t4': ('45a061fc-7568-47f8-aadf-99705fe9e3a2', 'f2')}, 'f3': {'t6': ('45a061fc-7568-47f8-aadf-99705fe9e3a2', 'f3')}, 'f4': {'t8': ('45a061fc-7568-47f8-aadf-99705fe9e3a2', 'f4')}, 'f5': {'t10': ('45a061fc-7568-47f8-aadf-99705fe9e3a2', 'f5')}}
+[2025-07-18 04:33:29.864] repairing transaction 53adc76e-0d11-49e5-97d4-91104419cb23 in batch 45a061fc-7568-47f8-aadf-99705fe9e3a2, repair_metadata_no_fast:{}
+[2025-07-18 04:33:30.039] [4] processing batch 45a061fc-7568-47f8-aadf-99705fe9e3a2
+[2025-07-18 04:33:30.039] [PESSIMISTIC] tx c1113e10-8f4e-4aeb-869b-91e9d9d6d35f dependency: {}
+[2025-07-18 04:33:30.045] repairing transaction c1113e10-8f4e-4aeb-869b-91e9d9d6d35f in batch 45a061fc-7568-47f8-aadf-99705fe9e3a2, repair_metadata_no_fast:{}
+[2025-07-18 04:33:30.047] [2] processing batch 45a061fc-7568-47f8-aadf-99705fe9e3a2
+[2025-07-18 05:02:47.477] [1] processing batch a201e1f8-db0d-4a23-bdd4-61cc763c33aa
+[2025-07-18 05:02:47.487] [PESSIMISTIC] Registering repair info for batch a201e1f8-db0d-4a23-bdd4-61cc763c33aa with transactions: ['a201e1f8-db0d-4a23-bdd4-61cc763c33aa', '6d94827e-3d0e-4ca7-9196-42c8656cd828']
+[2025-07-18 05:02:47.495] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: a201e1f8-db0d-4a23-bdd4-61cc763c33aa, data: {'batch_id': 'a201e1f8-db0d-4a23-bdd4-61cc763c33aa', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'a201e1f8-db0d-4a23-bdd4-61cc763c33aa': ['6d94827e-3d0e-4ca7-9196-42c8656cd828']}}, ready_txs: ['a201e1f8-db0d-4a23-bdd4-61cc763c33aa']
+[2025-07-18 05:02:47.495] [PESSIMISTIC] tx a201e1f8-db0d-4a23-bdd4-61cc763c33aa dependency: {}
+[2025-07-18 05:02:47.512] repairing transaction a201e1f8-db0d-4a23-bdd4-61cc763c33aa in batch a201e1f8-db0d-4a23-bdd4-61cc763c33aa, repair_metadata_no_fast:{}
+[2025-07-18 05:02:47.582] [1] processing batch 4ffd65e7-91a1-4d98-a625-53c3aa773b24
+[2025-07-18 05:02:47.583] [PESSIMISTIC] Registering repair info for batch 4ffd65e7-91a1-4d98-a625-53c3aa773b24 with transactions: ['4ffd65e7-91a1-4d98-a625-53c3aa773b24', '2cb85c22-92d1-4c03-8c48-ddf292fedc1d']
+[2025-07-18 05:02:47.587] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 4ffd65e7-91a1-4d98-a625-53c3aa773b24, data: {'batch_id': '4ffd65e7-91a1-4d98-a625-53c3aa773b24', 'workflow_name': 'textseq', 'batch_sub': {'a201e1f8-db0d-4a23-bdd4-61cc763c33aa': ['4ffd65e7-91a1-4d98-a625-53c3aa773b24']}, 'tx_sub': {'4ffd65e7-91a1-4d98-a625-53c3aa773b24': ['2cb85c22-92d1-4c03-8c48-ddf292fedc1d']}}, ready_txs: []
+[2025-07-18 05:04:07.822] [1] processing batch b5e8e6e3-fdbd-414f-b53f-265f5c453791
+[2025-07-18 05:04:07.828] [PESSIMISTIC] Registering repair info for batch b5e8e6e3-fdbd-414f-b53f-265f5c453791 with transactions: ['b5e8e6e3-fdbd-414f-b53f-265f5c453791', '9189e4e3-dd04-460b-bf25-b9383fe58df3']
+[2025-07-18 05:04:07.836] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: b5e8e6e3-fdbd-414f-b53f-265f5c453791, data: {'batch_id': 'b5e8e6e3-fdbd-414f-b53f-265f5c453791', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'b5e8e6e3-fdbd-414f-b53f-265f5c453791': ['9189e4e3-dd04-460b-bf25-b9383fe58df3']}}, ready_txs: ['b5e8e6e3-fdbd-414f-b53f-265f5c453791']
+[2025-07-18 05:04:07.836] [PESSIMISTIC] tx b5e8e6e3-fdbd-414f-b53f-265f5c453791 dependency: {}
+[2025-07-18 05:04:07.842] repairing transaction b5e8e6e3-fdbd-414f-b53f-265f5c453791 in batch b5e8e6e3-fdbd-414f-b53f-265f5c453791, repair_metadata_no_fast:{}
+[2025-07-18 05:04:07.872] [1] processing batch 759611fc-7e4a-4b6d-a616-af707f037493
+[2025-07-18 05:04:07.875] [PESSIMISTIC] Registering repair info for batch 759611fc-7e4a-4b6d-a616-af707f037493 with transactions: ['759611fc-7e4a-4b6d-a616-af707f037493', '6f50102b-b2a9-4505-9560-ab20c03b4db5']
+[2025-07-18 05:04:07.880] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 759611fc-7e4a-4b6d-a616-af707f037493, data: {'batch_id': '759611fc-7e4a-4b6d-a616-af707f037493', 'workflow_name': 'textseq', 'batch_sub': {'b5e8e6e3-fdbd-414f-b53f-265f5c453791': ['759611fc-7e4a-4b6d-a616-af707f037493']}, 'tx_sub': {'759611fc-7e4a-4b6d-a616-af707f037493': ['6f50102b-b2a9-4505-9560-ab20c03b4db5']}}, ready_txs: []
+[2025-07-18 05:05:00.525] [1] processing batch 54964149-0bd5-4305-a7ee-5156c8ee0f90
+[2025-07-18 05:05:00.530] [PESSIMISTIC] Registering repair info for batch 54964149-0bd5-4305-a7ee-5156c8ee0f90 with transactions: ['54964149-0bd5-4305-a7ee-5156c8ee0f90', '0765f570-c4d7-40a7-aa67-ad5e5a45e1aa']
+[2025-07-18 05:05:00.541] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 54964149-0bd5-4305-a7ee-5156c8ee0f90, data: {'batch_id': '54964149-0bd5-4305-a7ee-5156c8ee0f90', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'54964149-0bd5-4305-a7ee-5156c8ee0f90': ['0765f570-c4d7-40a7-aa67-ad5e5a45e1aa']}}, ready_txs: ['54964149-0bd5-4305-a7ee-5156c8ee0f90']
+[2025-07-18 05:05:00.541] [PESSIMISTIC] tx 54964149-0bd5-4305-a7ee-5156c8ee0f90 dependency: {}
+[2025-07-18 05:05:00.552] repairing transaction 54964149-0bd5-4305-a7ee-5156c8ee0f90 in batch 54964149-0bd5-4305-a7ee-5156c8ee0f90, repair_metadata_no_fast:{}
+[2025-07-18 05:05:00.561] [1] processing batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9
+[2025-07-18 05:05:00.568] [PESSIMISTIC] Registering repair info for batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9 with transactions: ['63f553eb-d01f-474d-b47d-f462ecf0f5b9', '42425066-e720-47a1-a88e-5b04599650ed']
+[2025-07-18 05:05:00.573] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 63f553eb-d01f-474d-b47d-f462ecf0f5b9, data: {'batch_id': '63f553eb-d01f-474d-b47d-f462ecf0f5b9', 'workflow_name': 'textseq', 'batch_sub': {'54964149-0bd5-4305-a7ee-5156c8ee0f90': ['63f553eb-d01f-474d-b47d-f462ecf0f5b9']}, 'tx_sub': {'63f553eb-d01f-474d-b47d-f462ecf0f5b9': ['42425066-e720-47a1-a88e-5b04599650ed']}}, ready_txs: []
+[2025-07-18 05:05:00.622] [4] processing batch 54964149-0bd5-4305-a7ee-5156c8ee0f90
+[2025-07-18 05:05:00.622] [PESSIMISTIC] tx 0765f570-c4d7-40a7-aa67-ad5e5a45e1aa dependency: {'f1': {'t2': ('54964149-0bd5-4305-a7ee-5156c8ee0f90', 'f1')}, 'f2': {'t4': ('54964149-0bd5-4305-a7ee-5156c8ee0f90', 'f2')}, 'f3': {'t6': ('54964149-0bd5-4305-a7ee-5156c8ee0f90', 'f3')}, 'f4': {'t8': ('54964149-0bd5-4305-a7ee-5156c8ee0f90', 'f4')}, 'f5': {'t10': ('54964149-0bd5-4305-a7ee-5156c8ee0f90', 'f5')}}
+[2025-07-18 05:05:00.630] repairing transaction 0765f570-c4d7-40a7-aa67-ad5e5a45e1aa in batch 54964149-0bd5-4305-a7ee-5156c8ee0f90, repair_metadata_no_fast:{}
+[2025-07-18 05:05:00.755] [5] processing batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9
+[2025-07-18 05:05:00.755] [PESSIMISTIC] tx 63f553eb-d01f-474d-b47d-f462ecf0f5b9 dependency: {}
+[2025-07-18 05:05:00.764] [4] processing batch 54964149-0bd5-4305-a7ee-5156c8ee0f90
+[2025-07-18 05:05:00.765] [2] processing batch 54964149-0bd5-4305-a7ee-5156c8ee0f90
+[2025-07-18 05:05:00.774] repairing transaction 63f553eb-d01f-474d-b47d-f462ecf0f5b9 in batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9, repair_metadata_no_fast:{}
+[2025-07-18 05:05:00.868] [4] processing batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9
+[2025-07-18 05:05:00.868] [PESSIMISTIC] tx 42425066-e720-47a1-a88e-5b04599650ed dependency: {'f1': {'t2': ('63f553eb-d01f-474d-b47d-f462ecf0f5b9', 'f1')}, 'f2': {'t4': ('63f553eb-d01f-474d-b47d-f462ecf0f5b9', 'f2')}, 'f3': {'t6': ('63f553eb-d01f-474d-b47d-f462ecf0f5b9', 'f3')}, 'f4': {'t8': ('63f553eb-d01f-474d-b47d-f462ecf0f5b9', 'f4')}, 'f5': {'t10': ('63f553eb-d01f-474d-b47d-f462ecf0f5b9', 'f5')}}
+[2025-07-18 05:05:00.885] repairing transaction 42425066-e720-47a1-a88e-5b04599650ed in batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9, repair_metadata_no_fast:{}
+[2025-07-18 05:05:01.038] [2] processing batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9
+[2025-07-18 05:05:01.042] [4] processing batch 63f553eb-d01f-474d-b47d-f462ecf0f5b9
+[2025-07-18 05:12:30.899] [1] processing batch 9f771b26-3b43-40e2-97d2-9052fdc1f131
+[2025-07-18 05:12:30.906] [PESSIMISTIC] Registering repair info for batch 9f771b26-3b43-40e2-97d2-9052fdc1f131 with transactions: ['9f771b26-3b43-40e2-97d2-9052fdc1f131', '67811f5a-2ad6-4aaf-bf03-6c371fefea00']
+[2025-07-18 05:12:30.972] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 9f771b26-3b43-40e2-97d2-9052fdc1f131, data: {'batch_id': '9f771b26-3b43-40e2-97d2-9052fdc1f131', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'9f771b26-3b43-40e2-97d2-9052fdc1f131': ['67811f5a-2ad6-4aaf-bf03-6c371fefea00']}}, ready_txs: ['9f771b26-3b43-40e2-97d2-9052fdc1f131']
+[2025-07-18 05:12:30.973] [PESSIMISTIC] tx 9f771b26-3b43-40e2-97d2-9052fdc1f131 dependency: {}
+[2025-07-18 05:12:30.989] repairing transaction 9f771b26-3b43-40e2-97d2-9052fdc1f131 in batch 9f771b26-3b43-40e2-97d2-9052fdc1f131, repair_metadata_no_fast:{}
+[2025-07-18 05:12:31.044] [1] processing batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96
+[2025-07-18 05:12:31.045] [PESSIMISTIC] Registering repair info for batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96 with transactions: ['ac4b5bb4-fd42-4146-b77a-4eb044b7df96', '0d6c09d3-680b-4fc0-b129-353305f00ef8']
+[2025-07-18 05:12:31.051] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: ac4b5bb4-fd42-4146-b77a-4eb044b7df96, data: {'batch_id': 'ac4b5bb4-fd42-4146-b77a-4eb044b7df96', 'workflow_name': 'textseq', 'batch_sub': {'9f771b26-3b43-40e2-97d2-9052fdc1f131': ['ac4b5bb4-fd42-4146-b77a-4eb044b7df96']}, 'tx_sub': {'ac4b5bb4-fd42-4146-b77a-4eb044b7df96': ['0d6c09d3-680b-4fc0-b129-353305f00ef8']}}, ready_txs: []
+[2025-07-18 05:12:31.145] [4] processing batch 9f771b26-3b43-40e2-97d2-9052fdc1f131
+[2025-07-18 05:12:31.145] [PESSIMISTIC] tx 67811f5a-2ad6-4aaf-bf03-6c371fefea00 dependency: {'f1': {'t2': ('9f771b26-3b43-40e2-97d2-9052fdc1f131', 'f1')}, 'f2': {'t4': ('9f771b26-3b43-40e2-97d2-9052fdc1f131', 'f2')}, 'f3': {'t6': ('9f771b26-3b43-40e2-97d2-9052fdc1f131', 'f3')}, 'f4': {'t8': ('9f771b26-3b43-40e2-97d2-9052fdc1f131', 'f4')}, 'f5': {'t10': ('9f771b26-3b43-40e2-97d2-9052fdc1f131', 'f5')}}
+[2025-07-18 05:12:31.152] repairing transaction 67811f5a-2ad6-4aaf-bf03-6c371fefea00 in batch 9f771b26-3b43-40e2-97d2-9052fdc1f131, repair_metadata_no_fast:{}
+[2025-07-18 05:12:31.383] [4] processing batch 9f771b26-3b43-40e2-97d2-9052fdc1f131
+[2025-07-18 05:12:31.390] [5] processing batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96
+[2025-07-18 05:12:31.390] [PESSIMISTIC] tx ac4b5bb4-fd42-4146-b77a-4eb044b7df96 dependency: {}
+[2025-07-18 05:12:31.428] repairing transaction ac4b5bb4-fd42-4146-b77a-4eb044b7df96 in batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96, repair_metadata_no_fast:{}
+[2025-07-18 05:12:31.589] [4] processing batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96
+[2025-07-18 05:12:31.589] [PESSIMISTIC] tx 0d6c09d3-680b-4fc0-b129-353305f00ef8 dependency: {'f1': {'t2': ('ac4b5bb4-fd42-4146-b77a-4eb044b7df96', 'f1')}, 'f2': {'t4': ('ac4b5bb4-fd42-4146-b77a-4eb044b7df96', 'f2')}, 'f3': {'t6': ('ac4b5bb4-fd42-4146-b77a-4eb044b7df96', 'f3')}, 'f4': {'t8': ('ac4b5bb4-fd42-4146-b77a-4eb044b7df96', 'f4')}, 'f5': {'t10': ('ac4b5bb4-fd42-4146-b77a-4eb044b7df96', 'f5')}}
+[2025-07-18 05:12:31.600] repairing transaction 0d6c09d3-680b-4fc0-b129-353305f00ef8 in batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96, repair_metadata_no_fast:{}
+[2025-07-18 05:12:31.860] [4] processing batch ac4b5bb4-fd42-4146-b77a-4eb044b7df96
+[2025-07-18 05:14:34.741] [1] processing batch d8d6142c-5984-48a8-a256-3a1a615d094f
+[2025-07-18 05:14:34.744] [PESSIMISTIC] Registering repair info for batch d8d6142c-5984-48a8-a256-3a1a615d094f with transactions: ['d8d6142c-5984-48a8-a256-3a1a615d094f', 'dd1e296b-03e6-4591-a5c2-30761c77e08a']
+[2025-07-18 05:14:34.756] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: d8d6142c-5984-48a8-a256-3a1a615d094f, data: {'batch_id': 'd8d6142c-5984-48a8-a256-3a1a615d094f', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'d8d6142c-5984-48a8-a256-3a1a615d094f': ['dd1e296b-03e6-4591-a5c2-30761c77e08a']}}, ready_txs: ['d8d6142c-5984-48a8-a256-3a1a615d094f']
+[2025-07-18 05:14:34.756] [PESSIMISTIC] tx d8d6142c-5984-48a8-a256-3a1a615d094f dependency: {}
+[2025-07-18 05:14:34.763] repairing transaction d8d6142c-5984-48a8-a256-3a1a615d094f in batch d8d6142c-5984-48a8-a256-3a1a615d094f, repair_metadata_no_fast:{}
+[2025-07-18 05:14:34.790] [1] processing batch 7840acdb-1339-49b1-b83e-c947c2b9d9da
+[2025-07-18 05:14:34.794] [PESSIMISTIC] Registering repair info for batch 7840acdb-1339-49b1-b83e-c947c2b9d9da with transactions: ['7840acdb-1339-49b1-b83e-c947c2b9d9da', 'fa1e6950-532a-4f2c-a085-f072b17942d8']
+[2025-07-18 05:14:34.799] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 7840acdb-1339-49b1-b83e-c947c2b9d9da, data: {'batch_id': '7840acdb-1339-49b1-b83e-c947c2b9d9da', 'workflow_name': 'textseq', 'batch_sub': {'d8d6142c-5984-48a8-a256-3a1a615d094f': ['7840acdb-1339-49b1-b83e-c947c2b9d9da']}, 'tx_sub': {'7840acdb-1339-49b1-b83e-c947c2b9d9da': ['fa1e6950-532a-4f2c-a085-f072b17942d8']}}, ready_txs: []
+[2025-07-18 05:14:34.838] [4] processing batch d8d6142c-5984-48a8-a256-3a1a615d094f
+[2025-07-18 05:14:34.838] [PESSIMISTIC] tx dd1e296b-03e6-4591-a5c2-30761c77e08a dependency: {'f1': {'t2': ('d8d6142c-5984-48a8-a256-3a1a615d094f', 'f1')}, 'f2': {'t4': ('d8d6142c-5984-48a8-a256-3a1a615d094f', 'f2')}, 'f3': {'t6': ('d8d6142c-5984-48a8-a256-3a1a615d094f', 'f3')}, 'f4': {'t8': ('d8d6142c-5984-48a8-a256-3a1a615d094f', 'f4')}, 'f5': {'t10': ('d8d6142c-5984-48a8-a256-3a1a615d094f', 'f5')}}
+[2025-07-18 05:14:34.846] repairing transaction dd1e296b-03e6-4591-a5c2-30761c77e08a in batch d8d6142c-5984-48a8-a256-3a1a615d094f, repair_metadata_no_fast:{}
+[2025-07-18 05:14:34.966] [4] processing batch d8d6142c-5984-48a8-a256-3a1a615d094f
+[2025-07-18 05:14:34.972] [5] processing batch 7840acdb-1339-49b1-b83e-c947c2b9d9da
+[2025-07-18 05:14:34.973] [PESSIMISTIC] tx 7840acdb-1339-49b1-b83e-c947c2b9d9da dependency: {}
+[2025-07-18 05:14:34.999] repairing transaction 7840acdb-1339-49b1-b83e-c947c2b9d9da in batch 7840acdb-1339-49b1-b83e-c947c2b9d9da, repair_metadata_no_fast:{}
+[2025-07-18 05:14:35.095] [4] processing batch 7840acdb-1339-49b1-b83e-c947c2b9d9da
+[2025-07-18 05:14:35.095] [PESSIMISTIC] tx fa1e6950-532a-4f2c-a085-f072b17942d8 dependency: {'f1': {'t2': ('7840acdb-1339-49b1-b83e-c947c2b9d9da', 'f1')}, 'f2': {'t4': ('7840acdb-1339-49b1-b83e-c947c2b9d9da', 'f2')}, 'f3': {'t6': ('7840acdb-1339-49b1-b83e-c947c2b9d9da', 'f3')}, 'f4': {'t8': ('7840acdb-1339-49b1-b83e-c947c2b9d9da', 'f4')}, 'f5': {'t10': ('7840acdb-1339-49b1-b83e-c947c2b9d9da', 'f5')}}
+[2025-07-18 05:14:35.117] repairing transaction fa1e6950-532a-4f2c-a085-f072b17942d8 in batch 7840acdb-1339-49b1-b83e-c947c2b9d9da, repair_metadata_no_fast:{}
+[2025-07-18 05:14:35.258] [4] processing batch 7840acdb-1339-49b1-b83e-c947c2b9d9da
+[2025-07-18 05:20:15.102] [1] processing batch d89f6c44-38a2-4e9d-a340-7a4843ccf46d
+[2025-07-18 05:20:15.109] [PESSIMISTIC] Registering repair info for batch d89f6c44-38a2-4e9d-a340-7a4843ccf46d with transactions: ['d89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'c7534e60-d64a-4ed4-8801-719e79ce7bdf']
+[2025-07-18 05:20:15.141] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: d89f6c44-38a2-4e9d-a340-7a4843ccf46d, data: {'batch_id': 'd89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'d89f6c44-38a2-4e9d-a340-7a4843ccf46d': ['c7534e60-d64a-4ed4-8801-719e79ce7bdf']}}, ready_txs: ['d89f6c44-38a2-4e9d-a340-7a4843ccf46d']
+[2025-07-18 05:20:15.141] [PESSIMISTIC] tx d89f6c44-38a2-4e9d-a340-7a4843ccf46d dependency: {}
+[2025-07-18 05:20:15.169] repairing transaction d89f6c44-38a2-4e9d-a340-7a4843ccf46d in batch d89f6c44-38a2-4e9d-a340-7a4843ccf46d, repair_metadata_no_fast:{}
+[2025-07-18 05:20:15.218] [1] processing batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f
+[2025-07-18 05:20:15.219] [PESSIMISTIC] Registering repair info for batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f with transactions: ['bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', '84834b7f-9069-4937-a275-f1b6b0609527']
+[2025-07-18 05:20:15.227] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: bd8a7b4e-62b7-4f2d-99ab-5575d230a71f, data: {'batch_id': 'bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', 'workflow_name': 'textseq', 'batch_sub': {'d89f6c44-38a2-4e9d-a340-7a4843ccf46d': ['bd8a7b4e-62b7-4f2d-99ab-5575d230a71f']}, 'tx_sub': {'bd8a7b4e-62b7-4f2d-99ab-5575d230a71f': ['84834b7f-9069-4937-a275-f1b6b0609527']}}, ready_txs: []
+[2025-07-18 05:20:15.329] [4] processing batch d89f6c44-38a2-4e9d-a340-7a4843ccf46d
+[2025-07-18 05:20:15.329] [PESSIMISTIC] tx c7534e60-d64a-4ed4-8801-719e79ce7bdf dependency: {'f1': {'t2': ('d89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'f1')}, 'f2': {'t4': ('d89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'f2')}, 'f3': {'t6': ('d89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'f3')}, 'f4': {'t8': ('d89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'f4')}, 'f5': {'t10': ('d89f6c44-38a2-4e9d-a340-7a4843ccf46d', 'f5')}}
+[2025-07-18 05:20:15.336] repairing transaction c7534e60-d64a-4ed4-8801-719e79ce7bdf in batch d89f6c44-38a2-4e9d-a340-7a4843ccf46d, repair_metadata_no_fast:{}
+[2025-07-18 05:20:15.609] [4] processing batch d89f6c44-38a2-4e9d-a340-7a4843ccf46d
+[2025-07-18 05:20:15.616] [5] processing batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f
+[2025-07-18 05:20:15.617] [PESSIMISTIC] tx bd8a7b4e-62b7-4f2d-99ab-5575d230a71f dependency: {}
+[2025-07-18 05:20:15.645] repairing transaction bd8a7b4e-62b7-4f2d-99ab-5575d230a71f in batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f, repair_metadata_no_fast:{}
+[2025-07-18 05:20:15.866] [4] processing batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f
+[2025-07-18 05:20:15.866] [PESSIMISTIC] tx 84834b7f-9069-4937-a275-f1b6b0609527 dependency: {'f1': {'t2': ('bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', 'f1')}, 'f2': {'t4': ('bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', 'f2')}, 'f3': {'t6': ('bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', 'f3')}, 'f4': {'t8': ('bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', 'f4')}, 'f5': {'t10': ('bd8a7b4e-62b7-4f2d-99ab-5575d230a71f', 'f5')}}
+[2025-07-18 05:20:15.883] repairing transaction 84834b7f-9069-4937-a275-f1b6b0609527 in batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f, repair_metadata_no_fast:{}
+[2025-07-18 05:20:16.099] [4] processing batch bd8a7b4e-62b7-4f2d-99ab-5575d230a71f
+[2025-07-18 05:27:43.071] [1] processing batch c3b79b55-0fe0-4c21-b633-b76f3e73dce9
+[2025-07-18 05:27:43.104] [PESSIMISTIC] Registering repair info for batch c3b79b55-0fe0-4c21-b633-b76f3e73dce9 with transactions: ['c3b79b55-0fe0-4c21-b633-b76f3e73dce9', '39f85ad8-c437-44ce-9882-744b6efbf709']
+[2025-07-18 05:27:43.128] [1] processing batch 9e76c693-6db0-4ffa-9211-5a48a59fa803
+[2025-07-18 05:27:43.132] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: c3b79b55-0fe0-4c21-b633-b76f3e73dce9, data: {'batch_id': 'c3b79b55-0fe0-4c21-b633-b76f3e73dce9', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'c3b79b55-0fe0-4c21-b633-b76f3e73dce9': ['39f85ad8-c437-44ce-9882-744b6efbf709']}}, ready_txs: ['c3b79b55-0fe0-4c21-b633-b76f3e73dce9']
+[2025-07-18 05:27:43.132] [PESSIMISTIC] tx c3b79b55-0fe0-4c21-b633-b76f3e73dce9 dependency: {}
+[2025-07-18 05:27:43.135] [PESSIMISTIC] Registering repair info for batch 9e76c693-6db0-4ffa-9211-5a48a59fa803 with transactions: ['9e76c693-6db0-4ffa-9211-5a48a59fa803', 'cae8c1b6-4a3f-4e90-836e-ef74b30b64d5']
+[2025-07-18 05:27:43.142] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 9e76c693-6db0-4ffa-9211-5a48a59fa803, data: {'batch_id': '9e76c693-6db0-4ffa-9211-5a48a59fa803', 'workflow_name': 'textseq', 'batch_sub': {'c3b79b55-0fe0-4c21-b633-b76f3e73dce9': ['9e76c693-6db0-4ffa-9211-5a48a59fa803']}, 'tx_sub': {'9e76c693-6db0-4ffa-9211-5a48a59fa803': ['cae8c1b6-4a3f-4e90-836e-ef74b30b64d5']}}, ready_txs: []
+[2025-07-18 05:27:43.145] repairing transaction c3b79b55-0fe0-4c21-b633-b76f3e73dce9 in batch c3b79b55-0fe0-4c21-b633-b76f3e73dce9, repair_metadata_no_fast:{}
+[2025-07-18 05:27:43.272] [4] processing batch c3b79b55-0fe0-4c21-b633-b76f3e73dce9
+[2025-07-18 05:27:43.272] [PESSIMISTIC] tx 39f85ad8-c437-44ce-9882-744b6efbf709 dependency: {'f1': {'t2': ('c3b79b55-0fe0-4c21-b633-b76f3e73dce9', 'f1')}, 'f2': {'t4': ('c3b79b55-0fe0-4c21-b633-b76f3e73dce9', 'f2')}, 'f3': {'t6': ('c3b79b55-0fe0-4c21-b633-b76f3e73dce9', 'f3')}, 'f4': {'t8': ('c3b79b55-0fe0-4c21-b633-b76f3e73dce9', 'f4')}, 'f5': {'t10': ('c3b79b55-0fe0-4c21-b633-b76f3e73dce9', 'f5')}}
+[2025-07-18 05:27:43.280] repairing transaction 39f85ad8-c437-44ce-9882-744b6efbf709 in batch c3b79b55-0fe0-4c21-b633-b76f3e73dce9, repair_metadata_no_fast:{}
+[2025-07-18 05:27:43.534] [5] processing batch 9e76c693-6db0-4ffa-9211-5a48a59fa803
+[2025-07-18 05:27:43.535] [PESSIMISTIC] tx 9e76c693-6db0-4ffa-9211-5a48a59fa803 dependency: {}
+[2025-07-18 05:27:43.540] [4] processing batch c3b79b55-0fe0-4c21-b633-b76f3e73dce9
+[2025-07-18 05:27:43.558] repairing transaction 9e76c693-6db0-4ffa-9211-5a48a59fa803 in batch 9e76c693-6db0-4ffa-9211-5a48a59fa803, repair_metadata_no_fast:{}
+[2025-07-18 05:27:43.760] [4] processing batch 9e76c693-6db0-4ffa-9211-5a48a59fa803
+[2025-07-18 05:27:43.760] [PESSIMISTIC] tx cae8c1b6-4a3f-4e90-836e-ef74b30b64d5 dependency: {'f1': {'t2': ('9e76c693-6db0-4ffa-9211-5a48a59fa803', 'f1')}, 'f2': {'t4': ('9e76c693-6db0-4ffa-9211-5a48a59fa803', 'f2')}, 'f3': {'t6': ('9e76c693-6db0-4ffa-9211-5a48a59fa803', 'f3')}, 'f4': {'t8': ('9e76c693-6db0-4ffa-9211-5a48a59fa803', 'f4')}, 'f5': {'t10': ('9e76c693-6db0-4ffa-9211-5a48a59fa803', 'f5')}}
+[2025-07-18 05:27:43.782] repairing transaction cae8c1b6-4a3f-4e90-836e-ef74b30b64d5 in batch 9e76c693-6db0-4ffa-9211-5a48a59fa803, repair_metadata_no_fast:{}
+[2025-07-18 05:27:44.033] [4] processing batch 9e76c693-6db0-4ffa-9211-5a48a59fa803
+[2025-07-18 05:35:35.756] [1] processing batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb
+[2025-07-18 05:35:35.823] [PESSIMISTIC] Registering repair info for batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb with transactions: ['913be1bb-6f33-460c-b7e0-cf55e517b9fb', '8500f276-92dd-4885-8b77-12089529dbe7']
+[2025-07-18 05:35:35.875] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 913be1bb-6f33-460c-b7e0-cf55e517b9fb, data: {'batch_id': '913be1bb-6f33-460c-b7e0-cf55e517b9fb', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'913be1bb-6f33-460c-b7e0-cf55e517b9fb': ['8500f276-92dd-4885-8b77-12089529dbe7']}}, ready_txs: ['913be1bb-6f33-460c-b7e0-cf55e517b9fb']
+[2025-07-18 05:35:35.876] [PESSIMISTIC] tx 913be1bb-6f33-460c-b7e0-cf55e517b9fb dependency: {}
+[2025-07-18 05:35:35.881] repairing transaction 913be1bb-6f33-460c-b7e0-cf55e517b9fb in batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb, repair_metadata_no_fast:{}
+[2025-07-18 05:35:35.948] [4] processing batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb
+[2025-07-18 05:35:35.948] [PESSIMISTIC] tx 8500f276-92dd-4885-8b77-12089529dbe7 dependency: {'f1': {'t2': ('913be1bb-6f33-460c-b7e0-cf55e517b9fb', 'f1')}, 'f2': {'t4': ('913be1bb-6f33-460c-b7e0-cf55e517b9fb', 'f2')}, 'f3': {'t6': ('913be1bb-6f33-460c-b7e0-cf55e517b9fb', 'f3')}, 'f4': {'t8': ('913be1bb-6f33-460c-b7e0-cf55e517b9fb', 'f4')}, 'f5': {'t10': ('913be1bb-6f33-460c-b7e0-cf55e517b9fb', 'f5')}}
+[2025-07-18 05:35:35.961] repairing transaction 8500f276-92dd-4885-8b77-12089529dbe7 in batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb, repair_metadata_no_fast:{}
+[2025-07-18 05:35:36.151] [4] processing batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb
+[2025-07-18 05:35:36.158] [2] processing batch 913be1bb-6f33-460c-b7e0-cf55e517b9fb
+[2025-07-18 05:38:06.542] [1] processing batch 59e74b23-893a-4aae-9a1b-5c3f40751022
+[2025-07-18 05:38:06.585] [1] processing batch b043fa3a-a21f-4e82-ad59-95e85a663ed8
+[2025-07-18 05:38:06.619] [PESSIMISTIC] Registering repair info for batch 59e74b23-893a-4aae-9a1b-5c3f40751022 with transactions: ['59e74b23-893a-4aae-9a1b-5c3f40751022', 'e6442dab-7831-4485-bd27-b67c48df3c3a']
+[2025-07-18 05:38:06.625] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: 59e74b23-893a-4aae-9a1b-5c3f40751022, data: {'batch_id': '59e74b23-893a-4aae-9a1b-5c3f40751022', 'workflow_name': 'textseq', 'batch_sub': {}, 'tx_sub': {'59e74b23-893a-4aae-9a1b-5c3f40751022': ['e6442dab-7831-4485-bd27-b67c48df3c3a']}}, ready_txs: ['59e74b23-893a-4aae-9a1b-5c3f40751022']
+[2025-07-18 05:38:06.625] [PESSIMISTIC] tx 59e74b23-893a-4aae-9a1b-5c3f40751022 dependency: {}
+[2025-07-18 05:38:06.627] [PESSIMISTIC] Registering repair info for batch b043fa3a-a21f-4e82-ad59-95e85a663ed8 with transactions: ['b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'b207f8db-8e46-4278-b240-c97d4f25da89']
+[2025-07-18 05:38:06.631] repairing transaction 59e74b23-893a-4aae-9a1b-5c3f40751022 in batch 59e74b23-893a-4aae-9a1b-5c3f40751022, repair_metadata_no_fast:{}
+[2025-07-18 05:38:06.632] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: b043fa3a-a21f-4e82-ad59-95e85a663ed8, data: {'batch_id': 'b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'workflow_name': 'textseq', 'batch_sub': {'59e74b23-893a-4aae-9a1b-5c3f40751022': ['b043fa3a-a21f-4e82-ad59-95e85a663ed8']}, 'tx_sub': {'b043fa3a-a21f-4e82-ad59-95e85a663ed8': ['b207f8db-8e46-4278-b240-c97d4f25da89']}}, ready_txs: []
+[2025-07-18 05:38:06.739] [4] processing batch 59e74b23-893a-4aae-9a1b-5c3f40751022
+[2025-07-18 05:38:06.739] [PESSIMISTIC] tx e6442dab-7831-4485-bd27-b67c48df3c3a dependency: {'f1': {'t2': ('59e74b23-893a-4aae-9a1b-5c3f40751022', 'f1')}, 'f2': {'t4': ('59e74b23-893a-4aae-9a1b-5c3f40751022', 'f2')}, 'f3': {'t6': ('59e74b23-893a-4aae-9a1b-5c3f40751022', 'f3')}, 'f4': {'t8': ('59e74b23-893a-4aae-9a1b-5c3f40751022', 'f4')}, 'f5': {'t10': ('59e74b23-893a-4aae-9a1b-5c3f40751022', 'f5')}}
+[2025-07-18 05:38:06.746] repairing transaction e6442dab-7831-4485-bd27-b67c48df3c3a in batch 59e74b23-893a-4aae-9a1b-5c3f40751022, repair_metadata_no_fast:{}
+[2025-07-18 05:38:06.912] [4] processing batch 59e74b23-893a-4aae-9a1b-5c3f40751022
+[2025-07-18 05:38:06.918] [5] processing batch b043fa3a-a21f-4e82-ad59-95e85a663ed8
+[2025-07-18 05:38:06.919] [PESSIMISTIC] tx b043fa3a-a21f-4e82-ad59-95e85a663ed8 dependency: {}
+[2025-07-18 05:38:06.950] repairing transaction b043fa3a-a21f-4e82-ad59-95e85a663ed8 in batch b043fa3a-a21f-4e82-ad59-95e85a663ed8, repair_metadata_no_fast:{}
+[2025-07-18 05:38:07.107] [4] processing batch b043fa3a-a21f-4e82-ad59-95e85a663ed8
+[2025-07-18 05:38:07.107] [PESSIMISTIC] tx b207f8db-8e46-4278-b240-c97d4f25da89 dependency: {'f1': {'t2': ('b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'f1')}, 'f2': {'t4': ('b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'f2')}, 'f3': {'t6': ('b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'f3')}, 'f4': {'t8': ('b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'f4')}, 'f5': {'t10': ('b043fa3a-a21f-4e82-ad59-95e85a663ed8', 'f5')}}
+[2025-07-18 05:38:07.114] repairing transaction b207f8db-8e46-4278-b240-c97d4f25da89 in batch b043fa3a-a21f-4e82-ad59-95e85a663ed8, repair_metadata_no_fast:{}
+[2025-07-18 05:38:07.318] [4] processing batch b043fa3a-a21f-4e82-ad59-95e85a663ed8

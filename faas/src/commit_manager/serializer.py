@@ -187,17 +187,23 @@ class SerializerProcess(Process):
         for key, writer_func in write_set.items():
             self.key_writers.setdefault(key, [])
             # update transaction writer count. 
-            if not self.batch_write_info[batch_id]['writes'].get(key, False):
+            if key not in self.batch_write_info[batch_id]['writes']:
                 self.batch_write_info[batch_id]['writes'][key] = True
                 self.batch_write_info[batch_id]['all_write_cnt'] += 1
                 if len(self.key_writers[key]) == 0:
                     self.batch_write_info[batch_id]['ready_write_cnt'] += 1
+            if not self.key_writers[key] or self.key_writers[key][-1][0] != batch_id:
+                # if the key is not written by this batch, add a new writer.
                 self.key_writers[key].append((batch_id, tx_id, writer_func))
+            else:
+                # if the key is written by this batch, update the writer.
+                self.key_writers[key][-1] = (batch_id, tx_id, writer_func)
 
     def prev_batch_committed(self, batch_id):
         # check if this batch is ready to commit.
         return self.batch_write_info[batch_id]['ready_write_cnt'] == self.batch_write_info[batch_id]['all_write_cnt']
 
+# TODO: DIFFERENT commit mode for pessi: construct commit table and cover.
 # TODO: pessi_finish is stuck by this. check code.
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
@@ -213,12 +219,14 @@ class SerializerProcess(Process):
             keys_for_commit_per_ip = defaultdict(list)   
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
+                log_message(f"batch {current_batch_id} commit {key}:writers {self.key_writers[key]}")
                 current_key_writers = self.key_writers[key]
                 _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
                 self.key_version_table[key] = current_batch_write_info['version']
                 if optimistic_repair_enabled:
                     keys_for_commit_per_ip[self.function_pos[writer_func]].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
                     if len(current_key_writers) > 0:
+                        cascaded_batch_id, _, _ = current_key_writers[0]
                         cascaded_batch_id, _, _ = current_key_writers[0]
                         self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
                         # only suspended batches are ready to commit cascaded.
