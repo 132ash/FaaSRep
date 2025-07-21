@@ -28,6 +28,7 @@ class PessimisticRepairer:
         self.last_subjection_for_tx_per_batch = {}  # {batch_id:{txid: last_tx_id}}
     
     def register_repair_info(self, batch_id, batch_read_set, batch_write_set, transaction_list, last_tx):
+        log_validator_message(self.logger, f"[PESSIMISTIC] Registering repair info for batch {batch_id} with transactions: {transaction_list}")
         self.write_table_lock_per_batch[batch_id] = gevent.lock.BoundedSemaphore()
         self.transaction_idx_per_batch[batch_id] = {tx_id: idx for idx, tx_id in enumerate(transaction_list)}
         self.tx_write_table_per_batch[batch_id] = {}
@@ -37,7 +38,6 @@ class PessimisticRepairer:
             ws = batch_write_set.get(tx_id, {})
             for key, writer_func in ws.items():
                 self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = (tx_id, writer_func)
-                
 
     def prepare_pessimistic_info(self,batch_id,expired_keys, ready_tx_list):
         """

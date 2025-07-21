@@ -22,6 +22,7 @@ VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
 PESSIMISTIC_REPAIR_FINISH = 4
+PESSIMISTIC_CASCADED_REPAIR = 5
 GATEWAY_ADDR = config.GATEWAY_ADDR
 DISPATCH_INTERVAL = 0.005 
 import re
@@ -31,6 +32,7 @@ class ValidatorPool:
         self.num_validators = num_validators
         self.pool_task_queue = Queue()
         self.serializer_req_queue = Queue()
+        self.assign_lock = gevent.lock.BoundedSemaphore()
         self.repo = Repository()
         self.handler_task_queues = []
         self.serializer_return_pipes = []
@@ -68,7 +70,7 @@ class ValidatorPool:
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
                 self.handler_task_queues[processor_id].put(req)
-                logging.info(f"Dispatched request {req[0]} to handler {min_idx} (previously assigned processor)")
+                logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
                 return
             min_len = None
             min_idx = None
@@ -79,6 +81,7 @@ class ValidatorPool:
                     min_idx = idx
                     if min_len == 0:
                         break
+            self.batch_processor_table[batch_id] = min_idx
             self.handler_task_queues[min_idx].put(req)
             logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
 
@@ -124,6 +127,7 @@ class ValidatorProcess(Process):
         self.repair_info = RepairInfo(self.logger, self.workflow_graph_topo,  self.function_pos)
         self.repair_engine = RepairEngine(self.logger, self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
         self.response_events = {} 
+        self.register_lock = gevent.lock.BoundedSemaphore()
         self.response_lock = gevent.lock.BoundedSemaphore()
         self.tx_list_per_batch = {}
         self.container_port_per_batch = {} 
@@ -147,13 +151,16 @@ class ValidatorProcess(Process):
         last_task_time = time.time()
         if op == VALIDATE:
             batch = data['batch'] 
+            self.register_lock.acquire()
             first_run_finish_time = data['first_run_finish_time']
             self.tx_list_per_batch[batch_id] = batch['transaction_list']
             self.successed_tx_list_per_batch[batch_id] = []
             self.read_set_per_batch[batch_id] = batch['read_set']
             self.write_set_per_batch[batch_id] = batch['write_set']
+            self.container_port_per_batch[batch_id] = batch['container_port']
             batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, inside_validator_time, pessi_sink_info = self.validate(batch_id, batch, last_task_time)
             self.time_tuple_per_batch[batch_id] = (first_run_finish_time, last_task_time, inside_validator_time)
+            self.register_lock.release()
             if batch_need_repair:
                 self.repair_engine.repair_batch(batch_id, batch['container_port'], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
             else:
@@ -164,9 +171,13 @@ class ValidatorProcess(Process):
         elif op == CASCADED_COMMIT:
             self.commit_batch_list(data)
         elif op == PESSIMISTIC_REPAIR_FINISH:
-            self.repair_engine.pessimistic_repair_finish(batch_id, self.write_set_per_batch[batch_id],self.successed_tx_list_per_batch[batch_id] , data)
-
-
+            self.repair_engine.pessimistic_repair_finish(batch_id, self.write_set_per_batch[batch_id],self.successed_tx_list_per_batch[batch_id] , self.container_port_per_batch[batch_id], data)
+            if data.get('batch_finish', False):
+                ready_batch_list = self.serializer_request(batch_id, COMMIT, {})
+                self.commit_batch_list(ready_batch_list)
+        elif op == PESSIMISTIC_CASCADED_REPAIR:
+            self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], data['ready_txs'])
+            
     def serializer_request(self, batch_id, op, data):
         res_event = event.AsyncResult()
         self.response_lock.acquire()
@@ -190,7 +201,7 @@ class ValidatorProcess(Process):
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list):
         txid_lists, timestamps = [], []
-        worker_commit_set = {worker_ip:[] for worker_ip in self.worker_ip_set }
+        worker_commit_set = {worker_ip:{'keys':[], 'txs':[]} for worker_ip in self.worker_ip_set }
         for batch_id, version, keys_for_commit_per_ip in commit_batch_list:
             timestamps.append(self.time_tuple_per_batch[batch_id])
             if PESSIMISTIC_REPAIR_ENABLED:
@@ -200,12 +211,14 @@ class ValidatorProcess(Process):
                 successed_tx_list = self.tx_list_per_batch[batch_id]
             txid_lists.append(successed_tx_list)
             for worker_ip in self.worker_ip_set:
-                worker_commit_set[worker_ip].append({"keys": keys_for_commit_per_ip[worker_ip], 'version': version})
+                worker_commit_set[worker_ip]['txs'].extend(self.tx_list_per_batch[batch_id])
+                worker_commit_set[worker_ip]['keys'].append({"keys": keys_for_commit_per_ip[worker_ip], 'version': version})
             self.tx_list_per_batch.pop(batch_id, None)
             self.time_tuple_per_batch.pop(batch_id, None)
             self.read_set_per_batch.pop(batch_id, None)
             self.write_set_per_batch.pop(batch_id, None)
             self.repair_engine.clean_table_of_batch(batch_id)
+            self.container_port_per_batch.pop(batch_id, None)
         jobs = [
             gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
             for ip in worker_commit_set
@@ -221,7 +234,8 @@ class ValidatorProcess(Process):
             url = f"http://{ip}/commit"
         
         data = {
-            "commit_list": commit_list,
+            'workflow_name': self.workflow_name,
+            "commit_list": commit_list
         }
 
         requests.post(url, json=data)
