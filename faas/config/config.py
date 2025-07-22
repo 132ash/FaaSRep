@@ -13,13 +13,13 @@ GATEWAY_ADDR = '10.2.27.24:8000' # need to update as your private_ip
 
 # workflow setting
 WORKFLOW_YAML_ADDR = {
-                    'textseq': '/home/ash/FaaSnap/benchmark/textseq',
+                    'textseq': '/home/shao/FaaSnap/benchmark/textseq',
                     # "sectestflow": '/home/ash/FaaSnap/benchmark/sectestflow/workflow.yaml',
                     # "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"
                     # #   'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'         
                       }
 FUNCTION_INFO_ADDRS = { 
-                         'textseq': '/home/ash/FaaSnap/benchmark/textseq'
+                         'textseq': '/home/shao/FaaSnap/benchmark/textseq'
 #                         'sectestflow': '../../../../benchmark/sectestflow',
 #                         'testflow': '../../../../benchmark/testflow',
                        }

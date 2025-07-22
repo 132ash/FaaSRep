@@ -27,7 +27,6 @@ import gevent.lock
 sys.path.append('../../config')
 import config
 
-REMOTE_LOCK = config.REMOTE_LOCK
 CLEAR_MEM = config.CLEAR_MEM
 
 app = Flask(__name__)
