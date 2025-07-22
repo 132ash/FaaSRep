@@ -209,12 +209,6 @@ class SerializerProcess(Process):
         # check if this batch is ready to commit.
         return self.batch_write_info[batch_id]['ready_write_cnt'] == self.batch_write_info[batch_id]['all_write_cnt']
 
-# TODO:   File "src/gevent/greenlet.py", line 908, in gevent._gevent_cgreenlet.Greenlet.run
-#   File "/home/ash/FaaSnap/faas/src/commit_manager/validator.py", line 181, in handle_task
-#     self.commit_batch_list(ready_batch_list)
-#   File "/home/ash/FaaSnap/faas/src/commit_manager/validator.py", line 225, in commit_batch_list
-#     worker_commit_set[worker_ip]['keys'].append({"keys": keys_for_commit_per_ip[worker_ip], 'version': version})
-# KeyError: '192.168.162.131:7000'
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
             return False, {}
