@@ -24,7 +24,7 @@ def setup_logger():
     logger = logging.getLogger('serializer')
     logger.setLevel(logging.INFO)
     # 创建文件处理器
-    handler = logging.FileHandler('/home/ash/FaaSnap/faas/logging/serializer.log', mode='a')
+    handler = logging.FileHandler('/home/shao/FaaSnap/faas/logging/serializer.log', mode='a')
     handler.setLevel(logging.INFO)
     
     # 创建格式化器

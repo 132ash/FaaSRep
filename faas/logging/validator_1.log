@@ -1,3 +1,0 @@
-[2025-07-18 04:22:47.020] [1] processing batch bccf11ff-70c7-4d4d-b38e-2c8d68b90079
-[2025-07-18 04:22:47.027] [PESSIMISTIC] Registering repair info for batch bccf11ff-70c7-4d4d-b38e-2c8d68b90079 with transactions: ['bccf11ff-70c7-4d4d-b38e-2c8d68b90079', 'b9cb650e-5af5-4b0d-bee5-f4b1eaeae47d']
-[2025-07-18 04:22:47.034] [PESSI] registering repair metadata on sink 192.168.162.130:7000, batch_id: bccf11ff-70c7-4d4d-b38e-2c8d68b90079, data: {'batch_id': 'bccf11ff-70c7-4d4d-b38e-2c8d68b90079', 'workflow_name': 'textseq', 'batch_sub': {'253206a2-7268-4baa-81ac-3fceb8fb9647': ['bccf11ff-70c7-4d4d-b38e-2c8d68b90079']}, 'tx_sub': {'bccf11ff-70c7-4d4d-b38e-2c8d68b90079': ['b9cb650e-5af5-4b0d-bee5-f4b1eaeae47d']}}, ready_txs: []

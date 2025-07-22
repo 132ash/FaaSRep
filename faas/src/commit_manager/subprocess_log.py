@@ -3,7 +3,7 @@ import logging
 # 配置validator logging模块
 def setup_validator_logger(validator_id):
     logger = logging.getLogger(f'validator_{validator_id}')
-    log_file_path = f"/home/ash/FaaSnap/faas/logging/validator_{validator_id}.log"
+    log_file_path = f"/home/shao/FaaSnap/faas/logging/validator_{validator_id}.log"
 
 
     logger.setLevel(logging.INFO)

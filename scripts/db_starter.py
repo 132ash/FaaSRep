@@ -8,8 +8,8 @@ import string
 TEXT_SIZE = 4 * 1024  # 1MB / 4KB
 
 time.sleep(2)
-couch_db = couchdb.Server('http://faasnap:faasnap@127.0.0.1:5984')
-dynamo_db  = boto3.resource('dynamodb', endpoint_url='http://192.168.162.132:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+couch_db = couchdb.Server('http://faasnap:faasnap@10.2.27.24:5984')
+dynamo_db  = boto3.resource('dynamodb', endpoint_url='http://10.2.27.24:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
 
 for d in ["workflow_latency", "common", "results", "log"]:

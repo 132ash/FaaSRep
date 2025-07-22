@@ -54,7 +54,7 @@ def transaction_commit():
     validator_pools[workflow].submit(batch_id, COMMIT, {})
     return json.dumps({'status': 'successed'})
 
-# python3 proxy.py 192.168.162.132 9000
+# python3 proxy.py 10.2.27.24 9000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
