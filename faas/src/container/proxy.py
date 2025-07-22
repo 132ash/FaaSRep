@@ -29,9 +29,6 @@ dynamodb_url = container_config.DYNAMODB_URL
 dynamodb_key_id = container_config.DYNAMODB_KEY_ID
 dynamodb_access_key = container_config.DYNAMODB_ACCESS_KEY
 dynamodb_area = container_config.DYNAMODB_AREA
-RUNNING = container_config.RUNNING
-ABORTED = container_config.ABORTED
-REPAIRED = container_config.REPAIRED
 db_server = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
 
 default_file = 'main.py'
