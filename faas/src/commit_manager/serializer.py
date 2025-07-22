@@ -18,6 +18,7 @@ optimistic_repair_enabled = config.OPTIMISTIC_REPAIR
 VALIDATE = 1
 COMMIT = 2
 CASCADED_COMMIT = 3
+PESSIMISTIC_COMMIT = 6
 
 # 配置logging模块
 def setup_logger():
@@ -107,6 +108,11 @@ class SerializerProcess(Process):
             elif op == COMMIT:
                 commit_list_for_current_handler = self.commit_all_ready_batches(handler_id, batch_id)
                 self.result_pipes[handler_id].put((batch_id, commit_list_for_current_handler))
+
+            elif op == PESSIMISTIC_COMMIT:
+                commit_keys = data['commit_keys']
+                version = self.modify_global_info_pessi(batch_id, commit_keys)
+                self.result_pipes[handler_id].put((batch_id, [(batch_id, version, {})]))
 
     # check if this batch is ready to commit.
     # if not, suspend this batch, and wait for its ancestors to finish.
@@ -203,8 +209,12 @@ class SerializerProcess(Process):
         # check if this batch is ready to commit.
         return self.batch_write_info[batch_id]['ready_write_cnt'] == self.batch_write_info[batch_id]['all_write_cnt']
 
-# TODO: DIFFERENT commit mode for pessi: construct commit table and cover.
-# TODO: pessi_finish is stuck by this. check code.
+# TODO:   File "src/gevent/greenlet.py", line 908, in gevent._gevent_cgreenlet.Greenlet.run
+#   File "/home/ash/FaaSnap/faas/src/commit_manager/validator.py", line 181, in handle_task
+#     self.commit_batch_list(ready_batch_list)
+#   File "/home/ash/FaaSnap/faas/src/commit_manager/validator.py", line 225, in commit_batch_list
+#     worker_commit_set[worker_ip]['keys'].append({"keys": keys_for_commit_per_ip[worker_ip], 'version': version})
+# KeyError: '192.168.162.131:7000'
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
             return False, {}
@@ -227,7 +237,6 @@ class SerializerProcess(Process):
                     keys_for_commit_per_ip[self.function_pos[writer_func]].append(f"{writer_tx_id}:PUT:{writer_func}:{key}")
                     if len(current_key_writers) > 0:
                         cascaded_batch_id, _, _ = current_key_writers[0]
-                        cascaded_batch_id, _, _ = current_key_writers[0]
                         self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
                         # only suspended batches are ready to commit cascaded.
                         if cascaded_batch_id in self.commit_suspended_batches and self.prev_batch_committed(cascaded_batch_id):    
@@ -235,6 +244,18 @@ class SerializerProcess(Process):
                             batches_ready_for_committing.append(cascaded_batch_id)
             commit_list_per_handler.setdefault(current_handler_id, []).append((current_batch_id, current_batch_write_info['version'], keys_for_commit_per_ip))
         return True, commit_list_per_handler
+
+    def modify_global_info_pessi(self, batch_id, commit_keys):
+        batch_write_info = self.batch_write_info.pop(batch_id)
+        version = batch_write_info['version']
+        for key in batch_write_info['writes'].keys():
+            log_message(f"batch {batch_id} commit {key}:writers {self.key_writers[key]}")
+            current_key_writers = self.key_writers[key]
+            current_key_writers.pop(0)
+            if commit_keys.pop(key, False):
+                self.key_version_table[key] = version
+        return version
+
 
 
         

@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 startup_version = datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
-VALIDATOR_ADDR = 'http://192.168.162.132:9000/validate'
+VALIDATOR_ADDR = 'http://10.2.27.24:9000/validate'
 
 # 转换后的测试数据 1
 batch1 = {

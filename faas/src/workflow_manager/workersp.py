@@ -148,12 +148,12 @@ class WorkerSPManager:
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
         base_url = 'http://127.0.0.1:{}/{}'
         data = {'batch_id':batch_id, 'transaction_id': transaction_id, "no_parent_execution": no_parent_execution, 'repair': True}
-        try:
-            requests.post(base_url.format(port, 'run'), json=data)
-        except:
-            state = self.states[transaction_id]
-            info = self.function_info[function_name]
-            self.function_manager.run({}, function_name, transaction_id, info['input'], info['output'], state.write_set, True, info['next'])
+        logging.info(f"Triggering repair for {function_name} in batch {batch_id}, transaction {transaction_id}, no_parent_execution: {no_parent_execution}, port: {port}")
+        # try:
+        requests.post(base_url.format(port, 'run'), json=data)
+        # except:
+        #     state = self.states[transaction_id]
+        #     self.function_manager.run(function_name, transaction_id, state.write_set, True, batch_id)
 
     # trigger the function when one of its parent is finished
     # function may run or not, depending on if all its parents were finished

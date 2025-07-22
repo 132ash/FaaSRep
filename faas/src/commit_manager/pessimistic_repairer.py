@@ -78,18 +78,20 @@ class PessimisticRepairer:
             self.tx_write_table_per_batch[batch_id][key][tx_idx] = None
         self.write_table_lock_per_batch[batch_id].release()
 
-    def pessimistic_get_commit_keys_per_ip(self, batch_id):
+    def pessimistic_get_commit_keys(self, batch_id):
         batch_writeset = self.tx_write_table_per_batch[batch_id]
         commit_keys_per_ip = {}
+        commit_keys_all = {}
         for key, writer_list in batch_writeset.items():
             # Find the rightmost non-None writer info
             for writer_info in writer_list[::-1]:
                 if writer_info is not None:
                     tx_id, func = writer_info
                     ip = self.function_pos[func]
+                    commit_keys_all[key] = True
                     commit_keys_per_ip.setdefault(ip, []).append(f"{tx_id}:PUT:{func}:{key}")
                     break
-        return commit_keys_per_ip
+        return commit_keys_per_ip, commit_keys_all
             
 
     def clean_table_of_batch(self, batch_id):

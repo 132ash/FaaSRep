@@ -132,6 +132,7 @@ def notify():
     transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
+        logging.info(f"notify transaction {transaction_id_list} finished with timestamps {timestamp_per_batch}")
         if data.get('abort', False):
             logging.info(f"transaction {transaction_id_list[0]} aborted.")
             txTable.notifyTX(transaction_id_list, 0,0, 0, True)

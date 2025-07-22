@@ -65,6 +65,7 @@ class Runner:
         self.keys_from_upstream = {}
         self.keys_from_RYW = {}
         self.subjection_waiting_cnt = 0
+        self.batch_id = ''
 
         # system mode options
         self.fast_path_enabled = False
@@ -177,9 +178,8 @@ class Runner:
         requests.post(url, json=data)
 
     def fin_repair(self, batch_id, transaction_id):
-        logging.info(f"Finishing repair: {self.function}")
         url = f'http://{self.sink_addr}/fin_repair'
-        logging.info(f"Finishing repair: {self.function}, sending to sink: {url}")
+        logging.info(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}")
         data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id}
         requests.post(url, json=data)
 
@@ -198,7 +198,7 @@ class Runner:
             next_trigger_tasks.append(
             gevent.spawn(
                 self.trigger_next_function,
-                downstream_tx_id, ip, port, self.dirty, batch_id
+                downstream_tx_id, ip, port, self.dirty, ''
                 )
             )
         # If not aborted, trigger successor functions in workflow graph.
@@ -219,7 +219,7 @@ class Runner:
                 )
         gevent.joinall(next_trigger_tasks)
 
-    def run(self, batch_id, transaction_id, is_repair):
+    def run(self, transaction_id, is_repair):
         # in first run, collect read/write set, and RYW subjection
         # in repair, use the metadata from redis.
 
@@ -255,7 +255,7 @@ class Runner:
             if self.fast_path_enabled:
                 if aborted:
                     self.container_state = ABORTED
-                    self.abort_transaction(batch_id, transaction_id)
+                    self.abort_transaction(self.batch_id, transaction_id)
                 else:
                     self.container_state = REPAIRED
                     # in fast-path: the container need to trigger downstream functions.
@@ -266,7 +266,7 @@ class Runner:
                         self.repair_sidecar.send_data_to_waiting_downstream(transaction_id, downstream_funcs_opt)
                     else:
                         downstream_funcs_opt = []
-                    self.trigger_downstream_functions(batch_id, aborted, downstream_funcs_opt)        
+                    self.trigger_downstream_functions(self.batch_id, aborted, downstream_funcs_opt)        
 
         io_latency = 0
 
@@ -316,14 +316,16 @@ def run():
     io_latency = 0
     is_repair = inp.get('repair',False)
     no_parent_execution = False
-    batch_id = ""
     rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
     if not is_repair:
         runner.save(transaction_id, inp['write_set'])
     else:
+        logging.info(f"Running in repair mode: {is_repair}, batch_id:{inp['batch_id']}, transaction_id: {transaction_id}")
         batch_id = inp['batch_id']
+        if batch_id:
+            runner.batch_id = batch_id
         if runner.fast_path_enabled:
             no_parent_execution = inp.get('no_parent_execution', False)
         runner.fetch_repair_metadata(transaction_id, inp.get('repair_states', {}))
@@ -331,7 +333,7 @@ def run():
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
     if runner.check_runnable(is_repair, no_parent_execution):
-        aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(batch_id, transaction_id, is_repair)
+        aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(transaction_id, is_repair)
         if aborted:
             return abort_msg
 

@@ -48,18 +48,13 @@ class RepairEngine:
             ready_txs = tx_list
         self.repair_transactions(batch_id, ready_txs, expired_keys, container_port)
         return time.time() - start
-
+    
     # after repair metadata is filled, trigger the start functions to repair the workflow.
-    def pessimistic_repair_finish(self, batch_id, batch_write_set,successed_tx_list_per_batch, container_port_per_batch, data):
-        fin_tx_id = data['tx_id']
-        state = data['state']
-        cascaded_ready_txs = data['ready_txs']
+    def pessimistic_repair_finish(self, batch_id, fin_tx_id, state, batch_write_set,successed_tx_list_per_batch):
         if state == ABORTED:
             self.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, batch_write_set, fin_tx_id)
         else:
             successed_tx_list_per_batch.append(fin_tx_id)
-        if cascaded_ready_txs:
-            self.send_pessimistic_repair_req(batch_id, container_port_per_batch, cascaded_ready_txs)  
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}

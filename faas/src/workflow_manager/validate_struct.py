@@ -133,13 +133,13 @@ class RepairingBatchState:
                 self.pessimistic_state_per_batch[next_batch_id].state_lock.acquire()
                 self.pessimistic_state_per_batch[next_batch_id].trigger_successor(next_trigger_txs, ready_txs)
                 self.pessimistic_state_per_batch[next_batch_id].state_lock.release()
-            self.tx_finished_table_per_batch.pop(batch_id)
             self.state_lock.release()
         else:
             self.pessimistic_state_per_batch[batch_id].transaction_finish(tx_id, ready_txs)
         return ready_txs 
        
     def after_transaction_finish(self, batch_id, tx_id):
+        logging.info(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}")
         self.tx_finished_table_per_batch[batch_id]['lock'].acquire()
         self.tx_finished_table_per_batch[batch_id]["finished"] += 1
         batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
@@ -148,7 +148,12 @@ class RepairingBatchState:
         if PESSIMISTIC_REPAIR:
             ready_successor_tx = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
         if batch_finished:
+            self.state_lock.acquire()
             self.tx_finished_table_per_batch.pop(batch_id, None)
+            self.transaction_list_per_batch.pop(batch_id, None)
+            self.pessimistic_state_per_batch.pop(batch_id, None)
+            self.state_lock.release()
+            logging.info(f"[BATCH FINISH] batch_id: {batch_id}, tx_finished_table_per_batch: {self.tx_finished_table_per_batch}`")
         return batch_finished, ready_successor_tx
 
     

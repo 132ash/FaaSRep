@@ -15,7 +15,7 @@ import config
 
 repo = Repository()
 TEXT_SIZE = 4 * 1024 
-dynamodb  = boto3.resource('dynamodb', endpoint_url='http://192.168.162.132:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+dynamodb  = boto3.resource('dynamodb', endpoint_url='http://10.2.27.24:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
 table_name = "data"
 # 创建名为data的表，以字符串key作为键，每个键对应version和value两个字段，都是字符串
@@ -64,7 +64,7 @@ def analyze_all(system_mode, opt):
 
         # 创建线程函数
     def thread_task():
-        for _ in range(1):  # 每个线程调用 1 次
+        for _ in range(5):  # 每个线程调用 1 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
             time.sleep(0.1)  # 每隔 50ms 调用一次
 
