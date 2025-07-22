@@ -5,7 +5,6 @@ import couchdb
 import redis
 import boto3
 from datetime import datetime
-from subjection_collector import SubjectionCollector, RedisShadowTable
 import sys
 import json
 
@@ -36,15 +35,14 @@ class DynamoDBClient:
         )
         item = response.get('Item')
         if item:
-            return item['version'], item['value']
+            return item['value']
         else:
-            return None, None
+            return None
 
-    def store_data_to_db(self, key, version, value):
+    def store_data_to_db(self, key, value):
         self.table.put_item(
             Item={
                 'key': key,
-                'version': version,
                 'value': value
             }
         )
@@ -58,16 +56,9 @@ class Repository:
                     host:redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
                     for host in self.get_all_addrs('common')
                     }
-        self.subjection_collector:SubjectionCollector = None
 
     def shadowtable_init(self, ip):
         self.ip = ip
-        self.subjection_collector = SubjectionCollector(
-            shadow_table=self.shadowtable_redis_all_addr[self.ip], 
-            ip=self.ip,
-            cache_redis = self.cache_redis,
-            db_server = self.data_db
-        )
         
     # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
     def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
@@ -184,27 +175,13 @@ class Repository:
         return func_pos
 
     # commit keys to DB, flush cache, and delete shadow table entries.
-    def commit_tx_writes(self, commit_key_list, tx_list, version):
-        if config.FaaSTCC:
-            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{tx_list[0]}:PUT:*")
-            shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
-            shadow_table_pipe.multi()
-            for redis_key in keys:
-                shadow_table_pipe.get(redis_key)
-            responses = shadow_table_pipe.execute()
-            for redis_key, value in zip(keys, responses):
-                key = self.param_decode(redis_key)
-                self.data_db.store_data_to_db(key, version, value)
-        else:
-            cache_pipe = self.cache_redis.pipeline()
-            cache_pipe.multi()
-            for redis_key in commit_key_list:
-                key = self.param_decode(redis_key)
-                value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
-                cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
-                # 调用 store_key_to_db 存储到数据库中
-                self.data_db.store_data_to_db(key, version, value)
-            cache_pipe.execute()
+    def commit_tx_writes(self, transaction_id):
+        commit_key_list = self.cache_redis.keys(f"{transaction_id}:PUT:*")
+        for redis_key in commit_key_list:
+            key = self.param_decode(redis_key)
+            value = self.cache_redis.get(redis_key)
+            # 调用 store_key_to_db 存储到数据库中
+            self.data_db.store_data_to_db(key, value)
 
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()
@@ -219,23 +196,4 @@ class Repository:
             self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
         print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")
 
-    def release_lock(self, transaction_id, lock_set):
-        """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
-        """
-
-        for key in lock_set.keys():
-            # 更新 lock 属性为 None
-            self.data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #l = :none",
-                ExpressionAttributeNames={
-                    '#l': 'lock'
-                },
-                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                ExpressionAttributeValues={
-                    ':txid': transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
-            )
+# TODO: shadow table and cache: which to read and write from?

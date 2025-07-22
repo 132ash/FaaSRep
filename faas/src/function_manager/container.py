@@ -113,11 +113,9 @@ class Container:
         return r.json()
 
     # initialize the container
-    def init(self, host_addr, workflow_name, function_name, transaction_sink_addr,validator_addr, node_list, input,output, function_pos, port, fast_path_enabled=False, remote_lock_enabled=False, optimistic_repair=False, FaaSTCC_enabled=False, Concord_enabled = False):
-        data = {'host_addr':host_addr, 'workflow': workflow_name, 'function': function_name , 'sink':transaction_sink_addr, 'validator':validator_addr,
-                "node_list": node_list, "fast_path_enabled":fast_path_enabled, 'optimistic_repair':optimistic_repair,
-                  "remote_lock_enabled":remote_lock_enabled, 'FaaSTCC_enabled':FaaSTCC_enabled,
-                "input": input, "output": output, "function_pos": function_pos, 'port':port, 'Concord_enabled': Concord_enabled}
+    def init(self, host_addr, workflow_name, function_name, node_list, input,output, function_pos):
+        data = {'host_addr':host_addr, 'workflow': workflow_name, 'function': function_name, 
+                "node_list": node_list,"input": input, "output": output, "function_pos": function_pos}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

@@ -84,22 +84,11 @@ class Repository:
             return f"{transaction_id}:{mode}:{func}:{key}" 
     
     def store_input(self, transaction_id, ip, input):
-        if not config.REMOTE_LOCK:
-            for k, v in input.items():
-                redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, False)
-                self.redis[extract_ip(ip)][redis_key] = v
+        for k, v in input.items():
+            redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, False)
+            self.redis[extract_ip(ip)][redis_key] = v
         # in remote lock mode. store input in shadow table. add prefix: RET:FUNC.
-        else:
-            shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
-            for k, v in input.items():
-                dynamo_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, True)
-                shadow_table.put_item(
-                    Item={
-                        'key': dynamo_key,
-                        'value': str(v)
-                    }
-                )
-            
+
 
     def get_result(self, request_id: str, workflow_name) -> Any:
         end_func = self.get_end_function(workflow_name + '_workflow_metadata')
@@ -112,47 +101,11 @@ class Repository:
     def fetch_result_from_shadow_table(self, transaction_id, func, output, redis_ip):
         keys = output.keys()
         result = {}
-        if config.REMOTE_LOCK:
-            shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
-            for k in keys:
-                dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
-                print(f"fetching {dynamo_key} from {transaction_id}_shadow_table")
-                response = shadow_table.get_item(
-                    Key={
-                        'key': dynamo_key
-                    }
-                )
-            item = response.get('Item')
-            result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
-        else:
-            for k in keys:
-                redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
-                result[k] = int(self.redis[redis_ip][redis_key].decode('utf-8')) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key].decode('utf-8')
-             
+        for k in keys:
+            redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
+            result[k] = int(self.redis[redis_ip][redis_key].decode('utf-8')) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key].decode('utf-8')
         return result
     
-    def release_lock(self, transaction_id, lock_set):
-        """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
-        """
-        data_db = self.dynamo.Table('data')
-
-        for key in lock_set.keys():
-            # 更新 lock 属性为 None
-            data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #l = :none",
-                ExpressionAttributeNames={
-                    '#l': 'lock'
-                },
-                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                ExpressionAttributeValues={
-                    ':txid': transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
-            )
-
     def create_shadow_table(self, transaction_id):
         table_name = f"{transaction_id}_shadow_table"
         existing_tables = self.dynamo.tables.all()

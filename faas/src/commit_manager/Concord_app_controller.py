@@ -70,7 +70,7 @@ class AppControllerConcord:
             self.commit_lock.release()
             return
         jobs = [
-            gevent.spawn(requests.post, f"http://{ip}:7000/commit",  {'transaction_id':[transaction_id]})
+            gevent.spawn(requests.post, f"http://{ip}:7000/commit",  {'transaction_id':transaction_id})
             for ip in self.worker_set
         ]
         gevent.joinall(jobs)
