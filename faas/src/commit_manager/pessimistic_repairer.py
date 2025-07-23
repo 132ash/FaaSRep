@@ -70,13 +70,15 @@ class PessimisticRepairer:
             self.repair_info.update_pessimistic_repair_metadata(batch_id, tx_id, tx_dependency, expired_keys)
         self.write_table_lock_per_batch[batch_id].release()
 
-    def modify_batch_write_table_for_abort(self, batch_id, batch_write_set, tx_id):
-        tx_idx = self.transaction_idx_per_batch[batch_id][tx_id]
-        ws = batch_write_set.get(tx_id, {})
-        self.write_table_lock_per_batch[batch_id].acquire()
-        for key, _ in ws.items():
-            self.tx_write_table_per_batch[batch_id][key][tx_idx] = None
-        self.write_table_lock_per_batch[batch_id].release()
+    def modify_batch_write_table_for_abort(self, batch_id, aborted_txs, batch_write_set, successed_tx_table):
+        for aborted_tx_id in aborted_txs:
+            successed_tx_table.pop(aborted_tx_id, None)
+            tx_idx = self.transaction_idx_per_batch[batch_id][aborted_tx_id]
+            ws = batch_write_set.get(aborted_tx_id, {})
+            self.write_table_lock_per_batch[batch_id].acquire()
+            for key, _ in ws.items():
+                self.tx_write_table_per_batch[batch_id][key][tx_idx] = None
+            self.write_table_lock_per_batch[batch_id].release()
 
     def pessimistic_get_commit_keys(self, batch_id):
         batch_writeset = self.tx_write_table_per_batch[batch_id]

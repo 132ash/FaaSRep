@@ -7,7 +7,6 @@ import gevent.lock
 from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
-from validate_struct import TransactionSink, ReservePool
 import re
 
 sys.path.append('../../config')
@@ -29,8 +28,29 @@ def extract_ip(address: str) -> str:
         raise ValueError("Invalid address format")
 
 
+class ReservePool:
+    def __init__(self):
+        self.pool = {}  # {transaction_id: {lock: xx, containers:[container1, container2, ...]}}
+        self.queue_lock = gevent.lock.BoundedSemaphore()
+        
+    def reserve(self, transaction_id, container):
+        self.queue_lock.acquire()
+        if transaction_id not in self.pool:
+            self.pool[transaction_id] = {"lock": gevent.lock.BoundedSemaphore(), "containers": []}
+        self.queue_lock.release()
+        self.pool[transaction_id]["lock"].acquire()
+        self.pool[transaction_id]["containers"].append(container)
+        self.pool[transaction_id]["lock"].release()
+
+    def release(self, fin_tx_list):
+        for transaction_id in fin_tx_list:
+            if transaction_id in self.pool:
+                for container in self.pool[transaction_id]["containers"]:
+                    container.return_to_pool()
+                self.pool.pop(transaction_id, None)
+
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states):
+    def __init__(self, transaction_id: str, all_func: List[str], container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -46,6 +66,7 @@ class TransactionState:
 
         # repair state, used only when fast-path is turned off.
         self.repair = repair
+        self.repair_mode = repair_mode
         self.repair_subjection_upcnt = {}  # {func: up_cnt}
         self.repair_subjection_fetched = {}
         self.repair_states = repair_states 
@@ -62,7 +83,7 @@ min_port = 20000
 
 # mode: 'optimized' vs 'normal'
 class WorkerSPManager:
-    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, transaction_sink: TransactionSink, reserve_pool:ReservePool, repo:Repository, node_list:list) -> None:
+    def __init__(self, host_addr: str, workflow_name: str, function_info_addr: str, reserve_pool:ReservePool, repo:Repository, node_list:list) -> None:
         global min_port
 
         self.info_db = workflow_name + '_function_info'
@@ -81,10 +102,8 @@ class WorkerSPManager:
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
             self.function_pos[function_name] = extract_ip(self.function_info[function_name]['ip'])
-
-        self.transaction_sink = transaction_sink
         self.repo = repo
-        self.transaction_sink_addr = self.function_pos[self.repo.get_end_function(self.meta_db)] + ':7000'
+        self.transaction_sink_addr = self.function_pos[self.repo.get_end_function(self.meta_db)] + ':6000'
 
         self.node_list = node_list
         
@@ -97,11 +116,11 @@ class WorkerSPManager:
         self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states) -> TransactionState:
+    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_mode, repair_states) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
@@ -126,28 +145,33 @@ class WorkerSPManager:
             logging.info('delete state of: %s', transaction_id)
             del self.states[transaction_id]
         self.lock.release()
-
-    def stop_transaction(self, transaction_id: str) -> None:
-        self.lock.acquire()
-        if transaction_id not in self.states:
-            return
-        state = self.states[transaction_id]
-        state.lock.acquire()
-        state.stop_running = True
-        state.lock.release()
     
     def validate_tx(self, transaction_id, read_set, write_set, container_port, RYW_subjection) -> None:
-        self.transaction_sink.append(transaction_id, read_set, write_set, container_port, RYW_subjection)
-
-    def abort_tx(self,transaction_id, batch_id=''):
-        # trigger next run of the transaction under pessimistic repair mode
-        url = 'http://{}/abort'.format(self.transaction_sink_addr)
-        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name}
+        url = 'http://{}/validate'.format(self.transaction_sink_addr)
+        data = {
+            'transaction_id': transaction_id,
+            'workflow_name': self.workflow_name,
+            'read_set': read_set,
+            'write_set': write_set,
+            'container_port': container_port,
+            'RYW_subjection': RYW_subjection
+        }
         requests.post(url, json=data)
 
-    def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port):
+    def tx_aborted_or_repaired(self,transaction_id, state, batch_id='', repair_mode=''):
+        if state == ABORTED:
+            url = 'http://{}/abort'.format(self.transaction_sink_addr)
+            logging.info(f"Transaction {transaction_id} in batch {batch_id} is aborted.")
+        else:
+            logging.info(f"Transaction {transaction_id} in batch {batch_id} is repaired.")
+            url = 'http://{}/fin_repair'.format(self.transaction_sink_addr)
+        # trigger next run of the transaction under pessimistic repair mode
+        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'repair_mode':repair_mode}
+        requests.post(url, json=data)
+
+    def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode):
         base_url = 'http://127.0.0.1:{}/{}'
-        data = {'batch_id':batch_id, 'transaction_id': transaction_id, "no_parent_execution": no_parent_execution, 'repair': True}
+        data = {'batch_id':batch_id, 'transaction_id': transaction_id, "no_parent_execution": no_parent_execution, 'repair': True, 'repair_mode': repair_mode}
         logging.info(f"Triggering repair for {function_name} in batch {batch_id}, transaction {transaction_id}, no_parent_execution: {no_parent_execution}, port: {port}")
         # try:
         requests.post(base_url.format(port, 'run'), json=data)
@@ -164,7 +188,7 @@ class WorkerSPManager:
             if not state.repair:
                 self.validate_tx(state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection)
             else:
-                self.transaction_sink.fin_repair_or_abort(state.batch_id, state.transaction_id, REPAIRED)
+                self.tx_aborted_or_repaired(state.transaction_id, REPAIRED, state.batch_id, state.repair_mode)
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -225,6 +249,7 @@ class WorkerSPManager:
             # get from validator. repair metadata.
             'batch_id': state.batch_id,
             'repair': state.repair,
+            'repair_mode': state.repair_mode,
             'repair_states': state.repair_states
         }
         requests.post(remote_url, json=data)
@@ -260,7 +285,7 @@ class WorkerSPManager:
         if not state.repair or dirty:
             successful = self.run_normal(state, info)
             if not successful:
-                self.abort_tx(state.transaction_id,state.batch_id)
+                self.tx_aborted_or_repaired(state.transaction_id,ABORTED,state.batch_id)
                 return
             
         if self.OPTIMISTIC_REPAIR:
@@ -294,7 +319,7 @@ class WorkerSPManager:
         start = time.time()
         name = info['function_name']
         logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}")
-        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.batch_id, state.repair_states.get(name, {}))
+        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")

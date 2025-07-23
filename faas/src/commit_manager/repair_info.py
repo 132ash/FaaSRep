@@ -10,21 +10,11 @@ class RepairInfo:
         self.function_pos = function_pos
         self.fast_path_enabled = config.FAST_PATH
         self.optimistic_repair_enabled = config.OPTIMISTIC_REPAIR
-
-        # downstream function table: {txid:{func: {cnt, key:{upstream_func；xx, upstream_ip:xx}}}}, cnt is the number of functions it subject to.
-
-        # upstream function table: {txid: {func:{key:[(func,ip)]}}, for each key it writes, recording the functions subject to it.
-        # { next_func: {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx},...]},  
-        #   next_dict: {txid: {func: {downstream_tx_id:True}}}
-        # }
-
         self.repair_metadata_per_batch_by_ip = {}
         self.repair_metadata_per_batch_by_txid = {}
 
-        # preventing adding the same function to downstream subjection table
-        # {batchid:{txid:{func:{successor_txid:{func_name:True}}}}}
 
-        # modify in a whole table: {batch_id: {ip:{txid:{func:{RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}}}
+# TODO: construct repair metadata, check code.
 
     def batch_init(self, batch_id):
         if self.fast_path_enabled:
@@ -39,6 +29,7 @@ class RepairInfo:
         '''
         Construct the repair metadata for the given batch. Only add RYW info and expired keys to the metadata when pessimistic repair is enabled.        
         '''
+        #  crosstx_subjection {"dirty":False, "up_cnt": 0, "upstream_keys": {key:{'tx_id': prev_tx_id, 'func': prev_func}}}
         expired_keys_per_ip = {ip:set() for ip in worker_set}
         for tx_id in txid_list:
             for func, next_funcs in self.workflow_graph_topo.items():

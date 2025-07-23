@@ -184,10 +184,12 @@ class Repository:
         return func_pos
 
     # commit keys to DB, flush cache, and delete shadow table entries.
-    def commit_tx_writes(self, commit_key_list, version):
+    def commit_tx_writes(self, commit_key_list):
         cache_pipe = self.cache_redis.pipeline()
         cache_pipe.multi()
-        for redis_key in commit_key_list:
+        for key_info in commit_key_list:
+            redis_key = key_info[0]
+            version = key_info[1]
             key = self.param_decode(redis_key)
             value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
             cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))

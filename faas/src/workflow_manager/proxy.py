@@ -18,7 +18,7 @@ monkey.patch_all()
 import os
 import gevent
 import time
-import requests
+import gevent.lock
 import json
 from typing import Dict
 from datetime import datetime
@@ -27,12 +27,12 @@ import config
 import workersp_repo
 from workersp import WorkerSPManager, TransactionState
 import docker
+from workersp import ReservePool
 from flask import Flask, request
 app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 repo = workersp_repo.Repository()
-from validate_struct import TransactionSink, ReservePool
 
 sys.path.append('../../config')
 import config
@@ -57,28 +57,20 @@ class Dispatcher:
        self.node_list = repo.get_all_addrs('common')
        logging.info(f"Node list: {self.node_list}")
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
-       self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr, repo) for name in info_addrs}  
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.sinks[name], self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
-       gevent.spawn_later(validate_interval, self._validate_loop)
-
-    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id, state):
-        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, state)
-
-    def register_pessimistic_info(self, workflow_name, batch_id, batch_sub, tx_sub):
-        return self.sinks[workflow_name].register_pessimistic_info(batch_id, batch_sub, tx_sub)
-
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states)
+       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
+       
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
 
     def trigger_crosstx_function(self, workflow_name, function_name, transaction_id):
         self.managers[workflow_name].crosstx_trigger_function(transaction_id, function_name)
-   
-    def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port):
-        self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port)
-    
+
+    def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode):
+        self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode)
+
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
     
@@ -87,14 +79,7 @@ class Dispatcher:
     
     def del_state(self, workflow_name, transaction_id):
         self.managers[workflow_name].del_state(transaction_id)
-
-    def stop_transaction(self, workflow_name, transaction_id):
-        self.managers[workflow_name].stop_transaction(transaction_id)
     
-    def _validate_loop(self):
-        gevent.spawn_later(validate_interval, self._validate_loop)
-        for sink in self.sinks.values():
-            gevent.spawn(sink.validate_batch)
 
 
 
@@ -111,43 +96,11 @@ def repair():
     transaction_id = data['transaction_id']
     workflow_name = data['workflow_name']
     function_name = data['function_name']
+    repair_mode = data['repair_mode']
     no_parent_execution = data['no_parent_execution']
     port = data['port']
     logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
-    dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port)
-    return json.dumps({'status': 'ok'})
-
-@app.route('/fin_repair', methods = ['POST'])
-def fin_repair():
-    data = request.get_json(force=True, silent=True)
-    batch_id = data['batch_id']
-    workflow_name = data['workflow_name']
-    transaction_id = data['transaction_id']
-    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, REPAIRED)
-    return json.dumps({'status': 'ok'})
-
-@app.route('/stop', methods = ['POST'])
-def stop():
-    data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    workflow_name = data['workflow_name']
-    logging.info(f"Stopping transaction {transaction_id} in workflow {workflow_name}")
-    dispatcher.stop_transaction(workflow_name, transaction_id)
-
-@app.route('/abort', methods = ['POST'])
-def abort():
-    data = request.get_json(force=True, silent=True)
-    workflow_name = data['workflow_name']
-    transaction_id = data['transaction_id']
-    if data.get('repair', False):
-        dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id, ABORTED)
-    notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
-    payload = {
-        'transaction_id_lists': [[transaction_id]],
-        'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
-        'abort': True
-    }
-    requests.post(notify_url, json=payload)
+    dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
     return json.dumps({'status': 'ok'})
 
 @app.route('/crosstx_req', methods = ['POST'])
@@ -178,8 +131,9 @@ def req():
     # data for repair
     batch_id = data.get('batch_id', "")
     repair = data.get('repair', False)
+    repair_mode = data.get('repair_mode', "")
     repair_states = data.get('repair_states', {})
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states)
+    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
     logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -193,17 +147,6 @@ def clear():
     dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
-
-@app.route('/repair_pessi', methods = ['POST'])
-def repair_pessimistic():
-    data = request.get_json(force=True, silent=True)
-    workflow_name = data['workflow_name']
-    batch_id = data['batch_id']
-    batch_sub =  data['batch_sub']
-    tx_sub =  data['tx_sub']  
-    res = dispatcher.register_pessimistic_info(workflow_name, batch_id, batch_sub, tx_sub)
-    logging.info(f"Registered pessimistic repair info for batch_id {batch_id}, return: {res}")
-    return res
 
 
 @app.route('/prepare', methods = ['POST'])
@@ -227,11 +170,7 @@ def commit():
         worklow_name = data['workflow_name']
         fin_tx_lists = commit_list['txs']
         dispatcher.reserve_pools[worklow_name].release(fin_tx_lists)
-    for commit_info_per_batch in commit_list['keys']:
-        keys = commit_info_per_batch['keys']
-        version = commit_info_per_batch['version']
-        logging.info(f"Worker commit.  commit keys: {keys}, version {version}")
-        repo.commit_tx_writes(keys, version)
+    repo.commit_tx_writes(commit_list['keys'])
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

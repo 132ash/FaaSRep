@@ -12,9 +12,8 @@ import config
 
 GATEWAY_ADDR = config.GATEWAY_ADDR
 VALIDATE = 1
-COMMIT = 2
-PESSIMISTIC_REPAIR_FINISH = 4
-PESSIMISTIC_CASCADED_REPAIR = 5
+REPAIR_FINISH = 2
+CASCADED_COMMIT = 3
 
 workflows = config.FUNCTION_INFO_ADDRS.keys()
 validator_pools = {workflow: ValidatorPool(config.VALIDATORS_PER_POOL, workflow) for workflow in workflows}
@@ -29,29 +28,13 @@ def validate_tx():
     validator_pools[workflow].submit(batch_id, VALIDATE, data)
     return json.dumps({'status': 'processing'})  
 
-@app.route('/pessi_fin', methods=['POST'])
-def pessi_finish():
-    data = request.get_json(force=True, silent=True)
-    workflow = data['workflow_name']
-    batch_id = data['batch_id']
-    validator_pools[workflow].submit(batch_id, PESSIMISTIC_REPAIR_FINISH, data)
-    return json.dumps({'status': 'successed'})
-
-@app.route('/pessi_cas', methods=['POST'])
-def pessi_cascaded_repair():
-    data = request.get_json(force=True, silent=True)
-    workflow = data['workflow_name']
-    batch_id = data['batch_id']
-    validator_pools[workflow].submit(batch_id, PESSIMISTIC_CASCADED_REPAIR, data)
-    return json.dumps({'status': 'successed'})
-
-    
-@app.route('/commit', methods = ['POST'])
-def transaction_commit():
-    data = request.get_json(force=True, silent=True)
-    workflow = data['workflow_name']
-    batch_id = data['batch_id']
-    validator_pools[workflow].submit(batch_id, COMMIT, {})
+@app.route('/fin_repair', methods=['POST'])
+def finish_repair(): 
+    inp = request.get_json(force=True, silent=True)
+    workflow_name = inp['workflow_name']
+    data = inp['data']  
+    for batch_id, batch_data in data.items():
+        validator_pools[workflow_name].submit(batch_id, REPAIR_FINISH, batch_data)
     return json.dumps({'status': 'successed'})
 
 # python3 proxy.py 10.2.27.24 9000

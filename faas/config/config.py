@@ -46,6 +46,9 @@ RUNNING = '1'
 REPAIRED = '2'
 ABORTED = '3'
 
+OPT_REPAIR = 1
+PESSI_REPAIR = 2
+
 
 
 

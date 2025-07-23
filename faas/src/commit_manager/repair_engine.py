@@ -20,6 +20,9 @@ ABORTED = 2
 FAST_PATH_ENABLED = config.FAST_PATH
 OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 
+OPT_REPAIR = config.OPT_REPAIR
+PESSI_REPAIR = config.PESSI_REPAIR
+
 class RepairEngine:
 
     def __init__(self, logger, repair_info:RepairInfo, function_pos, worker_ip_set, workflow_name, tx_sink_addr, repo: Repository):
@@ -44,24 +47,19 @@ class RepairEngine:
             ready_txs = self.register_on_sink(batch_id, pessi_sink_info)
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)
             self.pessi_register_lock.release()
+            mode = PESSI_REPAIR
         else:
             ready_txs = tx_list
-        self.repair_transactions(batch_id, ready_txs, expired_keys, container_port)
+            mode = OPT_REPAIR
+        self.repair_transactions(batch_id, ready_txs, expired_keys, container_port, mode)
         return time.time() - start
-    
-    # after repair metadata is filled, trigger the start functions to repair the workflow.
-    def pessimistic_repair_finish(self, batch_id, fin_tx_id, state, batch_write_set,successed_tx_list_per_batch):
-        if state == ABORTED:
-            self.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, batch_write_set, fin_tx_id)
-        else:
-            successed_tx_list_per_batch.append(fin_tx_id)
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
-        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch)
+        self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch, PESSI_REPAIR)
 
-    def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port):
+    def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port, mode=OPT_REPAIR):
         repair_prepare_jobs = []
         trigger_jobs = []
         for ip in self.worker_ip_set:
@@ -78,11 +76,11 @@ class RepairEngine:
             for n in self.start_functions:
                 ip = self.function_pos[n]
                 port = container_port[tx_id][n]
-                trigger_jobs.append(gevent.spawn(self.trigger_function, FAST_PATH_ENABLED, self.workflow_name, tx_id, n, ip, port,batch_id, repair_metadata_no_fast) )
+                trigger_jobs.append(gevent.spawn(self.trigger_function, FAST_PATH_ENABLED, self.workflow_name, tx_id, n, ip, port,batch_id, repair_metadata_no_fast, mode) )
         gevent.joinall(trigger_jobs)
         
 
-    def trigger_function(self, FAST_PATH_ENABLED, workflow_name, transaction_id, function_name, ip, port, batch_id, repair_metadata_per_tx):
+    def trigger_function(self, FAST_PATH_ENABLED, workflow_name, transaction_id, function_name, ip, port, batch_id, repair_metadata_per_tx, mode):
         route = "repair" if FAST_PATH_ENABLED else "request"
         if not ip.endswith(":7000"):
             url = f'http://{ip}:7000/{route}'
@@ -97,6 +95,7 @@ class RepairEngine:
             'no_parent_execution': True,
             'port': port,
             'repair': True,
+            'repair_mode': mode,
             'repair_states': repair_metadata_per_tx
         }
         print(f"triggering {function_name}, sending req to {url}, batch_id: {batch_id}")
@@ -108,7 +107,7 @@ class RepairEngine:
             url = f'http://{ip}:7000/repair_pessi'
         else:
             url = f'http://{ip}/repair_pessi'
-        data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'] }
+        data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
         res = requests.post(url, json=data).json()
         log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
         return res['ready_txs']

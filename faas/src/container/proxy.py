@@ -167,29 +167,30 @@ class Runner:
             logging.info(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}, waiting_cnt: {self.subjection_waiting_cnt}")
             return self.parent_executed == self.parent_cnt + self.subjection_waiting_cnt
         
-    def trigger_next_function(self, transaction_id, ip, port ,dirty=False, batch_id=""):
+    def trigger_next_function(self, transaction_id, ip, port ,dirty=False, batch_id="", repair_mode=''):
         url = f'http://{ip}:{port}/run'
         data = {
             'batch_id': batch_id,
             'transaction_id': transaction_id,
             'repair': True,
+            'repair_mode':repair_mode
             }
         logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
         requests.post(url, json=data)
 
-    def fin_repair(self, batch_id, transaction_id):
+    def fin_repair(self, batch_id, transaction_id, repair_mode):
         url = f'http://{self.sink_addr}/fin_repair'
         logging.info(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}")
-        data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id}
+        data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id, 'repair_mode':repair_mode}
         requests.post(url, json=data)
 
-    def abort_transaction(self, batch_id, transaction_id):
+    def abort_transaction(self, batch_id, transaction_id, repair_mode):
         logging.info(f"abort transaction: {self.function}")
         url = f'http://{self.sink_addr}/abort'
-        data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True}
+        data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True, 'repair_mode':repair_mode}
         requests.post(url, json=data)
 
-    def trigger_downstream_functions(self, batch_id, aborted, downstream_funcs):
+    def trigger_downstream_functions(self, batch_id, aborted, downstream_funcs, repair_mode):
         logging.info(f"Trigger waiting functions in opt: {downstream_funcs}")
         next_trigger_tasks = []
         # Trigger all waiting downstream functions
@@ -206,7 +207,7 @@ class Runner:
             for next_func, port in self.successor_port.items():
                 if next_func == 'END':
                     next_trigger_tasks.append(
-                        gevent.spawn(self.fin_repair, batch_id, self.transaction_id)
+                        gevent.spawn(self.fin_repair, batch_id, self.transaction_id, repair_mode)
                     )
                     break
                 next_ip = self.function_pos[next_func]
@@ -214,12 +215,12 @@ class Runner:
                 next_trigger_tasks.append(
                     gevent.spawn(
                     self.trigger_next_function,
-                    self.transaction_id, next_ip, port, self.dirty, batch_id
+                    self.transaction_id, next_ip, port, self.dirty, batch_id, repair_mode
                     )
                 )
         gevent.joinall(next_trigger_tasks)
 
-    def run(self, transaction_id, is_repair):
+    def run(self, transaction_id, is_repair, repair_mode):
         # in first run, collect read/write set, and RYW subjection
         # in repair, use the metadata from redis.
 
@@ -266,7 +267,7 @@ class Runner:
                         self.repair_sidecar.send_data_to_waiting_downstream(transaction_id, downstream_funcs_opt)
                     else:
                         downstream_funcs_opt = []
-                    self.trigger_downstream_functions(self.batch_id, aborted, downstream_funcs_opt)        
+                    self.trigger_downstream_functions(self.batch_id, aborted, downstream_funcs_opt, repair_mode)        
 
         io_latency = 0
 
@@ -315,6 +316,7 @@ def run():
     transaction_id = inp['transaction_id']
     io_latency = 0
     is_repair = inp.get('repair',False)
+    repair_mode = inp.get('repair_mode', '')
     no_parent_execution = False
     rs, ws, RYW_subjection={},{},{}
     # first run, or not the reserved container. Save the info for this container.
@@ -333,7 +335,7 @@ def run():
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
     if runner.check_runnable(is_repair, no_parent_execution):
-        aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(transaction_id, is_repair)
+        aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(transaction_id, is_repair, repair_mode)
         if aborted:
             return abort_msg
 
