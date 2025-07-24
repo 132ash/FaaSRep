@@ -28,7 +28,7 @@ class PessimisticRepairer:
         self.last_subjection_for_tx_per_batch = {}  # {batch_id:{txid: last_tx_id}}
     
     def register_repair_info(self, batch_id, batch_read_set, batch_write_set, transaction_list, last_tx):
-        log_validator_message(self.logger, f"[PESSIMISTIC] Registering repair info for batch {batch_id} with transactions: {transaction_list}")
+        log_validator_message(self.logger, f"[PESSIMISTIC REGISTER] Registering repair info for batch {batch_id} with transactions: {transaction_list}")
         self.write_table_lock_per_batch[batch_id] = gevent.lock.BoundedSemaphore()
         self.transaction_idx_per_batch[batch_id] = {tx_id: idx for idx, tx_id in enumerate(transaction_list)}
         self.tx_write_table_per_batch[batch_id] = {}
@@ -66,7 +66,7 @@ class PessimisticRepairer:
                                 break
                         # Store the dependency for this (key, func)
                         tx_dependency[func][key] = dependency
-            log_validator_message(self.logger, f"[PESSIMISTIC] tx {tx_id} dependency: {tx_dependency}")
+            log_validator_message(self.logger, f"[PESSIMISTIC DEPENDENCY] tx {tx_id} dependency: {tx_dependency}")
             self.repair_info.update_pessimistic_repair_metadata(batch_id, tx_id, tx_dependency, expired_keys)
         self.write_table_lock_per_batch[batch_id].release()
 
@@ -79,6 +79,7 @@ class PessimisticRepairer:
             for key, _ in ws.items():
                 self.tx_write_table_per_batch[batch_id][key][tx_idx] = None
             self.write_table_lock_per_batch[batch_id].release()
+        log_validator_message(self.logger, f"[PESSIMISTIC ABORT] Modified write table for aborted transactions {aborted_txs} in batch {batch_id}. Remaining transactions: {successed_tx_table.keys()}, write set: {self.tx_write_table_per_batch[batch_id]}")
 
     def pessimistic_get_commit_keys(self, batch_id):
         batch_writeset = self.tx_write_table_per_batch[batch_id]
@@ -93,6 +94,7 @@ class PessimisticRepairer:
                     commit_keys_all[key] = True
                     commit_keys_per_ip.setdefault(ip, []).append(f"{tx_id}:PUT:{func}:{key}")
                     break
+        log_validator_message(self.logger, f"[PESSIMISTIC COMMIT KEYS] Batch {batch_id} commit keys per IP: {commit_keys_per_ip}, all commit keys: {commit_keys_all}")
         return commit_keys_per_ip, commit_keys_all
             
 

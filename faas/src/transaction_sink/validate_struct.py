@@ -118,7 +118,7 @@ class RepairingBatchState:
                 for tx_id in self.transaction_list_per_batch[batch_id]:
                     self.optimistic_state_per_transaction.pop(tx_id, None)
                 self.transaction_list_per_batch.pop(batch_id, None)
-                logging.info(f"[BATCH FINISH] batch_id: {batch_id}, tx_finished_table_per_batch: {self.tx_finished_table_per_batch}`")
+        logging.info(f"[REPAIR FINISH] tasks_tx_finish_repair: {tasks_tx_finish_repair}, tasks_cascaded_repair: {tasks_cascaded_repair}")
         return tasks_tx_finish_repair, tasks_cascaded_repair
 
     

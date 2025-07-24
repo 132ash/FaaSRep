@@ -4,6 +4,7 @@ import requests
 import gevent
 import logging
 import sys
+import gevent.lock
 from gevent import event
 import time
 from validator_repo import Repository
@@ -38,15 +39,16 @@ class RepairEngine:
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
         self.PessimisticRepairer = PessimisticRepairer(logger, workflow_name, self.repair_info, self.function_pos)
 
-    def repair_batch(self,batch_id,container_port, read_set, write_set,tx_list, expired_keys, pessi_sink_info):
+    def repair_batch_after_validate(self,batch_id,container_port, read_set, write_set,tx_list, expired_keys, pessi_sink_info):
         # allocate works
         start = time.time()
+        self.pessi_register_lock.acquire()
+        self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
+        ready_txs = self.register_on_sink(batch_id, pessi_sink_info)
+        self.pessi_register_lock.release()
         if not OPTIMISTIC_REPAIR:
-            self.pessi_register_lock.acquire()
-            self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
-            ready_txs = self.register_on_sink(batch_id, pessi_sink_info)
+            expired_keys = {}
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)
-            self.pessi_register_lock.release()
             mode = PESSI_REPAIR
         else:
             ready_txs = tx_list
@@ -56,6 +58,7 @@ class RepairEngine:
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}
+        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Sending repair request for batch {batch_id}, cascaded ready transactions: {cascaded_ready_txs}")
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
         self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch, PESSI_REPAIR)
 
@@ -63,14 +66,14 @@ class RepairEngine:
         repair_prepare_jobs = []
         trigger_jobs = []
         for ip in self.worker_ip_set:
-            repair_metadata_local = self.repair_info.get_repair_metadata(batch_id, ip) if FAST_PATH_ENABLED else {}
+            repair_metadata_local = self.repair_info.get_repair_metadata(mode, batch_id, ip) if FAST_PATH_ENABLED else {}
             repair_prepare_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set())))
         gevent.joinall(repair_prepare_jobs) 
         # metadata filled. Trigger start functions to repair workflow.
         repair_metadata_no_fast = {}
         for tx_id in ready_transactions:
             if not FAST_PATH_ENABLED:
-                repair_metadata_no_fast = self.repair_info.get_repair_metadata(batch_id, '', tx_id)
+                repair_metadata_no_fast = self.repair_info.get_repair_metadata(mode, batch_id, '', tx_id)
             log_validator_message(self.logger, f"repairing transaction {tx_id} in batch {batch_id}, repair_metadata_no_fast:{repair_metadata_no_fast}")
             # trigger start functions
             for n in self.start_functions:
@@ -117,7 +120,6 @@ class RepairEngine:
     # all functions' ip and port need to be sent(?)
     def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set):
         if not repair_metadata and not expired_keys:
-            logging.info(f"no repair metadata for batch {batch_id} on worker {worker_ip}, skip preparing.")
             return
         if not worker_ip.endswith(":7000"):
             url = 'http://{}:7000/prepare'.format(worker_ip)
@@ -136,5 +138,3 @@ class RepairEngine:
         """
         self.PessimisticRepairer.clean_table_of_batch(batch_id)
         self.repair_info.clean_table_of_batch(batch_id)
-        logging.info(f"cleaned repair info and repo for batch {batch_id} in workflow {self.workflow_name}.")
-

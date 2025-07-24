@@ -89,8 +89,6 @@ class SerializerProcess(Process):
                 continue
             
             handler_id, batch_id, op, data = msg
-            log_message(f"Processing batch {batch_id} with operation {op} for handler {handler_id}")
-            
             # find dirty set, and subjection set send to the validator to repair.
             # if the batch is ready to commit, send the commit list to the handler.
             if op == VALIDATE:
@@ -99,7 +97,7 @@ class SerializerProcess(Process):
                 commit_list_for_current_handler = []
                 commit_keys_on_worker = {}
                 batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
-                log_message(f"Validation result for batch {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
+                log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
                 if not batch_need_repair:
                     self.commit_keys_per_batch[batch_id] = self.batch_write_info[batch_id]['writes']  # commit keys for this batch.
                     commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
@@ -115,7 +113,7 @@ class SerializerProcess(Process):
     # in pessimistic mode, the batch is ready for sure: only flush the ready writes.
     def commit_all_ready_batches(self, current_handler_id, current_batch_id):
         ready, commit_list_per_handler, commit_keys_on_worker = self.get_commitable_batches(current_batch_id)
-        log_message(f"Commit check for batch {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
+        log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
         commit_list_for_current_handler = commit_list_per_handler.pop(current_handler_id, [])
         if ready:
             for handler_id, commit_batch_list in commit_list_per_handler.items():
@@ -207,6 +205,7 @@ class SerializerProcess(Process):
 
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
+            log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
             return False, {}, {}
         batches_ready_for_committing = [target_batch_id]
         commit_keys_on_worker = {} # {key: [(tx_id, func, version)]}
@@ -221,7 +220,7 @@ class SerializerProcess(Process):
             version =  current_batch_write_info['version']
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
-                log_message(f"batch {current_batch_id} commit {key}:writers {self.key_writers[key]}")
+                log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
                 current_key_writers = self.key_writers[key]
                 _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
                 if current_batch_commit_keys.pop(key, False):

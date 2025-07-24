@@ -3,6 +3,7 @@ monkey.patch_all()
 import gevent
 from gevent import event
 import sys
+import gevent.lock
 import logging
 import time
 from subprocess_log import setup_validator_logger, log_validator_message
@@ -147,7 +148,6 @@ class ValidatorProcess(Process):
                     gevent.sleep(0.1)
 
     def handle_task(self, batch_id, op, data):
-        log_validator_message(self.logger, f"[{op}] processing batch {batch_id}") 
         last_task_time = time.time()
         if op == VALIDATE:
             batch = data['batch'] 
@@ -158,12 +158,11 @@ class ValidatorProcess(Process):
             self.read_set_per_batch[batch_id] = batch['read_set']
             self.write_set_per_batch[batch_id] = batch['write_set']
             self.container_port_per_batch[batch_id] = batch['container_port']
-            log_validator_message(self.logger, f"[{op}] batch {batch_id} containers: {self.container_port_per_batch[batch_id]}")
             batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, commit_keys_on_worker, inside_validator_time, pessi_sink_info = self.validate(batch_id, batch, last_task_time)
             self.time_tuple_per_batch[batch_id] = (first_run_finish_time, last_task_time, inside_validator_time)
             self.register_lock.release()
             if batch_need_repair:
-                self.repair_engine.repair_batch(batch_id, batch['container_port'], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
+                self.repair_engine.repair_batch_after_validate(batch_id, batch['container_port'], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
             else:
                 self.commit_batch_list(commit_list_for_current_handler, commit_keys_on_worker)
         elif op == REPAIR_FINISH:
@@ -197,6 +196,7 @@ class ValidatorProcess(Process):
         self.repair_info.batch_init(batch_id)
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
         batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, commit_keys_on_worker, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
+        log_validator_message(self.logger, f"[VALIDATE] batch {batch_id} with need_repair: {batch_need_repair}, expired_keys: {expired_keys}, subjection_set: {subjection_set}, commit_list_for_current_handler: {commit_list_for_current_handler}, commit_keys_on_worker: {commit_keys_on_worker}, pessi_sink_info: {pessi_sink_info}")
         if not batch_need_repair:
             expired_keys_per_ip = {}
         else:
