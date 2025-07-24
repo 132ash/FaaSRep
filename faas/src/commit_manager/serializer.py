@@ -2,19 +2,14 @@ from gevent import monkey
 import gevent
 
 monkey.patch_all()
-from multiprocessing import Process, Queue, Pipe
+from multiprocessing import Process
 import time
 import re
-import sys
 import validator_repo
-from collections import defaultdict
 from datetime import datetime
 import logging
 
 repo = validator_repo.Repository()
-sys.path.append('../../config')
-import config
-optimistic_repair_enabled = config.OPTIMISTIC_REPAIR
 VALIDATE = 1
 COMMIT = 3
 CASCADED_COMMIT = 4
@@ -106,7 +101,7 @@ class SerializerProcess(Process):
             elif op == COMMIT:
                 self.commit_keys_per_batch[batch_id] = data['commit_keys']
                 commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
-                self.result_pipes[handler_id].put((batch_id, commit_list_for_current_handler))
+                self.result_pipes[handler_id].put((batch_id, (commit_list_for_current_handler, commit_keys_on_worker)))
 
     # check if this batch is ready to commit.
     # if not, suspend this batch, and wait for its ancestors to finish.
@@ -129,7 +124,7 @@ class SerializerProcess(Process):
         pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':{}, 'whole_tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
         batch_need_repair = False
-        tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)} if not optimistic_repair_enabled else None
+        tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)}
         for tx_id in transaction_list:
             expired_set[tx_id] = {}
             subjection_set[tx_id] = {}
@@ -164,7 +159,7 @@ class SerializerProcess(Process):
                     subjection_set[tx_id][func]["up_cnt"] += 1
                     prev_batch_id,  prev_tx_id,  prev_func = prev_writers[-1]
                     whole_tx_sub.setdefault(prev_tx_id, {})[tx_id] = True
-                    subjection_set[tx_id][func]["upstream_keys"][key] = {'tx_id': prev_tx_id, 'func': prev_func}
+                    subjection_set[tx_id][func]["upstream_keys"][key] = [prev_tx_id, prev_func]
                     # add to prev info.
                     if batch_id != prev_batch_id:
                         expired_set[tx_id][func][key] = True

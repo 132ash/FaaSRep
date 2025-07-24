@@ -106,8 +106,8 @@ class RepairEngine:
 
     def register_on_sink(self,batch_id, pessi_sink_info):
         ip = self.tx_sink_addr
-        if not ip.endswith(":7000"):
-            url = f'http://{ip}:7000/repair_pessi'
+        if not ip.endswith(":6000"):
+            url = f'http://{ip}:6000/repair_pessi'
         else:
             url = f'http://{ip}/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
@@ -119,6 +119,7 @@ class RepairEngine:
     # send metadata to the proxy on worker node.
     # all functions' ip and port need to be sent(?)
     def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set):
+        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
         if not repair_metadata and not expired_keys:
             return
         if not worker_ip.endswith(":7000"):

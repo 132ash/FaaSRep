@@ -71,8 +71,7 @@ class RepairInfo:
                     opt_func_info['dirty'] = upstream_func_dict.get('dirty', False) 
                     # this key is RYW, remove from expired keys.
                     expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
-                expired_keys_dict = expired_keys.get(tx_id, {}).get(func, {})
-                expired_keys_per_ip[func_ip].union(set(expired_keys_dict.keys()))
+                expired_keys_per_ip[func_ip] = expired_keys_per_ip[func_ip].union(expired_keys.get(tx_id, {}).get(func, {}))
                 log_validator_message(self.logger, f"[VALIDATE OPTIMISTIC METADATA] Constructing repair metadata for batch {batch_id}, tx {tx_id}, func {func}, opt_func_info: {opt_func_info}, expired_keys_per_ip: {expired_keys_per_ip}")    
         return expired_keys_per_ip
 
@@ -82,7 +81,9 @@ class RepairInfo:
         Update the repair metadata for the given transaction in the batch.
         and update the expired keys due to abort of previous transactions.
         """
-        for func, func_dependency in tx_dependency.items():
+        for func in self.workflow_graph_topo.keys():
+            func_dependency = tx_dependency.get(func, {})
+            func_ip = self.function_pos[func]
             pessi_func_info = self.get_func_subjection_info_dict(PESSI_REPAIR, batch_id, func_ip, tx_id, func)
             basic_info_dict = self.get_func_basic_info_dict(batch_id, tx_id, func)
             for key, basic_info in basic_info_dict.items():
@@ -90,7 +91,6 @@ class RepairInfo:
             pessi_func_info['dirty'] = True
             pessi_func_info['up_cnt'] = 0
             pessi_func_info['upstream_keys'] = {}
-            func_ip = self.function_pos[func]
             RYW_info = pessi_func_info.get('RYW_keys', {})
             for key, dependency in func_dependency.items():
                 # this key is RYW, already be included

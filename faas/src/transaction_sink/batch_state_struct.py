@@ -33,6 +33,7 @@ class PessimisticBatchState:
         for tx_id in next_trigger_txs:
             self.pessi_transaction_info[tx_id]['prev_fin_cnt'] -= 1
             if self.pessi_transaction_info[tx_id]['prev_fin_cnt'] == 0:
+                self.pessimistic_repair_ready[tx_id] = True
                 ready_txs.setdefault(self.batch_id, []).append(tx_id)
        
     def init_tx_info(self, ready_txs, tx_sub, batch_successors):

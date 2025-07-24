@@ -120,8 +120,8 @@ class RepairSidecar:
         upstream_fetch_results = {} # {ip:{txid: {func: {state:xx, fetched_keys:{key: res}}}}}
 
         for key, upstream_info in upstream_keys_info.items():
-            upstream_txid = upstream_info['tx_id']
-            upstream_func = upstream_info['func']
+            upstream_txid = upstream_info[0]
+            upstream_func = upstream_info[1]
             upstream_ip = self.function_pos[upstream_func]
             upstream_fetch_results.setdefault(upstream_ip, {}).setdefault(upstream_txid, {}).setdefault(upstream_func, {'state':'', 'fetched_keys':{}})['fetched_keys'][key] = ''
 

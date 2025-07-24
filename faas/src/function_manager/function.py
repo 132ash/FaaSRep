@@ -51,8 +51,8 @@ class Function:
         print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
     
     # put the request into request queue
-    def send_request(self, transaction_id, write_set, is_repair,batch_id, repair_states):
-        data = {'transaction_id': transaction_id, 'repair': is_repair, 'batch_id':batch_id,
+    def send_request(self, transaction_id, write_set, is_repair,repair_mode,batch_id, repair_states):
+        data = {'transaction_id': transaction_id, 'repair': is_repair, 'batch_id':batch_id, 'repair_mode':repair_mode,
                  'write_set':write_set, 'repair_states':repair_states}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)

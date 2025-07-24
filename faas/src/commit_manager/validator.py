@@ -19,6 +19,14 @@ import config
 
 PESSIMISTIC_REPAIR_ENABLED = not config.OPTIMISTIC_REPAIR
 
+def extract_ip(address: str) -> str:
+    # 使用正则表达式匹配 IP 地址和可选的端口号
+    match = re.match(r'^(.*?)(:\d+)?$', address)
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError("Invalid address format")
+
 VALIDATE = 1
 REPAIR_FINISH = 2
 COMMIT = 3
@@ -124,7 +132,7 @@ class ValidatorProcess(Process):
             self.workflow_graph_topo[func] = info['next']
             self.worker_ip_set.add(info['ip'])
         self.worker_ip_set = list(self.worker_ip_set)
-        self.tx_sink_addr = self.function_pos[self.repo.get_end_function(self.workflow_name)]
+        self.tx_sink_addr = extract_ip(self.function_pos[self.repo.get_end_function(self.workflow_name)])
         self.repair_info = RepairInfo(self.logger, self.workflow_graph_topo,  self.function_pos)
         self.repair_engine = RepairEngine(self.logger, self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
         self.response_events = {} 
@@ -172,9 +180,9 @@ class ValidatorProcess(Process):
             # {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}
             self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, aborted_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
             if batch_finished:
-                keys_for_commit_per_ip, commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
-                ready_batch_list = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
-                self.commit_batch_list(ready_batch_list, keys_for_commit_per_ip)
+                commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
+                ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
+                self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
         elif op == CASCADED_COMMIT:
@@ -225,6 +233,7 @@ class ValidatorProcess(Process):
             self.write_set_per_batch.pop(batch_id, None)
             self.repair_engine.clean_table_of_batch(batch_id)
             self.container_port_per_batch.pop(batch_id, None)
+        log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, timestamps: {timestamps}, worker_commit_set: {worker_commit_set}")
         jobs = [
             gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
             for ip in worker_commit_set

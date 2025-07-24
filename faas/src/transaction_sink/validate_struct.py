@@ -12,9 +12,10 @@ import gevent.lock
 sys.path.append('../../config')
 import config
 
-REPAIRED = 1
-ABORTED = 2
-WAITING = 3
+REPAIRED = config.REPAIRED
+ABORTED = config.ABORTED    
+WAITING = config.RUNNING
+
 
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
@@ -54,6 +55,7 @@ class RepairingBatchState:
         # update optimistic subjection
         txs_need_pessimistic_repair = []
         for prev_transaction_id, next_txs in sub_per_tx_optimistic.items():
+            next_txs = list(next_txs.keys())
             prev_state = self.optimistic_state_per_transaction[prev_transaction_id].modify_transaction_subjection(next_txs)
             if prev_state == ABORTED:
                 txs_need_pessimistic_repair.extend(next_txs)
@@ -65,21 +67,21 @@ class RepairingBatchState:
         ready_txs = {}
         if batch_finished:
             batch_trigger_txs = self.pessimistic_state_per_batch[batch_id].next_txs_after_batch
-            logging.info(f"[PESSIMISTIC REMINDER] finish batch_id: {batch_id}, batch_trigger_txs: {batch_trigger_txs}")
             for next_batch_id, next_trigger_txs in batch_trigger_txs.items():
                 self.pessimistic_state_per_batch[next_batch_id].trigger_successor(next_trigger_txs, ready_txs)
         else:
             self.pessimistic_state_per_batch[batch_id].transaction_finish(tx_id, ready_txs)
+        logging.info(f"[PESSIMISTIC REMINDER NEXT] batch_id: {batch_id}, tx_id: {tx_id}, ready_txs: {ready_txs}")
         return ready_txs 
        
     def after_transaction_finish(self, batch_id, repair_mode, tx_id, state):
-        logging.info(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}")
         finished_txs_and_state = []
         tasks_tx_finish_repair = {} # {batch_id: {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}}
         tasks_cascaded_repair = {}
         if not PESSIMISTIC_REPAIR:
             rejected, successors_to_be_pessimistic = self.optimistic_state_per_transaction[tx_id].optimistic_state_change_after_repair(repair_mode, state)
             if rejected:
+                logging.info(f"[OPTIMISTIC REPAIR REJECTED] Transaction {tx_id} in batch {batch_id} is rejected, state: {state}")
                 return False, []
             if state == ABORTED:
                 for tx_id in successors_to_be_pessimistic:
@@ -90,24 +92,27 @@ class RepairingBatchState:
                 finished_txs_and_state = [(batch_id, tx_id, state)]
         else:
             finished_txs_and_state = [(batch_id, tx_id, state)]
+        logging.info(f"[TX FINISH REQUEST] batch_id: {batch_id}, tx_id: {tx_id}, state: {state}, finished_txs_and_state: {finished_txs_and_state}")
         
         while finished_txs_and_state:
             batch_id , tx_id, state = finished_txs_and_state.pop(0)
+            logging.info(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}, finished_table: {self.tx_finished_table_per_batch[batch_id]}, state: {state}")
             self.tx_finished_table_per_batch[batch_id]["finished"] += 1
             batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
             ready_successor_tx_pessi = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
             if state == ABORTED:
                 tasks_cascaded_repair.setdefault(batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['aborted_txs'].append(tx_id)
             if not PESSIMISTIC_REPAIR:
-                for next_batch_id, tx_ids in ready_successor_tx_pessi:
-                    for pessi_ready_tx in tx_ids:                 
+                for next_batch_id, tx_ids in ready_successor_tx_pessi.items():
+                    for pessi_ready_tx in tx_ids:      
+                        logging.info(f"[PESSIMISTIC CHECK NEXT] next_batch_id: {next_batch_id}, pessi_ready_tx: {pessi_ready_tx}, state:{self.optimistic_state_per_transaction[pessi_ready_tx].optimistic_repair_state}")           
                         optimistic_state = self.optimistic_state_per_transaction[pessi_ready_tx]
                         if optimistic_state.need_pessimistic_repair:
                             tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].append(pessi_ready_tx)
-                        elif optimistic_state != WAITING:
-                            finished_txs_and_state.append((next_batch_id, pessi_ready_tx, optimistic_state))
+                        elif optimistic_state.optimistic_repair_state != WAITING:
+                            finished_txs_and_state.append((next_batch_id, pessi_ready_tx, optimistic_state.optimistic_repair_state))
             else:
-                for next_batch_id, tx_ids in ready_successor_tx_pessi:
+                for next_batch_id, tx_ids in ready_successor_tx_pessi.items():
                     tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].extend(tx_ids)
 
             if batch_finished:
@@ -179,10 +184,12 @@ class TransactionSink:
 
     def fin_repair_or_abort(self, batch_id, transaction_id, repair_mode, state):
         tasks_tx_finish_repair, tasks_cascaded_repair = self.repairing_batch_state.after_transaction_finish(batch_id, repair_mode, transaction_id, state)
-        tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_tx_finish_repair)]
-        gevent.joinall(tasks)
-        tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_cascaded_repair)]
-        gevent.joinall(tasks)
+        if tasks_tx_finish_repair:
+            tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_tx_finish_repair)]
+            gevent.joinall(tasks)
+        if tasks_cascaded_repair:
+            tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_cascaded_repair)]
+            gevent.joinall(tasks)
 
 
     # called only in pessimistic repair, to update the subjection info of the batch.

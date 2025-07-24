@@ -1,0 +1,2 @@
+,validator overhead,overall validate latency,e2e latency,workflow run latency,func io latency,func exec latency
+0,0.004755282402038574,0.2541176795959473,0.4108981370925903,0.14129101037979125,0.04713599681854248,0.07590739727020264

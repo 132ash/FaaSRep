@@ -95,7 +95,9 @@ def analyze_all(system_mode, opt):
         func_exec_time.append(result["func_exec_time"])
 
     # 计算平均值
+    mode = f"{system_mode}_{opt}"
     avg_results = {
+        'mode': mode,
         "validator overhead": sum(validate_time_inside_validator) / len(validate_time_inside_validator),
         "overall validate latency": sum(validate_latency) / len(validate_latency),
         "e2e latency": sum(e2e_latency) / len(e2e_latency),
@@ -106,7 +108,7 @@ def analyze_all(system_mode, opt):
 
     # 创建 DataFrame
     df = pd.DataFrame([avg_results])
-    df.to_csv(f"{system_mode}_{opt}" + '.csv')
+    df.to_csv(f"{mode}.csv")
    
 
 TESTRUN = False
@@ -114,7 +116,7 @@ system_mode = ["OPTIMISTIC", "PESSIMISTIC"]
 opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
-    _system_mode= system_mode[1]
+    _system_mode= system_mode[0]
     _opt = opt[1]
     if TESTRUN:
         run_workflow("textseq", parameters_input["textseq"])

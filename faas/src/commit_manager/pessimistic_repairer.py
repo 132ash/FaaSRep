@@ -37,7 +37,7 @@ class PessimisticRepairer:
         for tx_id in transaction_list:
             ws = batch_write_set.get(tx_id, {})
             for key, writer_func in ws.items():
-                self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = (tx_id, writer_func)
+                self.tx_write_table_per_batch[batch_id].setdefault(key, [None] * len(transaction_list))[self.transaction_idx_per_batch[batch_id][tx_id]] = [tx_id, writer_func]
 
     def prepare_pessimistic_info(self,batch_id,expired_keys, ready_tx_list):
         """
@@ -45,27 +45,26 @@ class PessimisticRepairer:
         """
         self.write_table_lock_per_batch[batch_id].acquire()
         for tx_id in ready_tx_list:
-            last_tx_id = self.last_subjection_for_tx_per_batch[batch_id].get(tx_id, None)
             tx_dependency = {}
             # Find all (key, func) in the read set of tx_id
-            if last_tx_id:
-                last_tx_idx = self.transaction_idx_per_batch[batch_id][last_tx_id]
-                rs = self.tx_read_table_per_batch[batch_id][tx_id]
-                for func, func_rs in rs.items():
-                    tx_dependency[func] = {}
-                    for key in func_rs.keys():
-                        if key not in self.tx_write_table_per_batch[batch_id]:
-                            continue  # If the key is not in the write table, skip it
+            rs = self.tx_read_table_per_batch[batch_id][tx_id]
+            for func, func_rs in rs.items():
+                tx_dependency[func] = {}
+                for key in func_rs.keys():
+                    dependency = None
+                    if key in self.tx_write_table_per_batch[batch_id]:
                         # For each key, find the writer_list
                         writer_list = self.tx_write_table_per_batch[batch_id][key]
-                        dependency = None
                         # Search for the first non-None writer before last_tx_idx
-                        for prev_idx in range(last_tx_idx, -1, -1):
-                            if writer_list[prev_idx] is not None:
-                                dependency = writer_list[prev_idx]
-                                break
-                        # Store the dependency for this (key, func)
-                        tx_dependency[func][key] = dependency
+                        last_tx_id = self.last_subjection_for_tx_per_batch[batch_id].get(tx_id, None)
+                        if last_tx_id:
+                            last_tx_idx = self.transaction_idx_per_batch[batch_id][last_tx_id]
+                            for prev_idx in range(last_tx_idx, -1, -1):
+                                if writer_list[prev_idx] is not None:
+                                    dependency = writer_list[prev_idx]
+                                    break
+                    # Store the dependency for this (key, func)
+                    tx_dependency[func][key] = dependency
             log_validator_message(self.logger, f"[PESSIMISTIC DEPENDENCY] tx {tx_id} dependency: {tx_dependency}")
             self.repair_info.update_pessimistic_repair_metadata(batch_id, tx_id, tx_dependency, expired_keys)
         self.write_table_lock_per_batch[batch_id].release()
@@ -83,19 +82,15 @@ class PessimisticRepairer:
 
     def pessimistic_get_commit_keys(self, batch_id):
         batch_writeset = self.tx_write_table_per_batch[batch_id]
-        commit_keys_per_ip = {}
         commit_keys_all = {}
         for key, writer_list in batch_writeset.items():
             # Find the rightmost non-None writer info
             for writer_info in writer_list[::-1]:
                 if writer_info is not None:
-                    tx_id, func = writer_info
-                    ip = self.function_pos[func]
                     commit_keys_all[key] = True
-                    commit_keys_per_ip.setdefault(ip, []).append(f"{tx_id}:PUT:{func}:{key}")
                     break
-        log_validator_message(self.logger, f"[PESSIMISTIC COMMIT KEYS] Batch {batch_id} commit keys per IP: {commit_keys_per_ip}, all commit keys: {commit_keys_all}")
-        return commit_keys_per_ip, commit_keys_all
+        log_validator_message(self.logger, f"[PESSIMISTIC COMMIT KEYS] Batch {batch_id} all commit keys: {commit_keys_all}")
+        return commit_keys_all
             
 
     def clean_table_of_batch(self, batch_id):

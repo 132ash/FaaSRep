@@ -40,8 +40,10 @@ PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
 
-REPAIRED = 1
-ABORTED = 2
+REPAIRED = config.REPAIRED
+ABORTED = config.ABORTED    
+WAITING = config.RUNNING
+
 
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
@@ -119,8 +121,8 @@ def repair_pessimistic():
     logging.info(f"Registered pessimistic repair info for batch_id {batch_id}, return: {res}")
     return res
 
-# python3 proxy.py  10.2.30.52 7000
-# python3 proxy.py  10.2.27.24 7000
+# python3 proxy.py  10.2.30.52 6000
+# python3 proxy.py  10.2.27.24 6000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
