@@ -3,7 +3,20 @@ monkey.patch_all()
 import gevent.lock
 import gevent
 import requests
-from validator_repo import Repository
+import re
+import logging
+from commiter_repo import Repository
+logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
+
 import sys
 from gevent import event
 
@@ -12,6 +25,14 @@ import config
 
 COMMITABLE = 1
 ABORTED = 2
+
+def extract_ip(address: str) -> str:
+    # 使用正则表达式匹配 IP 地址和可选的端口号
+    match = re.match(r'^(.*?)(:\d+)?$', address)
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError("Invalid address format")
 
 
 class AppControllerConcord:
@@ -22,8 +43,9 @@ class AppControllerConcord:
         self.worker_set = set()
         function_info = self.repo.get_function_info(self.repo.get_all_functions(workflow_name), workflow_name)
         for func, info in function_info.items():
-            self.function_pos[func] = info['ip']
-            self.worker_set.add(info['ip'])
+            ip = extract_ip(info['ip'])
+            self.function_pos[func] = ip
+            self.worker_set.add(ip)
         self.worker_set = list(self.worker_set)
         self.worker_set.sort()
         self.commit_lock = gevent.lock.BoundedSemaphore()
@@ -60,15 +82,18 @@ class AppControllerConcord:
             workers_for_acquire.add(dirctory_pos)
             self.lock_set_per_tx[transaction_id][dirctory_pos].add(key)
             self.commit_set_per_tx[transaction_id][func_pos].add(key)
+        logging.info(f"[COMMIT] transaction {transaction_id} acquire locks for keys {self.lock_set_per_tx[transaction_id]} and commit keys {self.commit_set_per_tx[transaction_id]}")
         self.transaction_state[transaction_id]['lock_cnt'] = len(workers_for_acquire)
         self.transaction_state[transaction_id]['lock'].release()
         aborted = self.wait_lock(transaction_id)
         if aborted:
+            logging.info(f"[COMMIT] transaction {transaction_id} aborted, release locks.")
             self.transaction_state.pop(transaction_id, None)
             self.lock_set_per_tx.pop(transaction_id, None)
             self.commit_set_per_tx.pop(transaction_id, None)
             self.commit_lock.release()
             return
+        logging.info(f"[COMMIT] transaction {transaction_id} acquired locks, commit keys {self.commit_set_per_tx[transaction_id]}")
         jobs = [
             gevent.spawn(requests.post, f"http://{ip}:7000/commit",  {'transaction_id':transaction_id})
             for ip in self.worker_set
@@ -81,11 +106,13 @@ class AppControllerConcord:
     def acquire_or_unlock(self, transaction_id, lock):
         acquire_jobs = []
         if lock:
+            logging.info(f"[COMMIT] transaction {transaction_id} acquire locks for keys {self.lock_set_per_tx[transaction_id]}")
             for directory_ip, keys in self.lock_set_per_tx[transaction_id]:
                 url = f"http://{directory_ip}:6000/concord_lock"
                 data = {'transaction_id': transaction_id, 'lock_keys': list(keys), 'lock':lock}
                 acquire_jobs.append(gevent.spawn(requests.post, url, data))
         else:
+            logging.info(f"[COMMIT] transaction {transaction_id} unlock and commit keys {self.commit_set_per_tx[transaction_id]}")
             for unlock_addr in self.worker_set:
                 url = f"http://{unlock_addr}:6000/concord_lock"
                 data = {'transaction_id': transaction_id, 'lock_keys': [], 'lock': lock}
@@ -97,9 +124,11 @@ class AppControllerConcord:
         condition = self.transaction_state[tx_id]['cond']
         condition.clear()
         self.acquire_or_unlock(tx_id, True)
+        logging.info(f"[COMMIT] transaction {tx_id} waiting for locks to be acquired.")
         while not self.transaction_state[tx_id]['finished']:
             condition.wait()
         if self.transaction_state[tx_id]['state'] == ABORTED:
+            logging.info(f"[COMMIT] transaction {tx_id} aborted, release locks.")
             self.acquire_or_unlock(tx_id, False)
             return True
         return False
@@ -109,11 +138,13 @@ class AppControllerConcord:
         self.transaction_state[tx_id]['lock_acquired'] += 1
         if self.transaction_state[tx_id]['lock_acquired'] == self.transaction_state[tx_id]['lock_cnt']:
             self.transaction_state[tx_id]['finished'] = True
+        logging.info(f"[COMMIT] transaction {tx_id} lock acquired, lock_acquired: {self.transaction_state[tx_id]['lock_acquired']}, lock_cnt: {self.transaction_state[tx_id]['lock_cnt']}")
         self.transaction_state[tx_id]['lock'].release()
         self.transaction_state[tx_id]['cond'].set()
 
     def abort(self, transaction_id):
         self.transaction_state[transaction_id]['lock'].acquire()
+        logging.info(f"[COMMIT] transaction {transaction_id} abort, release locks.")
         self.transaction_state[transaction_id]['state'] = ABORTED
         self.transaction_state[transaction_id]['finished'] = True
         self.transaction_state[transaction_id]['lock'].release()
