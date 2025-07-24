@@ -42,8 +42,8 @@ class ConcordCacheAgent:
         if cache_line is None or cache_line['state'] == Invalid:
             # local miss, operate from remote
             logging.info(f"[CACHE AGENT LOCAL MISS] local miss, operate from remote. key: {key}, mode: {mode}, transaction_id: {transaction_id}")
-            value = self.data_access_remote(transaction_id, key, mode)
             self.cache_metadata[key] = {'state': None, 'tx_state':None, 'IDs': {}, 'lock': gevent.lock.BoundedSemaphore()}
+            value = self.data_access_remote(transaction_id, key, mode)
         else:
             value = self.data_access_local(transaction_id, key, value, mode)
         self.local_transaction_conflict(key, transaction_id, mode)
