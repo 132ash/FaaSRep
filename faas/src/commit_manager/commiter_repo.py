@@ -21,7 +21,10 @@ class Repository:
             functions.append(db[item]['function_name'])
         return functions
 
-    def get_function_info(self, function_name: str, workflow_name: str) -> Any:
-        db = self.couch[workflow_name+ '_function_info']
-        for item in db.find({'selector': {'function_name': function_name}}):
-            return item
+    def get_function_info(self, all_functions, workflow_name) -> Any:
+        db = self.couch[workflow_name + '_function_info']
+        function_info = {}
+        for function_name in all_functions:
+            for it in db.find({'selector': {'function_name': function_name}}):
+                function_info[function_name] = it
+        return function_info

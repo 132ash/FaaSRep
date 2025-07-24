@@ -13,7 +13,7 @@ from flask import Flask, request
 from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
-from redis_component import RedisShadowTable, RedisCache, RepairSidecar
+from redis_component import RedisShadowTable, RedisCache
 
 # 配置日志记录
 logging.basicConfig(

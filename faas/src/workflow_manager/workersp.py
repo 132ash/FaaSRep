@@ -55,10 +55,9 @@ class WorkerSPManager:
         self.info_db = workflow_name + '_function_info'
         self.common_db = 'common'
         self.meta_db = workflow_name + '_workflow_metadata'
-
+        self.repo = repo
         self.lock = gevent.lock.BoundedSemaphore() # guard self.states
         self.host_addr = host_addr
-        repo.shadowtable_init(extract_ip(host_addr))
         self.workflow_name = workflow_name
         self.states: Dict[str, TransactionState] = {}
         self.func = self.repo.get_current_node_functions(self.host_addr, self.info_db)
@@ -67,12 +66,10 @@ class WorkerSPManager:
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
             self.function_pos[function_name] = self.function_info[function_name]['ip']
-
-        self.repo = repo
         
         self.node_list = node_list
         
-        self.function_manager = FunctionManager(function_info_addr, min_port, self.node_list, self.function_pos)
+        self.function_manager = FunctionManager(self.workflow_name, extract_ip(self.host_addr), function_info_addr, min_port, self.node_list, self.function_pos)
         # repairing batches and finished transactions
         min_port += 5000
         # config of different modes.

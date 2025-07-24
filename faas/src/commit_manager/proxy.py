@@ -2,9 +2,21 @@ from gevent import monkey
 monkey.patch_all()
 from flask import Flask, request
 import sys
+import logging
 from Concord_app_controller import AppControllerConcord
 import json
 app = Flask(__name__)
+
+logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
 
 sys.path.append('../../config')
 import config
@@ -15,7 +27,7 @@ COMMIT = 2
 PESSIMISTIC_REPAIR_FINISH = 4
 
 workflows = config.FUNCTION_INFO_ADDRS.keys()
-App_Controller_Concord = {workflow: AppControllerConcord() for workflow in workflows} if config.CONCORD else None 
+App_Controller_Concord = {workflow: AppControllerConcord(workflow) for workflow in workflows}
     
 @app.route('/commit', methods = ['POST'])
 def transaction_commit():
@@ -35,7 +47,7 @@ def concord_abort():
     App_Controller_Concord[workflow_name].abort(transaction_id)
     return json.dumps({'status': 'aborted'})
 
-# python3 proxy.py 192.168.162.132 9000
+# python proxy.py 10.2.27.24 9000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

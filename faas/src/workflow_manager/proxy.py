@@ -39,13 +39,6 @@ import config
 validate_interval = 0.005 # 200 qps at most
 default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
 
-
-REPAIR_ENABLED = config.REPAIR
-FAST_PATH = config.FAST_PATH
-REMOTE_LOCK = config.REMOTE_LOCK
-PESSIMISTIC_REPAIR = config.PESSIMISTIC_REPAIR
-FAASTCC = config.FAASTCC
-
 REPAIRED = 1
 ABORTED = 2
 
@@ -53,8 +46,9 @@ class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        print("Clearing previous containers.")
        os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
-       repo.clear_mem()
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
+       repo.shadowtable_init(sys.argv[1])
+       repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
  
@@ -153,8 +147,8 @@ def get_container_names():
     container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
 
     
-# python proxy.py  192.168.162.130 7000
-# python3 proxy.py  192.168.162.131 7000
+# python proxy.py  10.2.27.24 7000
+# python proxy.py  192.168.162.131 7000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

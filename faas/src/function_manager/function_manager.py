@@ -30,7 +30,7 @@ dispatch_interval = 0.005 # 200 qps at most
 
 # the class for scheduling functions' inter-operations
 class FunctionManager:
-    def __init__(self, host_addr, config_path, min_port, node_list, reserve_pool, function_pos):
+    def __init__(self, workflow_name, host_addr, config_path, min_port, node_list, function_pos):
         self.function_info = parse(config_path)
 
         self.port_controller = PortController(min_port, min_port + 4999)
@@ -40,8 +40,8 @@ class FunctionManager:
         self.function_pos = function_pos
 
         for x in self.function_info:
-            graph_info = repo.get_function_info(x.function_name)
-            self.functions[x.function_name] = Function(host_addr, self.client, x, self.port_controller, node_list, self.default_container_num, reserve_pool, graph_info['input'], graph_info['output'], self.function_pos)
+            graph_info = repo.get_function_info(x.function_name,  workflow_name + '_function_info')
+            self.functions[x.function_name] = Function(host_addr, self.client, x, self.port_controller, node_list, self.default_container_num, graph_info['input'], graph_info['output'], self.function_pos)
         self.init()
        
     def init(self):
