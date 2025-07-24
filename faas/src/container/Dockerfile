@@ -1,30 +1,17 @@
-# recommend not to use the alpine one, it lacks lots of dependencies
-# the slim one ocuppies about 2x space compared to alpine one
-# FROM python:3.7-alpine
-FROM python:3.7-slim
+FROM workflow_sub
 
-# fulfill the structure requirement of proxy
-RUN mkdir /proxy
-
-# copy libs
+# 拷贝代码文件
 COPY proxy.py /proxy/proxy.py
 COPY main.py /proxy/main.py
 COPY Store.py /proxy/Store.py
+COPY redis_component.py /proxy/redis_component.py
 COPY container_config.py /proxy/container_config.py
 
+# 设置工作目录
 WORKDIR /proxy
 
-# proxy server runs under port 5000
+# 暴露端口
 EXPOSE 5000
 
-# for alpine base only
-# RUN apk update && \
-#     apk add --no-cache --virtual .build-deps gcc musl-dev libffi-dev make && \
-#     pip install --no-cache-dir gevent flask && \
-#     apk del .build-deps
-
-RUN apt-get clean
-RUN apt-get update
-RUN pip3 install --no-cache-dir gevent flask boto3 redis requests botocore
-
-CMD [ "python3", "/proxy/proxy.py" ]
+# 设置启动命令
+CMD ["python3", "/proxy/proxy.py"]
