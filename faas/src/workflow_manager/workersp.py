@@ -65,7 +65,7 @@ class WorkerSPManager:
         self.function_pos = {}
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
-            self.function_pos[function_name] = self.function_info[function_name]['ip']
+            self.function_pos[function_name] = extract_ip(self.function_info[function_name]['ip'])
         
         self.node_list = node_list
         
@@ -76,11 +76,11 @@ class WorkerSPManager:
 
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_states, lock_set, snapshot_interval) -> TransactionState:
+    def get_state(self, retry_after_abort, transaction_id, read_set, write_set) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_states, lock_set, snapshot_interval)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, read_set, write_set)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()  
@@ -208,7 +208,7 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}, write_set: {state.write_set}")
+        logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set)
         end = time.time()
         if res.get("Abort", False):

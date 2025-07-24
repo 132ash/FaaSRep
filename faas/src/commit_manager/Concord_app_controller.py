@@ -132,6 +132,9 @@ class AppControllerConcord:
         self.transaction_state[tx_id]['cond'].set()
 
     def abort(self, transaction_id):
+        if transaction_id not in self.transaction_state:
+            logging.info(f"[COMMIT] transaction {transaction_id} not found, skip.")
+            return
         self.transaction_state[transaction_id]['lock'].acquire()
         logging.info(f"[COMMIT] transaction {transaction_id} abort, release locks.")
         self.transaction_state[transaction_id]['state'] = ABORTED

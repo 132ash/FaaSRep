@@ -64,14 +64,14 @@ class ConcordCacheAgent:
                 # let home node invalidate others.
                 logging.info(f"[CACHE AGENT WRITE HIT (SHARED)] let home invalidate. key: {key}, mode: {mode}, transaction_id: {transaction_id}")
                 directory_pos = self.get_directory_pos(key)
-                url = f"http://{directory_pos}/concord_home"
+                url = f"http://{directory_pos}:6000/concord_home"
                 data = {'mode':'write_hit', 'remote_ip': self.self_ip, 'key': key, 'transaction_id':transaction_id, 'workflow': self.workflow}
                 requests.post(url, json=data)
                 self.cache_metadata[key]['state'] = Except
             return ''
             
     def data_access_remote(self, transaction_id, key, mode):
-        directory_url = f"http://{self.get_directory_pos(key)}/concord_home"
+        directory_url = f"http://{self.get_directory_pos(key)}:6000/concord_home"
         data = {"mode": mode, 'remote_ip': self.self_ip, 'transaction_id': transaction_id, 'key': key, 'workflow': self.workflow}
         response = requests.post(directory_url, json=data).json()
         value = response['value']
@@ -106,7 +106,7 @@ class ConcordCacheAgent:
                 # downgrade the owner to shared. then trigger read miss.
                 owner, = directory_line['sharers']
                 logging.info(f"[CACHE AGENT HOME SERVE REMOTE READ] downgrade owner to shared. key: {key}, owner:{owner}, remote_ip: {remote_ip}, transaction_id: {transaction_id}")
-                directory_url = f"http://{owner}/concord_data"
+                directory_url = f"http://{owner}:6000/concord_data"
                 data = {'workflow':self.workflow, "mode": 'invalidated',  'key': key, 'trigger_tx': transaction_id}
                 requests.post(directory_url, json=data)
                 directory_line['state'] = Except
@@ -133,7 +133,7 @@ class ConcordCacheAgent:
                 logging.info(f"[CACHE AGENT HOME SERVE REMOTE WRITE] remote become only sharer. key: {key}, remote_ip: {remote_ip}, transaction_id: {transaction_id}")
                 prev_sharers.pop(remote_ip, None)
             for sharer in prev_sharers:
-                url = f"http://{sharer}/concord_data"
+                url = f"http://{sharer}:6000/concord_data"
                 logging.info(f"[CACHE AGENT HOME SERVE REMOTE WRITE] invalidate prev sharers. key: {key}, sharer: {sharer}, transaction_id: {transaction_id}")
                 data = {'workflow':self.workflow, "mode":'invalidate', 'key': key, 'trigger_tx': transaction_id}
                 invalidate_jobs.append(gevent.spawn(requests.post, url, json=data))

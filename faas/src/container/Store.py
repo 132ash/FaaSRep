@@ -18,11 +18,10 @@ logging.basicConfig(
 )
 
 class Store:
-    def __init__(self, host_addr):
+    def __init__(self):
         self.fetch_dict = {}
         self.ret_dict = {}
         self.io_latency = 0
-        self.concord_cache_addr = f'{host_addr}:6000/concord_data'
         self.redis_shadow_table: RedisShadowTable = None
         self.redis_cache: RedisCache = None
         self.lock_latency = 0
@@ -30,7 +29,8 @@ class Store:
             os.system('rm -rf work')
         os.mkdir('work')
 
-    def init(self, workflow_name, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, function_pos):
+    def init(self, host_addr, workflow_name, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, function_pos):
+        self.concord_cache_addr = f'{host_addr}:6000/concord_data'
         self.workflow_name = workflow_name
         self.function_name = function_name
         self.redis_shadow_table = shadow_table
@@ -54,9 +54,9 @@ class Store:
     
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
-            return self.function_pos[self.function_name]['ip']
+            return self.function_pos[self.function_name]
         else:
-            return self.function_pos[upstream]['ip']
+            return self.function_pos[upstream]
         
     def abort_tx(self):
         raise Exception("Transaction abort triggered by itself.")
@@ -69,7 +69,8 @@ class Store:
         self.fetch_dict[k] = value
 
     def fetch_input(self):
-        return self.fetch(self.input.keys())
+        res = self.fetch(self.input.keys())
+        return res
 
     # input_keys: specify the keys you want
     def fetch(self, input_keys):
@@ -124,7 +125,7 @@ class Store:
     def concord_get(self, key, upstream_func):
         self.read_set[key] = True
         if upstream_func:
-            upstream_ip = self.function_pos[upstream_func]['ip']
+            upstream_ip = self.function_pos[upstream_func]
             return self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
         else:
             url = f"http://{self.concord_cache_addr}"

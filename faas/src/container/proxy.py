@@ -66,13 +66,14 @@ class Runner:
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
+        logging.info(f"Init function, input {self.input} and output {self.output}, function_pos {self.function_pos}, shadow table {self.shadow_table}, host_addr {self.host_addr}, node_list {self.node_list}")
         os.chdir(work_dir)
 
         # compile first
         filename = os.path.join(work_dir, default_file)
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
-        store.init(self.workflow, self.function, self.shadow_table, self.cache, db_server, self.function_pos)
+        store.init(self.host_addr, self.workflow, self.function, self.shadow_table, self.cache, db_server, self.function_pos)
 
         logging.info('init finished...')
 
@@ -98,13 +99,13 @@ class Runner:
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
         # pre-exec
-        try:
-            exec(self.code, self.ctx)
-            # run function
-            out = eval('main()', self.ctx)               
-        except Exception as e:
-            aborted = True
-            msg = json.dumps({'Abort': True, 'error': str(e)})
+        # try:
+        exec(self.code, self.ctx)
+        # run function
+        out = eval('main()', self.ctx)               
+        # except Exception as e:
+        #     aborted = True
+        #     msg = json.dumps({'Abort': True, 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..       
         io_latency = store.io_latency
         return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],io_latency
@@ -114,7 +115,7 @@ proxy = Flask(__name__)
 proxy.status = 'new'
 proxy.debug = False
 runner = Runner()
-store = Store(container_config.CACHE_HOST)
+store = Store()
 
 
 @proxy.route('/status', methods=['GET'])

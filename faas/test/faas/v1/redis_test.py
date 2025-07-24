@@ -16,12 +16,18 @@ def check_redis_data():
     # 打印每个键及其对应的值
     for key in keys:
         # value = redis_client_cache.get(key)
-        print(f"Key: {key.decode('utf-8')}")
+        print(f"Key: {key}")
         # redis_client.delete(key)
 
 def check_transaction_data():
     # 获取所有键
-    redis_client_shadow.set("test_key", "test_value")
+    keys = redis_client_shadow.keys("*")
+    if not keys:
+        print("No keys found in Redis database.")
+        return
+    # 打印每个键及其对应的值
+    for key in keys:
+        print(f"Key: {key}")
 
     pipe = redis_client_shadow.pipeline()
     pipe.multi()

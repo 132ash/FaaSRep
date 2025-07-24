@@ -32,7 +32,7 @@ class ConcordDispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
         self.host_addr = sys.argv[1] + ':' + sys.argv[2]
         self.node_list = repo.get_all_addrs('common')
-        self.concord_cache_agent = {name:ConcordCacheAgent(name, repo, self.host_addr)  for name in info_addrs}
+        self.concord_cache_agent = {name:ConcordCacheAgent(name, repo, self.node_list, sys.argv[1])  for name in info_addrs}
 
 dispatcher = ConcordDispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 
@@ -76,7 +76,8 @@ def concord_home():
         value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_write(transaction_id, key, remote_ip, mode)
     return json.dumps({'value': value, 'state': state})
 
-# python proxy.py  192.168.162.130 6000
+# python proxy.py  10.2.27.24 6000
+# python proxy.py  10.2.30.52 6000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

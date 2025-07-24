@@ -15,7 +15,7 @@ import config
 
 repo = Repository()
 TEXT_SIZE = 4 * 1024 
-dynamodb  = boto3.resource('dynamodb', endpoint_url='http://192.168.162.132:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+dynamodb  = boto3.resource('dynamodb', endpoint_url='http://10.2.27.24:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
 table_name = "data"
 # 创建名为data的表，以字符串key作为键，每个键对应version和value两个字段，都是字符串
@@ -81,7 +81,7 @@ def analyze_workflow(workflow):
     func_exec_time = func_exec_time_test 
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
 
-def analyze_all(_baseline, _mode):
+def analyze_all(_baseline):
     repo.flush_couchdb_workflow_latency()
 
         # 创建线程函数
@@ -92,7 +92,7 @@ def analyze_all(_baseline, _mode):
 
         # 创建三个线程
     threads = []
-    for _ in range(2):
+    for _ in range(1):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()
@@ -129,22 +129,18 @@ def analyze_all(_baseline, _mode):
 
     # 创建 DataFrame
     df = pd.DataFrame([avg_results])
-    df.to_csv(f"{_baseline}_{_mode}" + '.csv')
+    df.to_csv(f"{_baseline}" + '.csv')
    
 
 TESTRUN = False
-baseline = ["basic", "repair", "repair+batch",  "repair+batch+fastpath", "remote lock"]
-mode = ["NOCACHE + SMALL", "NOCACHE + LARGE", "CACHE + LARGE", "CACHE + SMALL"]
+baseline = ["Concord"]
 
 if __name__ == '__main__':
     _baseline = baseline[0]
-    _mode = mode[1]
-    if mode == "remote lock":
-        release_lock()
     if TESTRUN:
         run_workflow("textseq", parameters_input["textseq"])
     else:
-        analyze_all(_baseline, _mode)
+        analyze_all(_baseline)
 
 
 
