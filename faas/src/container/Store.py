@@ -116,7 +116,7 @@ class Store:
         start = time.time()
         self.put_to_mem(key, self.function_name, 'PUT', value)
         self.write_set[key] = self.function_name
-        self.concord_put(key)
+        self.concord_put(key, value)
         end = time.time()
         self.io_latency += (end - start)
 
@@ -127,11 +127,12 @@ class Store:
         if not response['success']:
             logging.error(f"Concord cache get failed for key {key} in transaction {self.transaction_id}.")
             raise Exception("Concord cache get failed.")
+        logging.info(f"Concord cache succeeded for key {key} in transaction {self.transaction_id}.")
         return response['value']
         
-    def concord_put(self, key):
+    def concord_put(self, key, value):
         url = f"http://{self.concord_cache_addr}"
-        data = {'mode':'write', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name}
+        data = {'mode':'write', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name, 'value': value}
         response = requests.post(url, json=data).json()
         if not response['success']:
             logging.error(f"Concord cache put failed for key {key} in transaction {self.transaction_id}.")

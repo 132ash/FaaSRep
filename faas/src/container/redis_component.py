@@ -30,7 +30,7 @@ class RedisShadowTable:
 # data in cache: value and version 
 class RedisCache:
     def __init__(self, port, db, db_server):
-        self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db)
+        self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db, decode_responses=True)
         self.data_db = db_server.Table('data')
 
     def cache_get(self, key):

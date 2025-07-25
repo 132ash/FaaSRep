@@ -43,7 +43,7 @@ def get_workflow_metadata(workflow_name):
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
     return workflow_metadata[workflow_name]
 
-def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
+def trigger_function(workflow_name, transaction_id, function_name, ip):
     url = 'http://{}/request'.format(ip)
     print(f"sending req to {url}")
     data = {
@@ -51,8 +51,7 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'workflow_name': workflow_name,
         'function_name': function_name,
         'no_parent_execution': True,
-        'repair': False,
-        'retry': retry
+        'repair': False
     }
     requests.post(url, json=data)
 
@@ -78,7 +77,7 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
     gevent.joinall(jobs)
     end = time.time()
     return end - start

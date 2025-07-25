@@ -49,3 +49,4 @@ thread2.start()
 # 等待线程完成
 thread1.join()
 thread2.join()
+# TODO: conflict detection of Concord.

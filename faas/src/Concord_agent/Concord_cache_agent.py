@@ -35,8 +35,7 @@ class ConcordCacheAgent:
         idx = hash(key) % len(self.worker_set)
         return self.worker_set[idx]
 
-    def data_access(self, transaction_id, key, mode):
-        value = ''
+    def data_access(self, transaction_id, key, value, mode):
         cache_line = self.cache_metadata.get(key, None)
         if cache_line is None or cache_line['state'] == Invalid:
             # local miss, operate from remote
@@ -47,6 +46,7 @@ class ConcordCacheAgent:
         return success, value
 
     def data_access_local(self, transaction_id, key, value, mode):
+        state = self.cache_metadata[key]['state']
         if mode == 'read':
             # local read hit.
             success = self.local_cacheline_conflict(key, transaction_id, mode, state)
@@ -57,7 +57,6 @@ class ConcordCacheAgent:
             return True, self.repo.cache_redis[key]
         else:
             # local write hit.
-            state = self.cache_metadata[key]['state']
             if state == Except:
                 success = self.local_cacheline_conflict(key, transaction_id, mode, state)
                 if not success:
@@ -72,7 +71,8 @@ class ConcordCacheAgent:
                 directory_pos = self.get_directory_pos(key)
                 url = f"http://{directory_pos}:6000/concord_home"
                 data = {'mode':'write_hit', 'remote_ip': self.self_ip, 'key': key, 'transaction_id':transaction_id, 'workflow': self.workflow}
-                response = requests.post(url, json=data).json()
+                response = requests.post(url, json=data)
+                response = response.json()
                 if not response['success']:
                     return False, ''
                 self.cache_metadata[key]['state'] = Except
@@ -84,7 +84,8 @@ class ConcordCacheAgent:
     def data_access_remote(self, transaction_id, key, value, mode):
         directory_url = f"http://{self.get_directory_pos(key)}:6000/concord_home"
         data = {"mode": mode, 'remote_ip': self.self_ip, 'transaction_id': transaction_id, 'key': key, 'workflow': self.workflow}
-        response = requests.post(directory_url, json=data).json()
+        response = requests.post(directory_url, json=data)
+        response = response.json()
         if not response['success']:
             logging.info(f"[CACHE ACCESS REMOTE] access failed. ABORT")
             return False, ''
@@ -136,7 +137,8 @@ class ConcordCacheAgent:
                 logging.info(f"[CACHE AGENT HOME SERVE REMOTE READ] downgrade owner to shared. key: {key}, owner:{owner}, remote_ip: {remote_ip}, transaction_id: {transaction_id}")
                 directory_url = f"http://{owner}:6000/concord_data"
                 data = {'workflow':self.workflow, "mode": 'downgrade',  'key': key}
-                response = requests.post(directory_url, json=data).json()
+                response = requests.post(directory_url, json=data)
+                response = response.json()
                 value = response['value']
             directory_line['lock'].release()
             return True, value, state
@@ -172,7 +174,8 @@ class ConcordCacheAgent:
     def home_invalidate_others(self, key, sharer, trigger_tx, result_dict):
         url = f"http://{sharer}:6000/concord_data"
         data = {'workflow':self.workflow, "mode":'invalidate', 'key': key, 'trigger_tx': trigger_tx}
-        response = requests.post(url, json=data).json()
+        response = requests.post(url, json=data)
+        response = response.json()
         result_dict[sharer] = response['success']  
 
     def invalidated_by_home(self, key, owner_transaction_id):
@@ -190,7 +193,7 @@ class ConcordCacheAgent:
     def downgrade_by_home(self, key):
         # in transaction setting, don't modify the Except to Shared. 
         logging.info(f"[CACHE AGENT DOWNGRADE BY HOME] origin downgrade by home. Now just return the value to make RYW work.")
-        return True, self.cache_metadata[key]
+        return True, self.repo.cache_redis[key]
 
     def local_cacheline_conflict(self, key, transaction_id, mode, cache_state):
         cache_line = self.cache_metadata[key]

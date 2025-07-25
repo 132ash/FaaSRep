@@ -52,13 +52,13 @@ def concord_data():
     workflow = data['workflow']
     trigger_tx = data.get('trigger_tx', '')
     success = True
-    value = ''
+    value = data.get('value', '')
     if mode == 'invalidated':
         success = dispatcher.concord_cache_agent[workflow].invalidated_by_home(key, trigger_tx)
     elif mode == "downgrade":
         success, value = dispatcher.concord_cache_agent[workflow].downgrade_by_home(key)
     else:
-        success, value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, mode)
+        success, value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, value, mode)
     return {'success':success, 'value': value}
     
 @app.route('/concord_home', methods = ['POST'])

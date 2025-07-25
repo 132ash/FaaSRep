@@ -15,7 +15,6 @@ import config
 sys.path.append('../function_manager')
 from function_manager import FunctionManager
 
-VALIDATOR_ADDR = config.VALIDATOR_ADDR
 
 REPAIRED = 1
 ABORTED = 2
@@ -75,10 +74,10 @@ class WorkerSPManager:
 
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id, write_set) -> TransactionState:
+    def get_state(self, transaction_id, write_set) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
-        if transaction_id not in self.states or retry_after_abort:
+        if transaction_id not in self.states:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, write_set)
         else:
             state = self.states[transaction_id]
@@ -98,6 +97,7 @@ class WorkerSPManager:
         self.lock.release()
 
     def commit_tx(self, transaction_id: str, write_set: Dict[str, int]) -> None:
+        logging.info(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
         commit_set = {}
         commit_jobs = []
         for key, func in write_set.items():
@@ -115,12 +115,14 @@ class WorkerSPManager:
 
     def abort_tx(self, transaction_id):
         # trigger next run of the transaction under pessimistic repair mode
+        logging.info(f"[ABORT] aborting transaction {transaction_id}")
         abort_jobs = []
         for ip in self.node_list:
             clear_url = 'http://{}:6000/clear_state'.format(ip)
             data = {'transaction_id':transaction_id, 'workflow_name': self.workflow_name}
             abort_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
         gevent.joinall(abort_jobs)
+        self.del_state(transaction_id)
         self.notify_gateway(transaction_id, True)
 
     def clear_access_log_on_worker(self, transaction_id: str) -> None:
@@ -146,7 +148,7 @@ class WorkerSPManager:
     # with dirty set: the corresponding downstream is triggered, update dirty set.
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
-            self.commit(state.transaction_id, state.write_set)
+            self.commit_tx(state.transaction_id, state.write_set)
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -205,8 +207,6 @@ class WorkerSPManager:
             return
 
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
-        if state.stop_running:
-            return
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
             gevent.spawn(self.trigger_function, state, func)

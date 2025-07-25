@@ -45,6 +45,7 @@ class RunningTXTable:
             self.running_txs[tx_id]['abort'] = True
             self.running_txs[tx_id]['finished'] = True
             self.running_txs[tx_id]['cond'].set()
+            print(f"[ABORT] tx_id {tx_id} finished running with abort.")
         else:
             for tx_id in transaction_id_list:
                 condition = self.running_txs[tx_id]['cond']
@@ -53,5 +54,5 @@ class RunningTXTable:
                 self.running_txs[tx_id]["validate_latency"] = validate_latency
                 self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
                 condition.set()
-                print(f"notified {tx_id}")
+                print(f"[FINISH] tx_id {tx_id} finished running.")
 

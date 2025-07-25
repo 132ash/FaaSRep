@@ -55,26 +55,26 @@ def release_lock():
             
 
 def run_workflow(workflow_name, parameters = {}):
+    start = time.time()
     url = 'http://' + config.GATEWAY_ADDR + '/run'
     data = {'workflow':workflow_name, "parameters":parameters}
     rep = requests.post(url, json=data)
-    return rep.json()
+    end = time.time()
+    return rep.json(), end - start
 
 def get_function_latency(txid):
     func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
     exec_time = sum(func_exec_latency) 
     io_time = sum(func_io_latency) 
-    print(f"func_exec_latency: {func_exec_latency}")
-    print(f"func_io_latency: {func_io_latency}")
     return exec_time, io_time
 
 
 def analyze_workflow(workflow):
-    rep = run_workflow(workflow, parameters_input[workflow]) 
+    rep, e2e_latency = run_workflow(workflow, parameters_input[workflow]) 
     txid = rep['transaction_id']
     validate_time_inside_validator = rep['validate_time_inside_validator']
     validate_latency = rep['validate_latency'] 
-    e2e_latency = rep['e2e_latency']  
+    # e2e_latency = rep['e2e_latency']  
     first_run_latency = rep['first_run_latency']
     func_exec_time_test, func_io_time_test = get_function_latency(txid)
     func_io_time = func_io_time_test
@@ -86,13 +86,13 @@ def analyze_all(_baseline):
 
         # 创建线程函数
     def thread_task():
-        for _ in range(1):  # 每个线程调用 2 次
+        for _ in range(5):  # 每个线程调用 2 次
             analyze_workflow("textseq")  # 调用 analyze_workflow
             time.sleep(0.05)  # 每隔 50ms 调用一次
 
         # 创建三个线程
     threads = []
-    for _ in range(1):
+    for _ in range(4):
         thread = threading.Thread(target=thread_task)
         threads.append(thread)
         thread.start()

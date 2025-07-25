@@ -98,13 +98,13 @@ class Runner:
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
         self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
         # pre-exec
-        # try:
-        exec(self.code, self.ctx)
+        try:
+            exec(self.code, self.ctx)
         # run function
-        out = eval('main()', self.ctx)               
-        # except Exception as e:
-        #     aborted = True
-        #     msg = json.dumps({'Abort': True, 'error': str(e)})
+            out = eval('main()', self.ctx)               
+        except Exception as e:
+            aborted = True
+            msg = json.dumps({'Abort': True, 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..       
         io_latency = store.io_latency
         return aborted, msg, TxMetaData_thisFunc["write_set"],io_latency
