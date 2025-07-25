@@ -15,6 +15,7 @@ import config
 sys.path.append('../function_manager')
 from function_manager import FunctionManager
 
+VALIDATOR_ADDR = config.VALIDATOR_ADDR
 
 REPAIRED = 1
 ABORTED = 2
@@ -29,11 +30,9 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], read_set, write_set):
+    def __init__(self, transaction_id: str, all_func: List[str], write_set):
         self.transaction_id = transaction_id
-        # {func: {key: version}}
-        self.read_set:Dict[str:Dict[str:str]] = read_set
-        # {key: func_ip}
+        # {key: func}
         self.write_set:Dict[str:Dict[str:str]] = write_set
         # {func:{"down_funcs":[], "up_cnt":xx}
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
@@ -76,15 +75,14 @@ class WorkerSPManager:
 
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id, read_set, write_set) -> TransactionState:
+    def get_state(self, retry_after_abort, transaction_id, write_set) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, read_set, write_set)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, write_set)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()  
-            state.read_set.update(read_set)
             state.write_set.update(write_set)
             state.lock.release()
         state = self.states[transaction_id]
@@ -99,44 +97,56 @@ class WorkerSPManager:
             del self.states[transaction_id]
         self.lock.release()
 
-    def stop_transaction(self, transaction_id: str) -> None:
-        self.lock.acquire()
-        if transaction_id not in self.states:
-            return
-        state = self.states[transaction_id]
-        state.lock.acquire()
-        state.stop_running = True
-        state.lock.release()
+    def commit_tx(self, transaction_id: str, write_set: Dict[str, int]) -> None:
+        commit_set = {}
+        commit_jobs = []
+        for key, func in write_set.items():
+            commit_set.setdefault(self.function_pos[func], set()).add(key)
+        for ip, keys in commit_set.items():
+            commiter_url = 'http://{}:7000/commit'.format(ip)
+            data = {
+                'commit_keys': list(keys),
+            }
+            commit_jobs.append(gevent.spawn(requests.post, commiter_url, json=data))
+        gevent.joinall(commit_jobs)
+        self.clear_access_log_on_worker(transaction_id)
+        self.notify_gateway(transaction_id)
 
 
-    def commit(self, transaction_id: str, write_set: Dict[str, int], read_set) -> None:
-        commiter_url = 'http://{}:7000/commit'.format(self.VALIDATOR_ADDR)
-        data = {
-            'transaction_id': transaction_id,
-            'workflow_name': self.workflow_name,
-            'write_set': write_set,
-            'read_set': read_set,
-        }
-        requests.post(commiter_url, json=data)
-    
-
-    def abort_tx(self,transaction_id):
+    def abort_tx(self, transaction_id):
         # trigger next run of the transaction under pessimistic repair mode
+        abort_jobs = []
+        for ip in self.node_list:
+            clear_url = 'http://{}:6000/clear_state'.format(ip)
+            data = {'transaction_id':transaction_id, 'workflow_name': self.workflow_name}
+            abort_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
+        gevent.joinall(abort_jobs)
+        self.notify_gateway(transaction_id, True)
+
+    def clear_access_log_on_worker(self, transaction_id: str) -> None:
+        clear_jobs = []
+        for ip in self.node_list:
+            clear_url = 'http://{}:6000/clear_state'.format(ip)
+            data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name}
+            clear_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
+        gevent.joinall(clear_jobs)
+
+    def notify_gateway(self, transaction_id, abort=False):
         notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
         payload = {
             'transaction_id_list': [[transaction_id]],
-            'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
-            'abort': True
+            'timestamps': [[time.time(), 0, 0]],
+            'abort': abort
         }
         requests.post(notify_url, json=payload)
-    
+
     # trigger the function when one of its parent is finished
     # function may run or not, depending on if all its parents were finished
     # function could be local or remote
     # with dirty set: the corresponding downstream is triggered, update dirty set.
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
-            self.commit(state.transaction_id, state.write_set, state.read_set)
+            self.commit(state.transaction_id, state.write_set)
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -173,7 +183,6 @@ class WorkerSPManager:
             'function_name': function_name,
             'no_parent_execution': no_parent_execution,
             # collected for validation. updated only in first run.
-            'read_set': state.read_set,
             'write_set': state.write_set,
         }
         requests.post(remote_url, json=data)
@@ -219,11 +228,10 @@ class WorkerSPManager:
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
         state.write_set.update(res["write_set"])
-        state.read_set.update(res["read_set"])
         state.lock.release()
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-        logging.info(f"function {info['function_name']} done, read_set: {res['read_set']}, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+        logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         return True
 
     def clear_mem(self, transaction_id):

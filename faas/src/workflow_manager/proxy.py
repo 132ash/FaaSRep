@@ -52,8 +52,8 @@ class Dispatcher:
        self.node_list = repo.get_all_addrs('common')
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
  
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set)
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, write_set) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, write_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -77,8 +77,6 @@ class Dispatcher:
 
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
-if config.FILLUP_CACHE:
-    repo.fillup_cache()
 
 
 @app.route('/stop', methods = ['POST'])
@@ -100,10 +98,9 @@ def req():
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
     retry_after_abort = data.get('retry', False)
-    read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
 
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, read_set, write_set)
+    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, write_set)
     logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -123,10 +120,10 @@ def clear():
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
+    commit_keys = data['commit_keys']
     # release the containers reserved into container pool.
-    logging.info(f"Worker commit. transaction_id: {transaction_id}")
-    repo.commit_tx_writes(transaction_id)
+    logging.info(f"Worker commit. commit_keys: {commit_keys}")
+    repo.commit_tx_writes(commit_keys)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

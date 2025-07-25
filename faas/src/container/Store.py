@@ -42,7 +42,6 @@ class Store:
         self.transaction_id = transaction_id
         self.input = input
         self.output = output
-        self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
 
     # mode: 'RET', 'PUT'
@@ -108,8 +107,7 @@ class Store:
     def get(self, key):
         value = None
         start = time.time()
-        upstream_func = self.write_set.get(key, "")
-        value = self.concord_get(key, upstream_func)
+        value = self.concord_get(key)
         end = time.time()
         self.io_latency += (end - start)
         return value
@@ -122,19 +120,20 @@ class Store:
         end = time.time()
         self.io_latency += (end - start)
 
-    def concord_get(self, key, upstream_func):
-        self.read_set[key] = True
-        if upstream_func:
-            upstream_ip = self.function_pos[upstream_func]
-            return self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-        else:
-            url = f"http://{self.concord_cache_addr}"
-            data = {'mode':'read', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name}
-            response = requests.post(url, json=data).json()
-            return response['value']
+    def concord_get(self, key):
+        url = f"http://{self.concord_cache_addr}"
+        data = {'mode':'read', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name}
+        response = requests.post(url, json=data).json()
+        if not response['success']:
+            logging.error(f"Concord cache get failed for key {key} in transaction {self.transaction_id}.")
+            raise Exception("Concord cache get failed.")
+        return response['value']
         
     def concord_put(self, key):
         url = f"http://{self.concord_cache_addr}"
         data = {'mode':'write', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name}
-        requests.post(url, json=data)
+        response = requests.post(url, json=data).json()
+        if not response['success']:
+            logging.error(f"Concord cache put failed for key {key} in transaction {self.transaction_id}.")
+            raise Exception("Concord cache put failed.")
 

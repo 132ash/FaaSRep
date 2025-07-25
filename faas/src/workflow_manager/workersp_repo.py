@@ -144,30 +144,6 @@ class Repository:
                 result[k] = self.shadowtable_redis_all_addr[self.ip][redis_key]
         return result
 
-    def update_cache(self, keys, version='', from_db=True):
-        if from_db:
-            for key in keys:
-                version, value = self.data_db.get_data_from_db(key)
-                data = {"value": value, "version": version}
-                self.cache_redis[key] = json.dumps(data)
-        else:
-            pipe = self.cache_redis.pipeline()
-            for key in keys:
-                value = self.shadowtable_redis_all_addr[self.ip].get(key)
-                if value:
-                    data = {"value": value, "version": version}
-                    pipe.set(key, json.dumps(data))
-            pipe.execute()
-
-    def fillup_repair_matadata(self, repair_metadata):
-        for txid in repair_metadata:
-            for func in repair_metadata[txid]:
-                # fill up the repair metadata to redis
-                repair_info = repair_metadata[txid][func]
-                repair_info
-                redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
-                self.shadowtable_redis_all_addr[self.ip][redis_key] = json.dumps(repair_metadata[txid][func])
-
     def get_global_function_pos(self, batch_id):
         func_pos_key =  self.param_wrapper(batch_id, 'POS')
         # get the function position from redis
@@ -175,25 +151,8 @@ class Repository:
         return func_pos
 
     # commit keys to DB, flush cache, and delete shadow table entries.
-    def commit_tx_writes(self, transaction_id):
-        commit_key_list = self.cache_redis.keys(f"{transaction_id}:PUT:*")
-        for redis_key in commit_key_list:
-            key = self.param_decode(redis_key)
+    def commit_tx_writes(self, commit_keys):
+        for redis_key in commit_keys:
             value = self.cache_redis.get(redis_key)
             # 调用 store_key_to_db 存储到数据库中
-            self.data_db.store_data_to_db(key, value)
-
-    def fillup_cache(self):
-        data = self.data_db.get_all_data_from_db()
-        expired_version = datetime(1970, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
-        for item in data:
-            key = item['key']
-            if config.EXPIRED_CACHE:
-                # eariler than default timestamp in database
-                version = expired_version
-            else:
-                version = item['version']
-            self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
-        print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")
-
-# TODO: shadow table and cache: which to read and write from?
+            self.data_db.store_data_to_db(redis_key, value)

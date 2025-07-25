@@ -36,27 +36,30 @@ class ConcordDispatcher:
 
 dispatcher = ConcordDispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 
+@app.route('/clear_state', methods = ['POST'])
+def clear_state():
+    data = request.get_json(force=True, silent=True)
+    transaction_id = data['transaction_id']
+    workflow = data['workflow_name']
+    dispatcher.concord_cache_agent[workflow].clean_access_set_of_tx(transaction_id)
+    return {'status': 'success'}
+
 @app.route('/concord_data', methods = ['POST'])
 def concord_data():
     data = request.get_json(force=True, silent=True)
     mode = data['mode']
     key = data['key']
     workflow = data['workflow']
-    trigger_tx = data['trigger_tx']
+    trigger_tx = data.get('trigger_tx', '')
+    success = True
     value = ''
     if mode == 'invalidated':
-        dispatcher.concord_cache_agent[workflow].invalidate_by_home(key, trigger_tx)
+        success = dispatcher.concord_cache_agent[workflow].invalidated_by_home(key, trigger_tx)
+    elif mode == "downgrade":
+        success, value = dispatcher.concord_cache_agent[workflow].downgrade_by_home(key)
     else:
-        value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, mode)
-    return json.dumps({'value': value})
-
-@app.route('/concord_lock', methods = ['POST'])
-def concord_lock():
-    data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    lock_keys = data['lock_keys']
-    lock = data['lock']  # default to True, meaning acquire locks
-    dispatcher.concord_cache_agent[data['workflow']].lock_or_unlock_for_commit(transaction_id, lock_keys, lock)
+        success, value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, mode)
+    return {'success':success, 'value': value}
     
 @app.route('/concord_home', methods = ['POST'])
 def concord_home():
@@ -67,14 +70,11 @@ def concord_home():
     workflow = data['workflow']
     transaction_id = data['transaction_id']
     value = ''
-    if mode == 'invalidated':
-        # invalidate the cache on this node.
-        value, state = dispatcher.concord_cache_agent[workflow].invalidate_by_home(key, transaction_id)
     if mode == 'read':
-        value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_read(transaction_id, key, remote_ip)
+        success, value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_read(transaction_id, key, remote_ip)
     else:
-        value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_write(transaction_id, key, remote_ip, mode)
-    return json.dumps({'value': value, 'state': state})
+        success, value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_write(transaction_id, key, remote_ip, mode)
+    return {'success':success, 'value': value, 'state': state}
 
 # python proxy.py  10.2.27.24 6000
 # python proxy.py  10.2.30.52 6000

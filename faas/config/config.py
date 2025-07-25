@@ -26,8 +26,6 @@ FUNCTION_INFO_ADDRS = {
                        }
 # cache setting
 CLEAR_MEM = False
-FILLUP_CACHE = True
-EXPIRED_CACHE = True
 DEFAULT_CONTAINER_NUM = 1
 
 

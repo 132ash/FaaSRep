@@ -87,7 +87,6 @@ class Runner:
         # in repair, use the metadata from redis.
 
         TxMetaData_thisFunc = {
-                                "read_set": {}, 
                                 "write_set": self.write_set
                               }
         aborted = False
@@ -108,7 +107,7 @@ class Runner:
         #     msg = json.dumps({'Abort': True, 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..       
         io_latency = store.io_latency
-        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],io_latency
+        return aborted, msg, TxMetaData_thisFunc["write_set"],io_latency
 
 
 proxy = Flask(__name__)
@@ -147,19 +146,17 @@ def run():
 
     inp = request.get_json(force=True, silent=True)
     transaction_id = inp['transaction_id']
-    rs, ws={},{}
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
     runner.save(transaction_id, inp['write_set'])
    
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
-    aborted, abort_msg, rs, ws,io_latency = runner.run(transaction_id)
+    aborted, abort_msg, ws, io_latency = runner.run(transaction_id)
     if aborted:
         return abort_msg
 
     res = {
-        "read_set": rs,
         "write_set": ws,
         "io_latency": io_latency,
     }
