@@ -1,6 +1,6 @@
 from gevent import event
 import sys
-import requests
+import logging
 sys.path.append('../../config')
 import config
 
@@ -26,7 +26,6 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
         if self.running_txs[tx_id]['abort']:
-            print(f"transaction {tx_id} aborted")
             return True
         return False
     
@@ -45,7 +44,7 @@ class RunningTXTable:
             self.running_txs[tx_id]['abort'] = True
             self.running_txs[tx_id]['finished'] = True
             self.running_txs[tx_id]['cond'].set()
-            print(f"[ABORT] tx_id {tx_id} finished running with abort.")
+            logging.info(f"[ABORT] tx_id {tx_id} Aborted. Need to retry.")
         else:
             for tx_id in transaction_id_list:
                 condition = self.running_txs[tx_id]['cond']
@@ -54,5 +53,5 @@ class RunningTXTable:
                 self.running_txs[tx_id]["validate_latency"] = validate_latency
                 self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
                 condition.set()
-                print(f"[FINISH] tx_id {tx_id} finished running.")
+                logging.info(f"[FINISH] tx_id {tx_id} finished running.")
 

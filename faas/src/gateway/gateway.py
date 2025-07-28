@@ -69,7 +69,6 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
         repo.create_request_doc(transaction_id)
     # allocate works
     start_functions = workflow_metadata['start_functions']
-    print(f"start_functions: {start_functions}")
     start = time.time()
     jobs = []
     for n in start_functions:
@@ -141,8 +140,6 @@ def clear_container():
     workflow = data['workflow']
     addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
     jobs = []
-    print("clearing containers...")
-    print(addrs)
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
         jobs.append(gevent.spawn(requests.get, clear_url))
