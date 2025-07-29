@@ -59,6 +59,7 @@ def concord_data():
         success, value = dispatcher.concord_cache_agent[workflow].downgrade_by_home(key)
     else:
         success, value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, value, mode)
+    dispatcher.concord_cache_agent[workflow].mark_key_access(trigger_tx, key)
     return {'success':success, 'value': value}
     
 @app.route('/concord_home', methods = ['POST'])
@@ -74,6 +75,7 @@ def concord_home():
         success, value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_read(transaction_id, key, remote_ip)
     else:
         success, value, state = dispatcher.concord_cache_agent[workflow].home_serve_remote_write(transaction_id, key, remote_ip, mode)
+    dispatcher.concord_cache_agent[workflow].mark_key_access(transaction_id, key)
     return {'success':success, 'value': value, 'state': state}
 
 # python proxy.py  10.2.27.24 6000

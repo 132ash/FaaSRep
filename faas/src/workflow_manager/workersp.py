@@ -37,7 +37,6 @@ class TransactionState:
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
         self.parent_executed: Dict[str, int] = {}
-        self.stop_running = False # used to stop running the transaction, e.g., when the function is aborted.
         for f in all_func:
             self.executed[f] = False
             self.parent_executed[f] = 0
@@ -121,8 +120,10 @@ class WorkerSPManager:
             clear_url = 'http://{}:6000/clear_state'.format(ip)
             data = {'transaction_id':transaction_id, 'workflow_name': self.workflow_name}
             abort_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
+            clear_state_url = 'http://{}:7000/clear'.format(ip)
+            clear_state_data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'clear_mem': False}
+            abort_jobs.append(gevent.spawn(requests.post, clear_state_url, json=clear_state_data))
         gevent.joinall(abort_jobs)
-        self.del_state(transaction_id)
         self.notify_gateway(transaction_id, True)
 
     def clear_access_log_on_worker(self, transaction_id: str) -> None:
@@ -161,8 +162,6 @@ class WorkerSPManager:
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         state.lock.acquire()
-        if state.stop_running:
-            return
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         runnable = self.check_runnable(state, function_name)

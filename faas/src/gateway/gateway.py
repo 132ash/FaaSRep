@@ -21,6 +21,7 @@ from flask import Flask, request
 from gateway_repo import Repository
 from transaction_info import RunningTXTable
 import requests
+import gevent.lock
 import time
 
 sys.path.append('../../config')
@@ -33,12 +34,14 @@ repo = Repository()
 txTable = RunningTXTable()
 
 workflow_metadata  =  {}
+workflow_metadata_lock = gevent.lock.BoundedSemaphore()
 def get_workflow_metadata(workflow_name):
-    if workflow_name not in workflow_metadata:
-        workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
-        workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
-        for func in workflow_metadata[workflow_name]['start_functions']:
-            info = repo.get_function_info(func, workflow_name + '_function_info')
+    with workflow_metadata_lock:
+        if workflow_name not in workflow_metadata:
+            workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
+            workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
+            for func in workflow_metadata[workflow_name]['start_functions']:
+                info = repo.get_function_info(func, workflow_name + '_function_info')
             workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
     return workflow_metadata[workflow_name]
@@ -51,7 +54,6 @@ def trigger_function(workflow_name, transaction_id, function_name, ip):
         'workflow_name': workflow_name,
         'function_name': function_name,
         'no_parent_execution': True,
-        'repair': False
     }
     requests.post(url, json=data)
 

@@ -70,11 +70,6 @@ class Dispatcher:
     def del_state(self, workflow_name, transaction_id):
         self.managers[workflow_name].del_state(transaction_id)
 
-    def stop_transaction(self, workflow_name, transaction_id):
-        self.managers[workflow_name].stop_transaction(transaction_id)
-
-
-
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 
@@ -110,7 +105,10 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
+    clear_mem = data.get('clear_mem', True)
+    if clear_mem:
+        logging.info(f"Clearing memory for workflow {workflow_name}, transaction {transaction_id}")
+        dispatcher.clear_mem(workflow_name, transaction_id)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
 

@@ -52,8 +52,6 @@ class ConcordCacheAgent:
             success = self.local_cacheline_conflict(key, transaction_id, mode, state)
             if not success:
                 return False, ''
-            logging.info(f"[CACHE AGENT READ HIT] local read hit. key: {key}, mode: {mode}, transaction_id: {transaction_id}")
-            self.access_set_per_tx[transaction_id][key] = True
             return True, self.repo.cache_redis[key]
         else:
             # local write hit.
@@ -75,10 +73,9 @@ class ConcordCacheAgent:
                 response = response.json()
                 if not response['success']:
                     return False, ''
-                self.cache_metadata[key]['state'] = Except
-                self.cache_metadata[key]['TX_IDs'] = {transaction_id: True}
+            self.cache_metadata[key]['state'] = Except
+            self.cache_metadata[key]['TX_IDs'] = {transaction_id: True}
             self.repo.cache_redis[key] = value
-            self.access_set_per_tx[transaction_id][key] = True
             return True, ''
             
     def data_access_remote(self, transaction_id, key, value, mode):
@@ -102,7 +99,6 @@ class ConcordCacheAgent:
         else:
             self.repo.cache_redis[key] = value
             value = ''
-        self.access_set_per_tx[transaction_id][key] = True
         return True, value
 
     def home_serve_remote_read(self, transaction_id, key, remote_ip):
@@ -209,6 +205,7 @@ class ConcordCacheAgent:
                         logging.info(f"[CACHE AGENT LOCAL READ CONFLICT] read after write. prev_tx:{write_tx_id}, abort transaction {transaction_id}. key: {key}")
                         return False
         else:
+            logging.info(f"[CACHE AGENT LOCAL WRITE CONFLICT]  key: {key}, transaction_id: {transaction_id}, current_tx_ids:{current_tx_ids}")
             for write_tx_id in current_tx_ids:
                 if write_tx_id != transaction_id:
                     logging.info(f"[CACHE AGENT LOCAL WRITE CONFLICT] write after write or read. prev_tx:{write_tx_id}, abort transaction {transaction_id}. key: {key}")
@@ -226,3 +223,6 @@ class ConcordCacheAgent:
                 if directory_line['writer_tx'] == transaction_id:
                     directory_line['writer_tx'] = None
                 directory_line['lock'].release()
+
+    def mark_key_access(self, transaction_id, key):
+        self.access_set_per_tx[transaction_id][key] = True
