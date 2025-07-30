@@ -1,0 +1,38 @@
+functions:
+- input:
+    keys:
+      from: GLOBAL
+      type: str
+    payload_size:
+      from: GLOBAL
+      type: int
+  name: f1
+  next:
+    nodes:
+    - f2_1
+    type: pass
+  source: f1
+- input:
+    keys:
+      from: GLOBAL
+      type: str
+    payload_size:
+      from: GLOBAL
+      type: int
+  name: f2_1
+  next:
+    nodes:
+    - f3
+    type: pass
+  source: f2_1
+- input:
+    keys:
+      from: GLOBAL
+      type: str
+    payload_size:
+      from: GLOBAL
+      type: int
+  name: f3
+  next:
+    type: FINISH
+  source: f3

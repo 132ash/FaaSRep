@@ -10,7 +10,7 @@ yaml_file_addr = config.WORKFLOW_YAML_ADDR
 def getYamlFileAddr(option, workflow_name=""):
     if option == "worker_info":
         return f'../../config/worker_info.yaml'
-    return f'../../config/workflow_info/{workflow_name}/{option}.yaml'
+    return f'{yaml_file_addr[workflow_name]}/{option}.yaml'
 
 
 def parse(workflow_name):
