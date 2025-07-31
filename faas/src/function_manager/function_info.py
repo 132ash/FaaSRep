@@ -36,6 +36,5 @@ def parse(config_path):
             info = FunctionInfo(workflow_name, function_name,
                               img_name,
                               int(max_containers))
-            print('img_name', info.img_name)
             function_info.append(info)
     return function_info

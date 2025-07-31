@@ -78,7 +78,7 @@ class ValidatorPool:
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
                 self.handler_task_queues[processor_id].put(req)
-                logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
+                # logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
                 return
             min_len = None
             min_idx = None
@@ -92,7 +92,7 @@ class ValidatorPool:
             self.batch_processor_table[batch_id] = min_idx
             self.batch_processor_table[batch_id] = min_idx
             self.handler_task_queues[min_idx].put(req)
-            logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
+            # logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
 
     def submit(self, batch_id, op, data={}):
         self.pool_task_queue.put((batch_id, op, data))
@@ -170,7 +170,7 @@ class ValidatorProcess(Process):
             self.time_tuple_per_batch[batch_id] = (first_run_finish_time, last_task_time, inside_validator_time)
             self.register_lock.release()
             if batch_need_repair:
-                self.repair_engine.repair_batch_after_validate(batch_id, batch['container_port'], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
+                self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
             else:
                 self.commit_batch_list(commit_list_for_current_handler, commit_keys_on_worker)
         elif op == REPAIR_FINISH:
@@ -182,7 +182,7 @@ class ValidatorProcess(Process):
             if batch_finished:
                 commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
                 ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
-                self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
+                self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker, aborted_txs)
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
         elif op == CASCADED_COMMIT:
@@ -204,16 +204,17 @@ class ValidatorProcess(Process):
         self.repair_info.batch_init(batch_id)
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
         batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, commit_keys_on_worker, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
-        log_validator_message(self.logger, f"[VALIDATE] batch {batch_id} with need_repair: {batch_need_repair}, expired_keys: {expired_keys}, subjection_set: {subjection_set}, commit_list_for_current_handler: {commit_list_for_current_handler}, commit_keys_on_worker: {commit_keys_on_worker}, pessi_sink_info: {pessi_sink_info}")
         if not batch_need_repair:
+            #log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} does not need repair. Commit list: {commit_list_for_current_handler}, commit keys on worker: {commit_keys_on_worker}")
             expired_keys_per_ip = {}
         else:
             expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
+            #log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: need_repair={batch_need_repair}, expired_keys={expired_keys}, subjection_set={subjection_set}, commit_list_for_current_handler={commit_list_for_current_handler}, commit_keys_on_worker={commit_keys_on_worker}, pessi_sink_info={pessi_sink_info}")
         return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, commit_keys_on_worker, time.time() - start_time, pessi_sink_info
 
 
     # commit_batch_list : [(batch_id, version), ...]
-    def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
+    def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip, aborted_txs=[]):
         txid_lists, timestamps = [], []
         worker_commit_set = {worker_ip:{'keys':[], 'txs':[]} for worker_ip in self.worker_ip_set}
         for key, commit_key_info in keys_for_commit_per_ip.items():
@@ -233,18 +234,29 @@ class ValidatorProcess(Process):
             self.write_set_per_batch.pop(batch_id, None)
             self.repair_engine.clean_table_of_batch(batch_id)
             self.container_port_per_batch.pop(batch_id, None)
-        log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, timestamps: {timestamps}, worker_commit_set: {worker_commit_set}")
+        #log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, timestamps: {timestamps}, worker_commit_set: {worker_commit_set}")
         jobs = [
             gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
             for ip in worker_commit_set
         ]
         gevent.joinall(jobs)
-        self.notify_gateway(txid_lists, True, timestamps)
-                     
+        self.notify_gateway(txid_lists, True, timestamps, aborted_txs)
+
+
+    def abort_on_worker(self, ip, aborted_txs):
+        if not ip.endswith(":7500"):
+            url = f"http://{ip}:7500/abort"
+        else:
+            url = f"http://{ip}/abort"
+        data = {
+            'workflow_name': self.workflow_name,
+            'aborted_txs': aborted_txs
+        }
+        requests.post(url, json=data)
 
     def trigger_worker_commit(self, ip, commit_list):
-        if not ip.endswith(":7000"):
-            url = f"http://{ip}:7000/commit"
+        if not ip.endswith(":7500"):
+            url = f"http://{ip}:7500/commit"
         else:
             url = f"http://{ip}/commit"
         
@@ -255,12 +267,13 @@ class ValidatorProcess(Process):
 
         requests.post(url, json=data)
 
-    def notify_gateway(self, txid_lists, success:bool, timestamps):
+    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
         data = {
             'transaction_id_lists': txid_lists,
             'success': success,
-            'timestamps':timestamps
+            'timestamps':timestamps,
+            'aborted_txs': aborted_txs
         }
         r = requests.post(url, json=data)
         return r.json() 

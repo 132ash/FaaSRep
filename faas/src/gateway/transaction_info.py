@@ -53,4 +53,3 @@ class RunningTXTable:
                 self.running_txs[tx_id]["validate_latency"] = validate_latency
                 self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
                 condition.set()
-                print(f"notified {tx_id}")

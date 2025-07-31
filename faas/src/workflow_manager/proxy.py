@@ -55,7 +55,7 @@ class Dispatcher:
        repo.shadowtable_init(sys.argv[1])
        repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
-       logging.info(f"Node list: {self.node_list}")
+       # logging.info(f"Node list: {self.node_list}")
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
        
@@ -99,7 +99,7 @@ def repair():
     repair_mode = data['repair_mode']
     no_parent_execution = data['no_parent_execution']
     port = data['port']
-    logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
+    # logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
     dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
     return json.dumps({'status': 'ok'})
 
@@ -134,7 +134,6 @@ def req():
     repair_mode = data.get('repair_mode', "")
     repair_states = data.get('repair_states', {})
     state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
-    logging.info(f"request [{transaction_id}], REPAIR:{repair} workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -144,8 +143,13 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
+    abort_clear = data.get('abort', False)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
+    if abort_clear:
+        if FAST_PATH:
+            dispatcher.reserve_pools[workflow_name].release([transaction_id])
+    else:
+        dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
 
 
@@ -167,9 +171,9 @@ def commit():
     data = request.get_json(force=True, silent=True)
     commit_list = data['commit_list']
     if FAST_PATH:
-        worklow_name = data['workflow_name']
-        fin_tx_lists = commit_list['txs']
-        dispatcher.reserve_pools[worklow_name].release(fin_tx_lists)
+        workflow_name = data['workflow_name']
+        fin_tx_list = commit_list['txs']
+        dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
     return json.dumps({'status': 'ok'})
 
@@ -190,8 +194,8 @@ def get_container_names():
     global container_names
     container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
 
-# python3 proxy.py  10.2.30.52 7000
-# python3 proxy.py  10.2.27.24 7000
+# python3 proxy.py  10.2.30.52 7500
+# python3 proxy.py  10.2.27.24 7500
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

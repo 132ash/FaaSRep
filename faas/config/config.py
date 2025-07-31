@@ -15,14 +15,14 @@ VALIDATOR_ADDR = '10.2.27.24:9000'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                     'textseq': '/home/shao/FaaSnap/benchmark/textseq',
-                    'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4',
+                    # 'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4',
                     # "sectestflow": '/home/ash/FaaSnap/benchmark/sectestflow/workflow.yaml',
                     # "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"
                     # #   'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'         
                       }
 FUNCTION_INFO_ADDRS = { 
                          'textseq': '/home/shao/FaaSnap/benchmark/textseq',
-                         'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4'
+                        #  'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4'
 #                         'sectestflow': '../../../../benchmark/sectestflow',
 #                         'testflow': '../../../../benchmark/testflow',
                        }
@@ -41,7 +41,7 @@ BATCH_INTERVAL = 0.005
 
 # mode setting
 FAST_PATH = True
-OPTIMISTIC_REPAIR = True
+OPTIMISTIC_REPAIR = False
 
 # repair setting
 RUNNING = '1'

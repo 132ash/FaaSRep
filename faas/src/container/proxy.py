@@ -32,6 +32,9 @@ dynamodb_area = container_config.DYNAMODB_AREA
 RUNNING = container_config.RUNNING
 ABORTED = container_config.ABORTED
 REPAIRED = container_config.REPAIRED
+
+OPT_REPAIR = container_config.OPT_REPAIR
+PESSI_REPAIR = container_config.PESSI_REPAIR
 db_server = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
 
 default_file = 'main.py'
@@ -60,7 +63,7 @@ class Runner:
 
         # infomation used in repair
         self.repair_metadata_lock = gevent.lock.BoundedSemaphore()
-        self.repair_metadata_fetched = False
+        self.repair_mode = None
         self.dirty = False
         self.keys_from_upstream = {}
         self.keys_from_RYW = {}
@@ -100,7 +103,6 @@ class Runner:
             self.code = compile(f.read(), filename, mode='exec')
         store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.function_pos, self.validator_addr)
 
-        logging.info('init finished...')
 
     def save(self, transaction_id, write_set):
         self.transaction_id = transaction_id
@@ -112,7 +114,6 @@ class Runner:
         set_pipeline.multi()
         upstream_fetch_results = self.repair_sidecar.fetch_upstream_keys(self.keys_from_upstream, transaction_id)
         waiting_cnt = 0
-        logging.info(f"Upstream fetch results: {upstream_fetch_results}")
         for _, upstream_tx_dict in upstream_fetch_results.items():
             for _, upstream_func_dict in upstream_tx_dict.items():
                 for _, func_result_info in upstream_func_dict.items():
@@ -133,10 +134,11 @@ class Runner:
         return waiting_cnt
 
     # in repair mode: save the repair metadata. 
-    def fetch_repair_metadata(self, transaction_id, metadata_nofast={}):
+    def fetch_repair_metadata(self, transaction_id, repair_mode, metadata_nofast={}):
         self.repair_metadata_lock.acquire()
-        if not self.repair_metadata_fetched:
-            self.repair_metadata_fetched = True
+        if self.repair_mode != repair_mode:
+            self.repair_mode = repair_mode
+            self.parent_executed = 0
             # not fast-path: the metadata is sent by workersp.
             if not self.fast_path_enabled:
                 self.keys_from_upstream = metadata_nofast['upstream_keys']
@@ -152,7 +154,7 @@ class Runner:
                     self.dirty = repair_metadata['dirty']
                     # besides metadata, the subjection from upstream should be prepared by container itself.
                     self.subjection_waiting_cnt = self.prepair_subjection_before_repair(transaction_id)
-                    logging.info(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt} ")
+                    # logging.info(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt} ")
         self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):
@@ -164,7 +166,7 @@ class Runner:
                 self.repair_metadata_lock.acquire()
                 self.parent_executed += 1
                 self.repair_metadata_lock.release()
-            logging.info(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}, waiting_cnt: {self.subjection_waiting_cnt}")
+            # logging.info(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}, waiting_cnt: {self.subjection_waiting_cnt}")
             return self.parent_executed == self.parent_cnt + self.subjection_waiting_cnt
         
     def trigger_next_function(self, transaction_id, ip, port ,dirty=False, batch_id="", repair_mode=''):
@@ -175,31 +177,31 @@ class Runner:
             'repair': True,
             'repair_mode':repair_mode
             }
-        logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
+        # logging.info(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}")
         requests.post(url, json=data)
 
     def fin_repair(self, batch_id, transaction_id, repair_mode):
         url = f'http://{self.sink_addr}/fin_repair'
-        logging.info(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}")
+        # logging.info(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}")
         data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id, 'repair_mode':repair_mode}
         requests.post(url, json=data)
 
     def abort_transaction(self, batch_id, transaction_id, repair_mode):
-        logging.info(f"abort transaction: {self.function}")
+        # logging.info(f"abort transaction: {self.function}")
         url = f'http://{self.sink_addr}/abort'
         data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True, 'repair_mode':repair_mode}
         requests.post(url, json=data)
 
     def trigger_downstream_functions(self, batch_id, aborted, downstream_funcs, repair_mode):
-        logging.info(f"Trigger waiting functions in opt: {downstream_funcs}")
+        # logging.info(f"Trigger waiting functions in opt: {downstream_funcs}")
         next_trigger_tasks = []
         # Trigger all waiting downstream functions
         for func_info in downstream_funcs:
-            downstream_tx_id, ip, port = func_info[0], func_info[2], func_info[3]
+            downstream_txid, ip, port = func_info[0], func_info[2], func_info[3]
             next_trigger_tasks.append(
             gevent.spawn(
                 self.trigger_next_function,
-                downstream_tx_id, ip, port, self.dirty, ''
+                downstream_txid, ip, port
                 )
             )
         # If not aborted, trigger successor functions in workflow graph.
@@ -211,7 +213,7 @@ class Runner:
                     )
                     break
                 next_ip = self.function_pos[next_func]
-                logging.info(f"Trigger Next functions: {next_ip}:{self.successor_port}")
+                # logging.info(f"Trigger Next functions: {next_ip}:{self.successor_port}")
                 next_trigger_tasks.append(
                     gevent.spawn(
                     self.trigger_next_function,
@@ -235,28 +237,27 @@ class Runner:
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, parent_cnt: {self.parent_cnt}")
+        # logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, parent_cnt: {self.parent_cnt}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         if not is_repair or not self.fast_path_enabled or self.dirty:
             store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
             self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
             # pre-exec
-            # try:
-            exec(self.code, self.ctx)
+            try:
+                exec(self.code, self.ctx)
             # run function
-            out = eval('main()', self.ctx)               
-            # except Exception as e:
-            #     aborted = True
-            #     msg = json.dumps({'Abort': True, 'error': str(e)})
-            #     logging.error(f"Function {self.function} execution failed: {msg}")
+                out = eval('main()', self.ctx)               
+            except Exception as e:
+                aborted = True
+                msg = json.dumps({'Abort': True, 'error': str(e)})
+                logging.error(f"Function {self.function} execution failed: {msg}")
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         if is_repair:
-            runner.repair_metadata_fetched = False
-            runner.parent_executed = 0
+            runner.repair_mode = None
             if self.fast_path_enabled:
                 if aborted:
                     self.container_state = ABORTED
-                    self.abort_transaction(self.batch_id, transaction_id)
+                    self.abort_transaction(self.batch_id, transaction_id, repair_mode)
                 else:
                     self.container_state = REPAIRED
                     # in fast-path: the container need to trigger downstream functions.
@@ -322,15 +323,21 @@ def run():
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
     if not is_repair:
+        runner.repair_mode = None
         runner.save(transaction_id, inp['write_set'])
     else:
-        logging.info(f"Running in repair mode: {is_repair}, batch_id:{inp['batch_id']}, transaction_id: {transaction_id}")
+        # logging.info(f"Running in repair mode: {is_repair}, batch_id:{inp['batch_id']}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
         batch_id = inp['batch_id']
         if batch_id:
+            # send from funcs in the same tx.
             runner.batch_id = batch_id
-        if runner.fast_path_enabled:
-            no_parent_execution = inp.get('no_parent_execution', False)
-        runner.fetch_repair_metadata(transaction_id, inp.get('repair_states', {}))
+            if runner.fast_path_enabled:
+                no_parent_execution = inp.get('no_parent_execution', False)
+            runner.fetch_repair_metadata(transaction_id, repair_mode, inp.get('repair_states', {}))
+        else:
+            # send from upstream tx.
+            if runner.repair_mode != OPT_REPAIR:
+                return {}
         
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)

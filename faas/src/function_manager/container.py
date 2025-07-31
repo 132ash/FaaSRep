@@ -46,7 +46,7 @@ class ContainerPool:
     def check_pool_full_and_occupy(self):
         self.lock.acquire()
         if self.num_exec + len(self.pool) > self.max_containers:
-            logging.info('hit container limit, function: %s', self.function_name)
+            # logging.info('hit container limit, function: %s', self.function_name)
             return False
         self.num_exec += 1
         self.lock.release()

@@ -26,13 +26,8 @@ class Repository:
         response = table.scan()
         items = response.get('Items', [])
         global_table_dict = {}
-        try:
-            for item in items:
-                global_table_dict[item['key']] = item['version']
-        except KeyError:
-            for i in items:
-                print(i['key'])
-                print(i.keys())
+        for item in items:
+            global_table_dict[item['key']] = item['version']
         return global_table_dict
 
     def get_start_functions(self, db_name) -> List[str]:

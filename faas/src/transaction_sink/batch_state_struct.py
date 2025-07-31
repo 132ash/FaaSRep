@@ -51,7 +51,7 @@ class PessimisticBatchState:
     def modify_batch_successors(self, next_batch_id, next_batch_txs, batch_successors):
         batch_successors.extend(next_batch_txs)
         self.next_txs_after_batch.setdefault(next_batch_id, []).extend(next_batch_txs)
-        logging.info(f"[PESSIMISTIC REPAIR] Batch {self.batch_id} modified successors: {next_batch_id} with transactions {next_batch_txs}")
+        # logging.info(f"[PESSIMISTIC REPAIR] Batch {self.batch_id} modified successors: {next_batch_id} with transactions {next_batch_txs}")
 
     def transaction_finish(self, tx_id, ready_txs):
         txs_to_be_triggered_by_prev_finish = []
@@ -81,7 +81,7 @@ class OptimisticTransactionState:
         if self.optimistic_repair_state == ABORTED:
             return ABORTED
         self.transaction_subjection.extend(tx_sub_inside_batch)
-        logging.info(f"[OPTIMISTIC SUBJECTION] Transaction {self.transaction_id} in batch {self.batch_id} updated subjection: {self.transaction_subjection}")
+        # logging.info(f"[OPTIMISTIC SUBJECTION] Transaction {self.transaction_id} in batch {self.batch_id} updated subjection: {self.transaction_subjection}")
         return self.optimistic_repair_state
     
     def optimistic_state_change_after_repair(self, optimistic_repair_mode, repair_state):
@@ -91,7 +91,7 @@ class OptimisticTransactionState:
         successors_to_be_pessimistic = []
         if self.need_pessimistic_repair and optimistic_repair_mode == OPT_REPAIR:
             return True, []
+        self.optimistic_repair_state = repair_state
         if self.optimistic_repair_state == ABORTED:
             successors_to_be_pessimistic = self.transaction_subjection
-        self.optimistic_repair_state = repair_state
         return False, successors_to_be_pessimistic

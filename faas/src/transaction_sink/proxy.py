@@ -32,7 +32,7 @@ from validate_struct import TransactionSink
 sys.path.append('../../config')
 import config
 
-validate_interval = 0.005 # 200 qps at most
+validate_interval = 0.01
 
 FAST_PATH = config.FAST_PATH
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
@@ -59,7 +59,7 @@ class Dispatcher:
     
     def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection):
         self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection)
-
+ 
     def _validate_loop(self):
         gevent.spawn_later(validate_interval, self._validate_loop)
         for sink in self.sinks.values():
@@ -76,6 +76,7 @@ def fin_repair():
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     repair_mode = data['repair_mode']
+    # logging.info(f"[FIN REPAIR] workflow: {workflow_name}, batch_id: {batch_id}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
     dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED)
     return json.dumps({'status': 'ok'})
 
@@ -84,9 +85,9 @@ def abort():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
+    # logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}")
     if data.get('repair', False):
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED)
-    # delay.
     else:
         notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
         payload = {
@@ -118,7 +119,6 @@ def repair_pessimistic():
     tx_sub =  data['tx_sub']  
     sub_per_tx = data.get('whole_tx_sub', {})
     res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
-    logging.info(f"Registered pessimistic repair info for batch_id {batch_id}, return: {res}")
     return res
 
 # python3 proxy.py  10.2.30.52 6000

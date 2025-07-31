@@ -6,8 +6,6 @@ import string
 import sys
 import pandas as pd
 import requests
-
-sys.path.append('..')
 sys.path.append('../../config')
 from repository import Repository
 import time
@@ -117,7 +115,7 @@ opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
     _system_mode= system_mode[0]
-    _opt = opt[1] 
+    _opt = opt[1]
     if TESTRUN:
         run_workflow("textseq", parameters_input["textseq"])
     else:

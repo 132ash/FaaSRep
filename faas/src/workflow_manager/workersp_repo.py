@@ -106,7 +106,6 @@ class Repository:
     
     def clear_mem(self, transaction_id=""):
         if transaction_id:
-            print(f"clearing shadow table for {transaction_id}")
             keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{transaction_id}:*")
             if keys:
                 pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()

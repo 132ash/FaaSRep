@@ -58,7 +58,7 @@ class RepairEngine:
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}
-        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Sending repair request for batch {batch_id}, cascaded ready transactions: {cascaded_ready_txs}")
+        #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Sending repair request for batch {batch_id}, cascaded ready transactions: {cascaded_ready_txs}")
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
         self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch, PESSI_REPAIR)
 
@@ -74,7 +74,7 @@ class RepairEngine:
         for tx_id in ready_transactions:
             if not FAST_PATH_ENABLED:
                 repair_metadata_no_fast = self.repair_info.get_repair_metadata(mode, batch_id, '', tx_id)
-            log_validator_message(self.logger, f"repairing transaction {tx_id} in batch {batch_id}, repair_metadata_no_fast:{repair_metadata_no_fast}")
+            #log_validator_message(self.logger, f"[REPAIR] repairing transaction {tx_id} in batch {batch_id}, repair_metadata_no_fast:{repair_metadata_no_fast}, mode: {mode}")
             # trigger start functions
             for n in self.start_functions:
                 ip = self.function_pos[n]
@@ -85,8 +85,8 @@ class RepairEngine:
 
     def trigger_function(self, FAST_PATH_ENABLED, workflow_name, transaction_id, function_name, ip, port, batch_id, repair_metadata_per_tx, mode):
         route = "repair" if FAST_PATH_ENABLED else "request"
-        if not ip.endswith(":7000"):
-            url = f'http://{ip}:7000/{route}'
+        if not ip.endswith(":7500"):
+            url = f'http://{ip}:7500/{route}'
         else:
             url = f'http://{ip}/{route}'
         # print(f"-----repair function: {function_name}, ip: {ip}, port: {port}, batch_id: {batch_id}, repair_states:{repair_metadata_per_tx}-----")
@@ -101,7 +101,6 @@ class RepairEngine:
             'repair_mode': mode,
             'repair_states': repair_metadata_per_tx
         }
-        print(f"triggering {function_name}, sending req to {url}, batch_id: {batch_id}")
         requests.post(url, json=data)
 
     def register_on_sink(self,batch_id, pessi_sink_info):
@@ -112,18 +111,18 @@ class RepairEngine:
             url = f'http://{ip}/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
         res = requests.post(url, json=data).json()
-        log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
+        #log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
         return res['ready_txs']
 
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}
     # send metadata to the proxy on worker node.
     # all functions' ip and port need to be sent(?)
     def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set):
-        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
+        #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
         if not repair_metadata and not expired_keys:
             return
-        if not worker_ip.endswith(":7000"):
-            url = 'http://{}:7000/prepare'.format(worker_ip)
+        if not worker_ip.endswith(":7500"):
+            url = 'http://{}:7500/prepare'.format(worker_ip)
         else:
             url = 'http://{}/prepare'.format(worker_ip)
         data = {

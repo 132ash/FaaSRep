@@ -1,2 +1,2 @@
-,validator overhead,overall validate latency,e2e latency,workflow run latency,func io latency,func exec latency
-0,0.005688977241516113,0.1228419303894043,0.27937467098236085,0.14013683795928955,0.02570514678955078,0.08047595024108886
+,mode,validator overhead,overall validate latency,e2e latency,workflow run latency,func io latency,func exec latency
+0,OPTIMISTIC_fast-path,0.003502368927001953,0.08697779178619384,0.3901432156562805,0.2889878869056702,0.09240562915802002,0.12650905847549437

@@ -46,7 +46,7 @@ class FunctionManager:
         self.init()
        
     def init(self):
-        gevent.spawn_later(repack_clean_interval, self._clean_loop)
+        # gevent.spawn_later(repack_clean_interval, self._clean_loop)
         gevent.spawn_later(dispatch_interval, self._dispatch_loop)
     
     def _clean_loop(self):
