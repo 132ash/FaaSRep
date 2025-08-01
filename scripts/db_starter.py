@@ -7,11 +7,8 @@ import string
 
 TEXT_SIZE = 4 * 1024  # 1MB / 4KB
 
-
-time.sleep(2)
 couch_db = couchdb.Server('http://faasnap:faasnap@10.2.27.24:5984')
 dynamo_db  = boto3.resource('dynamodb', endpoint_url='http://10.2.27.24:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
-
 
 
 for d in ["workflow_latency", "common", "results", "log"]:
@@ -45,24 +42,6 @@ table = dynamo_db.create_table(
     }
 )
 
-table.meta.client.get_waiter('table_exists').wait(TableName='data')
-table.put_item(
-    Item={
-        'key': 'test_value',
-        'value': '1'
-    }
-)
-def generate_random_text(size):
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
 
-keys = ['t0', 't1', 't2', 't4', 't6', 't8', 't10']
-for key in keys:
-    random_text = generate_random_text(TEXT_SIZE)
-    table.put_item(
-        Item={
-            'key': key,
-            'value': random_text
-        }
-    )
 
 

@@ -1,0 +1,7 @@
+functions:
+- image: micro_func
+  name: f1
+- image: micro_func
+  name: f2
+max_containers: 30
+workflow: c2
