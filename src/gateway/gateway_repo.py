@@ -176,4 +176,8 @@ class Repository:
             )
             table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
-    
+    def clear_db(self, transaction_id):
+        db = self.couch['results']
+        if transaction_id in db:
+            doc = db[transaction_id]
+            db.delete(doc)

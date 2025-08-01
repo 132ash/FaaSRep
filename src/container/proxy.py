@@ -58,7 +58,7 @@ class Runner:
             self.code = compile(f.read(), filename, mode='exec')
         store.init(self.function,  db_server)
 
-        #logging.info('init finished...')
+        ## logging.info('init finished...')
 
     def save(self, transaction_id, write_set, lock_set, create_timestamp):
         self.transaction_id = transaction_id
@@ -79,7 +79,7 @@ class Runner:
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        #logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, lock_set:{self.lock_set}")
+        ## logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, lock_set:{self.lock_set}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
         self.ctx = {'function_name': self.function, 'store': store}

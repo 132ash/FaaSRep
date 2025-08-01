@@ -72,7 +72,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
-        # #logging.info(f"fetch input from mem: {self.fetch_dict}")
+        # ## logging.info(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
 
     # return to local redis.

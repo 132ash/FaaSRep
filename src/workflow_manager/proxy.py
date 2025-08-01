@@ -83,7 +83,7 @@ def req():
     write_set = data.get('write_set', {})
     lock_set = data.get('lock_set', {})
     state = dispatcher.get_state(create_timestamp, retry_after_abort, workflow_name, transaction_id,  write_set, lock_set)
-    #logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, lock_set:{lock_set} get state latency:{time.time()-start}")
+    ## logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, lock_set:{lock_set} get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -93,10 +93,7 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    abort = data.get('abort', False)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
-    if not abort:
-        dispatcher.clear_db(workflow_name, transaction_id)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

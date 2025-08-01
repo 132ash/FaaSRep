@@ -36,7 +36,7 @@ class BeldiStore:
         lock_time = 0
         # RYW. not acquire lock, read from shadow table.
         if upstream_func:
-            #logging.info(f"RYW: {key}, upstream_func: {upstream_func}")
+            ## logging.info(f"RYW: {key}, upstream_func: {upstream_func}")
             response = self.shadow_table.get_item(
                     Key={
                         'key': key
@@ -96,7 +96,7 @@ class BeldiStore:
                             raise Exception(f"current_lock_timestamp is None. Key: {key},locker_txid: {locker_txid}")
                         elif self.create_timestamp < current_lock_timestamp:
                             # 自己的时间戳更早，继续尝试
-                            logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
+                            # logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
                             time.sleep(0.005)  # 短暂等待后重试
                             continue
                         else:

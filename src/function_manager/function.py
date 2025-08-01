@@ -70,7 +70,7 @@ class Function:
         req = self.rq.pop(0)
         self.num_processing -= 1
         # 2. send request to the container
-        #logging.info('send request to: %s of: %s, rq len: %d, data: %s', self.info.function_name, req.transaction_id, len(self.rq), str(req.data))
+        ## logging.info('send request to: %s of: %s, rq len: %d, data: %s', self.info.function_name, req.transaction_id, len(self.rq), str(req.data))
         res = container.send_request(req.data)
         res['port'] = container.port
         req.result.set(res)
@@ -87,21 +87,21 @@ class Function:
         if not self.container_pool.check_pool_full_and_occupy():
             return None
 
-        #logging.info('create container of function: %s', self.info.function_name)
+        ## logging.info('create container of function: %s', self.info.function_name)
         try:
             container = Container.create(self.client, self.info.img_name, self.port_controller.get(), 'exec', self.container_pool)
         except Exception as e:
             print(e)
             self.container_pool.num_exec -= 1
             return None
-        #logging.info('function: %s container created', self.info.function_name)
+        ## logging.info('function: %s container created', self.info.function_name)
         self.init_container(container)
         return container
 
     # after the destruction of container
     # its port should be give back to port manager
     def remove_container(self, container):
-        #logging.info('remove container: %s, pool size: %d', self.info.function_name, len(self.container_pool))
+        ## logging.info('remove container: %s, pool size: %d', self.info.function_name, len(self.container_pool))
         container.destroy()
         self.port_controller.put(container.port)
 
