@@ -1,6 +1,8 @@
 import couchdb
 import sys
-sys.path.append('../../config')
+from pathlib import Path
+experiment_dir = Path(__file__).parent
+sys.path.append(str(experiment_dir.parent / 'config'))
 import config
 
 class Repository:
@@ -18,4 +20,18 @@ class Repository:
             if doc['transaction_id'] == txid and doc['phase'] == phase:
                 latencies.append(doc['time'])
         return latencies
+    
+    def get_all_addrs(self):
+        db = self.couch['common']
+        for item in db:
+            doc = db[item]
+            if 'addrs' in doc:
+                return doc['addrs']
+    
+    def get_all_functions(self, workflow_name):
+        db = self.couch[f"{workflow_name}_function_info"]
+        functions = []
+        for item in db:
+            functions.append(db[item]['function_name'])
+        return functions
 

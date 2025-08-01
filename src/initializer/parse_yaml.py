@@ -2,14 +2,27 @@ import yaml
 import component
 import sys
 
-sys.path.append('../../config')
+from pathlib import Path
+
+def get_root_dir(script_dir: Path) -> Path:
+    project_root = script_dir
+    while project_root != project_root.parent:
+        if (project_root / "README.md").exists():
+            break
+        project_root = project_root.parent
+    return project_root
+
+script_dir = Path(__file__).parent
+ROOT_DIR = get_root_dir(script_dir)
+CONFIG_DIR = ROOT_DIR / 'config'
+sys.path.append(str(CONFIG_DIR))
 import config
 
 yaml_file_addr = config.WORKFLOW_YAML_ADDR
 
 def getYamlFileAddr(option, workflow_name=""):
     if option == "worker_info":
-        return f'../../config/worker_info.yaml'
+        return f'{CONFIG_DIR}/worker_info.yaml'
     return f'{yaml_file_addr[workflow_name]}/{option}.yaml'
 
 

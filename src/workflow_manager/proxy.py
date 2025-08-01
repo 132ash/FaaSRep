@@ -18,11 +18,9 @@ monkey.patch_all()
 import os
 import gevent
 import time
-import gevent.lock
 import json
 from typing import Dict
 from datetime import datetime
-sys.path.append('../../config')
 import config
 import workersp_repo
 from workersp import WorkerSPManager, TransactionState
@@ -31,7 +29,6 @@ from workersp import ReservePool
 from flask import Flask, request
 app = Flask(__name__)
 docker_client = docker.from_env()
-container_names = []
 repo = workersp_repo.Repository()
 
 sys.path.append('../../config')
@@ -177,9 +174,7 @@ def commit():
     repo.commit_tx_writes(commit_list['keys'])
     return json.dumps({'status': 'ok'})
 
-@app.route('/info', methods = ['GET'])
-def info():
-    return json.dumps(container_names)
+
 
 @app.route('/clear_container', methods = ['GET'])
 def clear_container():
@@ -189,10 +184,9 @@ def clear_container():
 
 GET_NODE_INFO_INTERVAL = 0.1
 
-def get_container_names():
-    gevent.spawn_later(get_container_names)
-    global container_names
-    container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
+
+
+
 
 # python3 proxy.py  10.2.30.52 7500
 # python3 proxy.py  10.2.27.24 7500
