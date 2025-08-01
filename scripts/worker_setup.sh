@@ -28,7 +28,7 @@ docker run -itd -p 6379:6379 --name redis redis
 
 
 docker build --no-cache -t workflow_sub ./workflow_sub
-docker build --no-cache -t workflow_base ../faas/src/container
+docker build --no-cache -t workflow_base ../src/container
 docker build --no-cache -t micro_func ./microbenchmark_func
 # ../benchmark/testflow/create_image.sh
 # ../benchmark/testflow/create_image.sh

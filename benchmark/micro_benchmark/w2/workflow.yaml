@@ -11,28 +11,43 @@ functions:
     nodes:
     - f2_1
     type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
   source: f1
 - input:
     keys:
-      from: GLOBAL
+      from: f1
       type: str
     payload_size:
-      from: GLOBAL
+      from: f1
       type: int
   name: f2_1
   next:
     nodes:
     - f3
     type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
   source: f2_1
 - input:
     keys:
-      from: GLOBAL
+      from: f1
       type: str
     payload_size:
-      from: GLOBAL
+      from: f1
       type: int
   name: f3
   next:
     type: FINISH
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
   source: f3

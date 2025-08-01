@@ -76,7 +76,7 @@ def fin_repair():
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     repair_mode = data['repair_mode']
-    # logging.info(f"[FIN REPAIR] workflow: {workflow_name}, batch_id: {batch_id}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
+    #logging.info(f"[FIN REPAIR] workflow: {workflow_name}, batch_id: {batch_id}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
     dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED)
     return json.dumps({'status': 'ok'})
 
@@ -85,7 +85,7 @@ def abort():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    # logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}")
+    #logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}")
     if data.get('repair', False):
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED)
     else:

@@ -4,6 +4,7 @@ import redis
 import boto3
 import sys
 import re
+import logging
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号

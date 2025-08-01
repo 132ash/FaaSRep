@@ -11,15 +11,25 @@ functions:
     nodes:
     - f2
     type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
   source: f1
 - input:
     keys:
-      from: GLOBAL
+      from: f1
       type: str
     payload_size:
-      from: GLOBAL
+      from: f1
       type: int
   name: f2
   next:
     type: FINISH
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
   source: f2

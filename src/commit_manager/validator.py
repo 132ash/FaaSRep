@@ -1,4 +1,4 @@
-from gevent import monkey, sleep, spawn
+from gevent import monkey
 monkey.patch_all()
 import gevent
 from gevent import event
@@ -78,7 +78,7 @@ class ValidatorPool:
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
                 self.handler_task_queues[processor_id].put(req)
-                # logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
+                #logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
                 return
             min_len = None
             min_idx = None
@@ -92,7 +92,7 @@ class ValidatorPool:
             self.batch_processor_table[batch_id] = min_idx
             self.batch_processor_table[batch_id] = min_idx
             self.handler_task_queues[min_idx].put(req)
-            # logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
+            #logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
 
     def submit(self, batch_id, op, data={}):
         self.pool_task_queue.put((batch_id, op, data))

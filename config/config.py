@@ -20,7 +20,7 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                     # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                    'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
                     # 'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4',
                     # "sectestflow": '/home/ash/FaaSnap/benchmark/sectestflow/workflow.yaml',
                     # "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"
@@ -28,7 +28,7 @@ WORKFLOW_YAML_ADDR = {
                       }
 FUNCTION_INFO_ADDRS = {
                         #  'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                          'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                          'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
                         #  'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4'
 #                         'sectestflow': '../../../../benchmark/sectestflow',
 #                         'testflow': '../../../../benchmark/testflow',
@@ -37,7 +37,7 @@ FUNCTION_INFO_ADDRS = {
 CLEAR_MEM = True
 FILLUP_CACHE = True
 EXPIRED_CACHE = True
-DEFAULT_CONTAINER_NUM = 6
+DEFAULT_CONTAINER_NUM = 9
 
 # validator setting
 VALIDATORS_PER_POOL = 2

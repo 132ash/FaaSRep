@@ -16,12 +16,10 @@ logging.basicConfig(
 from gevent import monkey
 monkey.patch_all()
 import os
-import gevent
 import time
 import json
 from typing import Dict
 from datetime import datetime
-import config
 import workersp_repo
 from workersp import WorkerSPManager, TransactionState
 import docker
@@ -52,7 +50,7 @@ class Dispatcher:
        repo.shadowtable_init(sys.argv[1])
        repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
-       # logging.info(f"Node list: {self.node_list}")
+       #logging.info(f"Node list: {self.node_list}")
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
        
@@ -96,7 +94,7 @@ def repair():
     repair_mode = data['repair_mode']
     no_parent_execution = data['no_parent_execution']
     port = data['port']
-    # logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
+    #logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
     dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
     return json.dumps({'status': 'ok'})
 

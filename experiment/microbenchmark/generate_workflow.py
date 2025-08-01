@@ -66,11 +66,19 @@ def generate_workflow_chain(n):
             'source': f'f{i}',
             'input': {
                 'keys': {
-                    'from': 'GLOBAL',
+                    'from': 'GLOBAL' if i == 1 else f'f{i-1}',
                     'type': 'str'
                 },
                 'payload_size': {
-                    'from': 'GLOBAL',
+                    'from': 'GLOBAL' if i == 1 else f'f{i-1}',
+                    'type': 'int'
+                }
+            },
+            'output': {
+                'keys': {
+                    'type': 'str'
+                },
+                'payload_size': {
                     'type': 'int'
                 }
             }
@@ -110,6 +118,14 @@ def generate_workflow_parallel(n):
                 'type': 'int'
             }
         },
+        'output': {
+            'keys': {
+                'type': 'str'
+            },
+            'payload_size': {
+                'type': 'int'
+            }
+        },
         'next': {
             'type': 'pass',
             'nodes': f1_nodes
@@ -123,11 +139,19 @@ def generate_workflow_parallel(n):
             'source': f'f2_{i}',
             'input': {
                 'keys': {
-                    'from': 'GLOBAL',
+                    'from': 'f1',
                     'type': 'str'
                 },
                 'payload_size': {
-                    'from': 'GLOBAL',
+                    'from': 'f1',
+                    'type': 'int'
+                }
+            },
+            'output': {
+                'keys': {
+                    'type': 'str'
+                },
+                'payload_size': {
                     'type': 'int'
                 }
             },
@@ -142,11 +166,19 @@ def generate_workflow_parallel(n):
         'source': 'f3',
         'input': {
             'keys': {
-                'from': 'GLOBAL',
+                'from': 'f1',
                 'type': 'str'
             },
             'payload_size': {
-                'from': 'GLOBAL',
+                'from': 'f1',
+                'type': 'int'
+            }
+        },
+        'output': {
+            'keys': {
+                'type': 'str'
+            },
+            'payload_size': {
                 'type': 'int'
             }
         },

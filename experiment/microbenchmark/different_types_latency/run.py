@@ -5,7 +5,6 @@ import json
 import pandas as pd
 from numpy import random
 import requests
-from repository import Repository
 import time
 from pathlib import Path
 
@@ -19,11 +18,10 @@ def get_root_dir(script_dir: Path) -> Path:
 
 script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
-sys.path.append(str(ROOT_DIR))
-sys.path.append(str(script_dir.parent))
+sys.path.append(str(ROOT_DIR / 'config'))
+sys.path.append(str(ROOT_DIR / 'experiment'))
 import config
 from repository import Repository
-import logging
 repo = Repository()
 
 
@@ -37,10 +35,10 @@ table = dynamodb.Table(table_name)
 
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
-CLIENT_CNT = 6
-ROUND = 1
+CLIENT_CNT = 9
+ROUND = 10
 parameters_inputs = {}
-all_workflows = ['c8']
+all_workflows = ['c4']
 result_dict = {}
 
 DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
@@ -48,28 +46,27 @@ dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
 
 def generate_workflow_input(workflow, text_size):
     dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
-    parameters_inputs[workflow] = []
-    for _ in range(CLIENT_CNT):
-        parameters_input = {"payload_size": text_size}
-        all_func = repo.get_all_functions(workflow)
-        for func in all_func:
-            parameters_input[func] = {"payload_size": text_size}
-            zipf_param = 1.0
-            dataset_len = len(dataset)
-            indices = set()
-            while len(indices) < 3:
-                idx = random.zipf(zipf_param) - 1
-                if 0 <= idx < dataset_len:
-                    indices.add(idx)
-            keys = [dataset[i] for i in indices]
-            parameters_input[func]['keys'] = json.dumps({keys[0]:'R', keys[1]:'R', keys[2]:'W'})
-        parameters_inputs[workflow].append(parameters_input)
-    logging.info(f"Generated parameters inputs for workflow {workflow}: {parameters_inputs[workflow]}")
+    all_func = repo.get_all_functions(workflow)
+    parameters_input = {'f1': {'payload_size': text_size, 'keys':{func: {} for func in all_func}}}
+    for func in all_func:
+        zipf_param = 1.1
+        dataset_len = len(dataset)
+        indices = set()
+        while len(indices) < 3:
+            idx = random.zipf(zipf_param) - 1
+            if 0 <= idx < dataset_len:
+                indices.add(idx)
+        keys = [dataset[i] for i in indices]
+        parameters_input['f1']['keys'][func] = {keys[0]:'R', keys[1]:'R', keys[2]:'W'}
+    parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
+    return parameters_input
+
+    # print(f"Generated parameters inputs for workflow {workflow}: {parameters_inputs[workflow]}")
 
 def run_workflow(workflow_name, parameters):
-    url = 'http://' + config.GATEWAY_ADDR + '/run'
-    data = {'workflow':workflow_name, "parameters":parameters}
-    rep = requests.post(url, json=data)
+    url = f'http://{config.GATEWAY_ADDR}/run'
+    inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters)}
+    rep = requests.post(url, json = inputs)
     return rep.json()
 
 def get_function_latency(txid):
@@ -78,8 +75,9 @@ def get_function_latency(txid):
     io_time = sum(func_io_latency) 
     return exec_time, io_time
 
-def analyze_workflow(workflow, thread_id):
-    rep = run_workflow(workflow, parameters_inputs[workflow][thread_id]) 
+def analyze_workflow(workflow, text_size):
+    parameters_input = generate_workflow_input(workflow, text_size)
+    rep = run_workflow(workflow, parameters_input) 
     txid = rep['transaction_id']
     validate_time_inside_validator = rep['validate_time_inside_validator']
     validate_latency = rep['validate_latency'] 
@@ -90,19 +88,18 @@ def analyze_workflow(workflow, thread_id):
     func_exec_time = func_exec_time_test 
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
 
-def analyze_all(system_mode, opt, text_size):
+def analyze_all(_system_mode, _opt, text_size):
     for workflow in all_workflows:
-        generate_workflow_input(workflow, text_size)
         repo.flush_couchdb_workflow_latency()
             # 创建线程函数
-        def thread_task(i):
+        def thread_task():
             for _ in range(ROUND):  # 每个线程调用 ROUND 次
-                analyze_workflow(workflow, i)  # 调用 analyze_workflow
-                time.sleep(0.025)  #
+                analyze_workflow(workflow, text_size)  # 调用 analyze_workflow
+
         # 创建4个线程
         threads = []
         for i in range(CLIENT_CNT):
-            thread = threading.Thread(target=thread_task, args=(i,))
+            thread = threading.Thread(target=thread_task)
             threads.append(thread)
             thread.start()
             # 等待所有线程运行结束
@@ -125,7 +122,7 @@ def analyze_all(system_mode, opt, text_size):
             func_exec_time.append(result["func_exec_time"])
 
         # 计算平均值
-        mode = f"{workflow}_{system_mode}_{opt}"
+        mode = f"{_system_mode}_{_opt}"
         avg_results = {
             'mode': mode,
             "validator overhead": sum(validate_time_inside_validator) / len(validate_time_inside_validator),
@@ -138,10 +135,10 @@ def analyze_all(system_mode, opt, text_size):
 
         # 创建 DataFrame
         df = pd.DataFrame([avg_results])
-        df.to_csv(f"{mode}.csv")
+        df.to_csv(f"{script_dir}/{workflow}_{mode}.csv")
    
 
-system_mode = ["OPTIMISTIC", "PESSIMISTIC"]
+system_mode = ["PESSIMISTIC", "OPTIMISTIC"]
 opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':

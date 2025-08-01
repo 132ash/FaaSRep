@@ -89,7 +89,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
-        # # logging.info(f"fetch input from mem: {self.fetch_dict}")
+        # #logging.info(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
 
     # return to local redis.
@@ -125,13 +125,13 @@ class Store:
         # SECOND run or not RYW, read from cache or shadow table.
         else:
             if self.keys_from_RYW.get(key, None):
-                # logging.info(f"[REPAIR RYW] Fetching from RYW for key: {key}")
+                #logging.info(f"[REPAIR RYW] Fetching from RYW for key: {key}")
                 upstream_func = self.keys_from_RYW[key]
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
             elif self.keys_from_upstream.get(key, None):
                 value = self.redis_shadow_table.self_get(self.param_wrapper(self.function_name, key, 'UPSTREAM'))
-                # logging.info(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}, TYPE:{type(value)}")
+                #logging.info(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}, TYPE:{type(value)}")
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
                 self.read_set[key] = value_version_pair["version"]

@@ -13,8 +13,9 @@ def read_or_write_key(key, mode, payload_size):
 
 def main():
     func_input = store.fetch_input()
-    keys_info =  json.loads(func_input["keys"])
+    all_keys = json.loads(func_input["keys"])
+    self_keys_info = all_keys.pop(function_name) 
     payload_size = func_input["payload_size"]
-    for key_info in keys_info:
-        for key, mode in key_info.items():
-            read_or_write_key(key, mode, payload_size)
+    for key, mode in self_keys_info.items():
+        read_or_write_key(key, mode, payload_size)
+    store.ret({"payload_size":payload_size, 'keys':json.dumps(all_keys)})

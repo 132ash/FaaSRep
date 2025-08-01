@@ -148,7 +148,7 @@ class WorkerSPManager:
     def del_state(self, transaction_id: str):
         self.lock.acquire()
         if transaction_id in self.states:
-            # logging.info('delete state of: %s', transaction_id)
+            #logging.info('delete state of: %s', transaction_id)
             del self.states[transaction_id]
         self.lock.release()
     
@@ -167,9 +167,9 @@ class WorkerSPManager:
     def tx_aborted_or_repaired(self,transaction_id, state,is_repair, batch_id='', repair_mode=''):
         if state == ABORTED:
             url = 'http://{}/abort'.format(self.transaction_sink_addr)
-            # logging.info(f"Transaction {transaction_id} in batch {batch_id} is aborted.")
+            #logging.info(f"Transaction {transaction_id} in batch {batch_id} is aborted.")
         else:
-            # logging.info(f"Transaction {transaction_id} in batch {batch_id} is repaired.")
+            #logging.info(f"Transaction {transaction_id} in batch {batch_id} is repaired.")
             url = 'http://{}/fin_repair'.format(self.transaction_sink_addr)
         # trigger next run of the transaction under pessimistic repair mode
         data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'repair_mode':repair_mode, 'repair': is_repair}
@@ -204,7 +204,7 @@ class WorkerSPManager:
 
     def crosstx_trigger_function(self, transaction_id: str, function_name: str) -> None:
         if transaction_id not in self.states or self.states[transaction_id].repair_mode != OPT_REPAIR:
-            # logging.info(f"[CROSS TRIGGER] Transaction {transaction_id} doesn't need the data from {function_name}")
+            #logging.info(f"[CROSS TRIGGER] Transaction {transaction_id} doesn't need the data from {function_name}")
             return
         state = self.states[transaction_id]
         state.lock.acquire()
@@ -219,13 +219,13 @@ class WorkerSPManager:
 
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
-        # logging.info(f'trigger local function: {function_name} of: {state.transaction_id}')
+        #logging.info(f'trigger local function: {function_name} of: {state.transaction_id}')
         state.lock.acquire()
         if state.repair and state.repair_mode_changed:
             upstream_keys = state.repair_states[function_name]["upstream_keys"]
             upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(upstream_keys, state.transaction_id, function_name, self.function_pos) 
             upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info)  
-            # logging.info(f"[REPAIR FETCH UPSTREAM] upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
+            #logging.info(f"[REPAIR FETCH UPSTREAM] upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
             state.repair_subjection_upcnt[function_name] = upstream_waiting_count
             state.parent_executed[function_name] = 0
             state.executed[function_name] = False
@@ -242,7 +242,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        # logging.info(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        #logging.info(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             # basic infomation
@@ -300,7 +300,7 @@ class WorkerSPManager:
         if self.OPTIMISTIC_REPAIR:
             if state.repair:
                 downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, REPAIRED)
-                # logging.info(f"trigger downstream_funcs waiting function: {downstream_funcs}")
+                #logging.info(f"trigger downstream_funcs waiting function: {downstream_funcs}")
                 self.repo.subjection_collector.send_data_to_waiting_downstream(state.transaction_id, function_name, downstream_funcs)
                 crosstx_jobs = [
                             gevent.spawn(self.trigger_function_cross_tx, func_info)
@@ -327,7 +327,7 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        # logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}")
+        #logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):

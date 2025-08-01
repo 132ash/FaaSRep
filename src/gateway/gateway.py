@@ -33,7 +33,7 @@ app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
 
-workflow_metadata  =  {}
+workflow_metadata = {}
 metadata_lock = gevent.lock.BoundedSemaphore()
 
 def get_workflow_metadata(workflow_name):
@@ -58,6 +58,7 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'repair': False,
         'retry': retry
     }
+    #logging.info(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
     requests.post(url, json=data)
 
 def clear_mem(ip, transaction_id, workflow_name, abort=False):
@@ -73,6 +74,8 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
+    if type(parameters) is not dict:
+        parameters = json.loads(parameters)
     for n in start_functions:
         ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
@@ -91,7 +94,7 @@ def run():
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    # logging.info(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
+    #logging.info(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
     start = time.time()
     aborted = False
     retry = False
@@ -100,7 +103,7 @@ def run():
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
-            # logging.info(f"[ABORT] transaction {transaction_id} aborted, clear state and retrying...")
+            #logging.info(f"[ABORT] transaction {transaction_id} aborted, clear state and retrying...")
             txTable.resetTX(transaction_id)
             clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
             gevent.joinall(clear_jobs)
@@ -109,7 +112,7 @@ def run():
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    # logging.info(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    logging.info(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
