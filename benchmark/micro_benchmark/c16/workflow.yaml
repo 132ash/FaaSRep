@@ -1,0 +1,287 @@
+functions:
+- input:
+    keys:
+      from: GLOBAL
+      type: str
+    payload_size:
+      from: GLOBAL
+      type: int
+  name: f1
+  next:
+    nodes:
+    - f2
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f1
+- input:
+    keys:
+      from: f1
+      type: str
+    payload_size:
+      from: f1
+      type: int
+  name: f2
+  next:
+    nodes:
+    - f3
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f2
+- input:
+    keys:
+      from: f2
+      type: str
+    payload_size:
+      from: f2
+      type: int
+  name: f3
+  next:
+    nodes:
+    - f4
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f3
+- input:
+    keys:
+      from: f3
+      type: str
+    payload_size:
+      from: f3
+      type: int
+  name: f4
+  next:
+    nodes:
+    - f5
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f4
+- input:
+    keys:
+      from: f4
+      type: str
+    payload_size:
+      from: f4
+      type: int
+  name: f5
+  next:
+    nodes:
+    - f6
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f5
+- input:
+    keys:
+      from: f5
+      type: str
+    payload_size:
+      from: f5
+      type: int
+  name: f6
+  next:
+    nodes:
+    - f7
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f6
+- input:
+    keys:
+      from: f6
+      type: str
+    payload_size:
+      from: f6
+      type: int
+  name: f7
+  next:
+    nodes:
+    - f8
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f7
+- input:
+    keys:
+      from: f7
+      type: str
+    payload_size:
+      from: f7
+      type: int
+  name: f8
+  next:
+    nodes:
+    - f9
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f8
+- input:
+    keys:
+      from: f8
+      type: str
+    payload_size:
+      from: f8
+      type: int
+  name: f9
+  next:
+    nodes:
+    - f10
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f9
+- input:
+    keys:
+      from: f9
+      type: str
+    payload_size:
+      from: f9
+      type: int
+  name: f10
+  next:
+    nodes:
+    - f11
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f10
+- input:
+    keys:
+      from: f10
+      type: str
+    payload_size:
+      from: f10
+      type: int
+  name: f11
+  next:
+    nodes:
+    - f12
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f11
+- input:
+    keys:
+      from: f11
+      type: str
+    payload_size:
+      from: f11
+      type: int
+  name: f12
+  next:
+    nodes:
+    - f13
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f12
+- input:
+    keys:
+      from: f12
+      type: str
+    payload_size:
+      from: f12
+      type: int
+  name: f13
+  next:
+    nodes:
+    - f14
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f13
+- input:
+    keys:
+      from: f13
+      type: str
+    payload_size:
+      from: f13
+      type: int
+  name: f14
+  next:
+    nodes:
+    - f15
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f14
+- input:
+    keys:
+      from: f14
+      type: str
+    payload_size:
+      from: f14
+      type: int
+  name: f15
+  next:
+    nodes:
+    - f16
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f15
+- input:
+    keys:
+      from: f15
+      type: str
+    payload_size:
+      from: f15
+      type: int
+  name: f16
+  next:
+    type: FINISH
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f16

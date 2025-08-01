@@ -1,0 +1,35 @@
+functions:
+- image: micro_func
+  name: f1
+- image: micro_func
+  name: f2
+- image: micro_func
+  name: f3
+- image: micro_func
+  name: f4
+- image: micro_func
+  name: f5
+- image: micro_func
+  name: f6
+- image: micro_func
+  name: f7
+- image: micro_func
+  name: f8
+- image: micro_func
+  name: f9
+- image: micro_func
+  name: f10
+- image: micro_func
+  name: f11
+- image: micro_func
+  name: f12
+- image: micro_func
+  name: f13
+- image: micro_func
+  name: f14
+- image: micro_func
+  name: f15
+- image: micro_func
+  name: f16
+max_containers: 30
+workflow: c16
