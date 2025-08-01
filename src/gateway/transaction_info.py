@@ -40,7 +40,7 @@ class RunningTXTable:
 
     def notifyTX(self, transaction_id, first_run_finish_time, abort = False):
         if abort:
-            self.repo.delete_latency(transaction_id)
+            # self.repo.delete_latency(transaction_id)
             self.running_txs[transaction_id]['abort'] = True
             self.running_txs[transaction_id]['finished'] = True
             self.running_txs[transaction_id]['cond'].set()

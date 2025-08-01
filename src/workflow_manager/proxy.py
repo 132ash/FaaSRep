@@ -93,7 +93,10 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
+    abort = data.get('abort', False)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
+    if not abort:
+        dispatcher.clear_db(workflow_name, transaction_id)
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])

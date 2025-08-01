@@ -1,6 +1,7 @@
 import logging
 import time
 from botocore.exceptions import ClientError
+from decimal import Decimal
 
 class BeldiStore:
     def __init__(self, db_server):
@@ -10,7 +11,7 @@ class BeldiStore:
     def runtime_init(self, transaction_id, lock_set, create_timestamp):
         self.transaction_id = transaction_id
         self.lock_set = lock_set
-        self.create_timestamp = create_timestamp
+        self.create_timestamp = Decimal(str(create_timestamp))
         self.shadow_table = self.db_server.Table(f"{self.transaction_id}_shadow_table")
 
 
@@ -89,23 +90,17 @@ class BeldiStore:
                             Key={'key': key}
                         )
                         item = response.get('Item')
-                        if item and 'lock' in item and item['lock']:
-                            # 检查时间戳
-                            current_lock_timestamp = item.get('create_timestamp', float('inf'))
-                            if self.create_timestamp < current_lock_timestamp:
-                                # 自己的时间戳更早，继续尝试
-                                logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
-                                time.sleep(0.005)  # 短暂等待后重试
-                                continue
-                            else:
-                                # 自己的时间戳较晚，抛出异常
-                                logging.error(f"Transaction {self.transaction_id} aborted due to later timestamp on key {key}")
-                                raise Exception(f"Lock acquisition failed for key {key}: transaction timestamp is later than current lock holder")
-                        else:
-                            # 没有锁信息，重试
-                            time.sleep(0.005)
+                        locker_txid = item['lock']
+                        current_lock_timestamp = item['create_timestamp']
+                        if current_lock_timestamp == None:
+                            raise Exception(f"current_lock_timestamp is None. Key: {key},locker_txid: {locker_txid}")
+                        elif self.create_timestamp < current_lock_timestamp:
+                            # 自己的时间戳更早，继续尝试
+                            logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
+                            time.sleep(0.005)  # 短暂等待后重试
                             continue
-                    else:
-                        # 其他错误，重新抛出
-                        raise e      
-       
+                        else:
+                            # 自己的时间戳较晚，抛出异常
+                            logging.error(f"Transaction {self.transaction_id} aborted due to later timestamp on key {key}")
+                            raise Exception(f"Lock acquisition failed for key {key}: newer than holder {locker_txid}.")
+            

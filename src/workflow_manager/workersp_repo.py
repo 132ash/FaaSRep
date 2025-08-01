@@ -128,7 +128,6 @@ class Repository:
                 },
                 ReturnValues="UPDATED_NEW"
             )
-        logging.info(f"Released locks for transaction {transaction_id}: {lock_set}")
         
 
     def sync_shadow_to_data_db_with_version(self, transaction_id, version=''):

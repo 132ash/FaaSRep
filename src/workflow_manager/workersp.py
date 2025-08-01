@@ -156,6 +156,7 @@ class WorkerSPManager:
             'function_name': function_name,
             'no_parent_execution': no_parent_execution,
             'write_set': state.write_set,
+            'create_timestamp': state.create_timestamp,
             'lock_set': state.lock_set
 
         }
@@ -202,7 +203,9 @@ class WorkerSPManager:
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.lock_set)
         end = time.time()
         if res.get("Abort", False):
-            # logging.error(f"function {name} trigger abort: {res['error']}")
+            logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}, lock_set: {res['lock_set']}")
+            if 'current_lock_timestamp' in res['error']:
+                raise ValueError(f"Function {name} failed due to lock acquisition error: {res['error']}")
             return False, res['lock_set']
             
         state.lock.acquire()

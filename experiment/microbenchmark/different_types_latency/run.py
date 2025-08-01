@@ -37,8 +37,8 @@ table = dynamodb.Table(table_name)
 
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
-CLIENT_CNT = 3
-ROUND = 1
+CLIENT_CNT = 9
+ROUND = 10
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
