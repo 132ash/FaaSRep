@@ -60,10 +60,11 @@ class Runner:
 
         #logging.info('init finished...')
 
-    def save(self, transaction_id, write_set, lock_set):
+    def save(self, transaction_id, write_set, lock_set, create_timestamp):
         self.transaction_id = transaction_id
         self.write_set = write_set
         self.lock_set = lock_set
+        self.create_timestamp = create_timestamp
 
     def run(self, transaction_id):
         # in first run, collect read/write set, and RYW subjection
@@ -71,7 +72,8 @@ class Runner:
 
         TxMetaData_thisFunc = {
                                 "write_set": self.write_set, 
-                                "lock_set": self.lock_set
+                                "lock_set": self.lock_set,
+                                'create_timestamp': self.create_timestamp,
                               }
         aborted = False
         msg = ''
@@ -80,7 +82,7 @@ class Runner:
         #logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, lock_set:{self.lock_set}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
-        self.ctx = {'function': self.function, 'store': store}
+        self.ctx = {'function_name': self.function, 'store': store}
         # pre-exec
         try:
             exec(self.code, self.ctx)
@@ -129,8 +131,9 @@ def run():
     proxy.status = 'run'
     inp = request.get_json(force=True, silent=True)
     transaction_id = inp['transaction_id']
+    create_timestamp = inp['create_timestamp']
     lock_set = inp['lock_set']
-    runner.save(transaction_id, inp['write_set'],  lock_set)
+    runner.save(transaction_id, inp['write_set'],  lock_set, create_timestamp)
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
     aborted, abort_msg, ws, io_latency, lock_latency = runner.run(transaction_id)

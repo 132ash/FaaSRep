@@ -4,6 +4,7 @@ from typing import List, Any
 import couchdb
 import boto3
 import sys
+import logging
 
 sys.path.append('../../config')
 import config
@@ -108,16 +109,17 @@ class Repository:
 
     def release_lock(self, transaction_id, lock_set):
         """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
+        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。时间戳也置为None
         """
 
         for key in lock_set.keys():
             # 更新 lock 属性为 None
             self.data_db.update_item(
                 Key={'key': key},
-                UpdateExpression="SET #l = :none",
+                UpdateExpression="SET #l = :none, #ct = :none",
                 ExpressionAttributeNames={
-                    '#l': 'lock'
+                    '#l': 'lock',
+                    '#ct': 'create_timestamp'
                 },
                 ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
                 ExpressionAttributeValues={
@@ -126,6 +128,8 @@ class Repository:
                 },
                 ReturnValues="UPDATED_NEW"
             )
+        logging.info(f"Released locks for transaction {transaction_id}: {lock_set}")
+        
 
     def sync_shadow_to_data_db_with_version(self, transaction_id, version=''):
         shadow_table_name = f"{transaction_id}_shadow_table"

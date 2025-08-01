@@ -21,7 +21,7 @@ def generate_random_text(size):
 
 script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
-sys.path.append(str(ROOT_DIR))
+sys.path.append(str(ROOT_DIR / 'config'))
 import config
 
 TEXT_SIZE_SMALL = 8
@@ -32,57 +32,61 @@ time.sleep(2)
 couch_db = couchdb.Server(f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984')
 dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STOREGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
+def create_microbenchmark_dataset():
+    try:
+        table = dynamo_db.Table('data')
+        table.delete()
+        table.meta.client.get_waiter('table_not_exists').wait(TableName='data')
+    except:
+        pass
 
-try:
-    table = dynamo_db.Table('data')
-    table.delete()
-    table.meta.client.get_waiter('table_not_exists').wait(TableName='data')
-except:
-    pass
-
-table = dynamo_db.create_table(
-    TableName='data',
-    KeySchema=[
-        {
-            'AttributeName': 'key',
-            'KeyType': 'HASH'  # 主键
-        }
-    ],
-    AttributeDefinitions=[
-        {
-            'AttributeName': 'key',
-            'AttributeType': 'S'
-        }
-    ],
-    ProvisionedThroughput={
-        'ReadCapacityUnits': 100,
-        'WriteCapacityUnits': 100
-    }
-)
-
-table.meta.client.get_waiter('table_exists').wait(TableName='data')
-startup_version = datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
-
-db_keys = {'large':[], 'small':[]}
-for i in range(DB_SIZE):
-    small_key_name = f"key{i}small"
-    large_key_name = f"key{i}large"
-    db_keys['small'].append(small_key_name)
-    db_keys['large'].append(large_key_name)
-    small_text = generate_random_text(TEXT_SIZE_SMALL)
-    large_text = generate_random_text(TEXT_SIZE_LARGE)
-    table.put_item(
-        Item={
-            'key': small_key_name,
-            'version': startup_version,
-            'value': small_text
+    table = dynamo_db.create_table(
+        TableName='data',
+        KeySchema=[
+            {
+                'AttributeName': 'key',
+                'KeyType': 'HASH'  # 主键
+            }
+        ],
+        AttributeDefinitions=[
+            {
+                'AttributeName': 'key',
+                'AttributeType': 'S'
+            }
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 100,
+            'WriteCapacityUnits': 100
         }
     )
-    table.put_item(
-        Item={
-            'key': large_key_name,
-            'version': startup_version,
-            'value': large_text
-        }
-    )
-json.dump(db_keys, open(script_dir / "db_keys.json", 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+
+    table.meta.client.get_waiter('table_exists').wait(TableName='data')
+    startup_version = datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
+
+    db_keys = {'large':[], 'small':[]}
+    for i in range(DB_SIZE):
+        small_key_name = f"key{i}small"
+        large_key_name = f"key{i}large"
+        db_keys['small'].append(small_key_name)
+        db_keys['large'].append(large_key_name)
+        small_text = generate_random_text(TEXT_SIZE_SMALL)
+        large_text = generate_random_text(TEXT_SIZE_LARGE)
+        table.put_item(
+            Item={
+                'key': small_key_name,
+                'version': startup_version,
+                'value': small_text
+            }
+        )
+        table.put_item(
+            Item={
+                'key': large_key_name,
+                'version': startup_version,
+                'value': large_text
+            }
+        )
+    json.dump(db_keys, open(script_dir / "db_keys.json", 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+
+if __name__ == "__main__":
+    create_microbenchmark_dataset()
+    print("Microbenchmark dataset created successfully.")

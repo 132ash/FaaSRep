@@ -143,9 +143,12 @@ class Repository:
     def delete_latency(self, transaction_id):
         latency_db = self.couch['workflow_latency']
         for _id in self.couch['workflow_latency']:
-            doc = self.couch['workflow_latency'][_id]
-            if doc['transaction_id'] == transaction_id:
-                latency_db.delete(doc)
+            try:
+                doc = self.couch['workflow_latency'][_id]
+                if doc['transaction_id'] == transaction_id:
+                    latency_db.delete(doc)
+            except couchdb.http.ResourceNotFound:
+                print(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
 
     def create_shadow_table(self, transaction_id):
         table_name = f"{transaction_id}_shadow_table"

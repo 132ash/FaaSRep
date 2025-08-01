@@ -47,12 +47,13 @@ def get_workflow_metadata(workflow_name):
     metadata_lock.release()
     return workflow_metadata[workflow_name]
 
-def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
+def trigger_function(workflow_name, transaction_id, create_timestamp, function_name, ip, retry):
     url = 'http://{}/request'.format(ip)
     print(f"sending req to {url}")
     data = {
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
+        'create_timestamp': create_timestamp,
         'function_name': function_name,
         'no_parent_execution': True,
         'repair': False,
@@ -69,19 +70,21 @@ def clear_mem(ip, transaction_id, workflow_name):
     except:
         print(f"node {clear_url} not started or performs well.")
 
-def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
+def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
+    if type(parameters) is not dict:
+        parameters = json.loads(parameters)
     for n in start_functions:
         ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, create_timestamp, n, ip, retry))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
@@ -92,7 +95,7 @@ def run():
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
-    txTable.registerTX(workflow, transaction_id, parameters)
+    create_timestamp = txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
     #logging.info('processing request ' + transaction_id + '...')
     start = time.time()
@@ -101,7 +104,7 @@ def run():
     retry = False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
-        exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
+        exec_first_latency = run_workflow(create_timestamp, workflow, workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
             txTable.resetTX(transaction_id)
@@ -111,7 +114,7 @@ def run():
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    #logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}")
+    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']

@@ -1,14 +1,16 @@
 import logging
 import time
+from botocore.exceptions import ClientError
 
 class BeldiStore:
     def __init__(self, db_server):
         self.db_server = db_server
         self.data_db = db_server.Table('data')
 
-    def runtime_init(self, transaction_id, lock_set):
+    def runtime_init(self, transaction_id, lock_set, create_timestamp):
         self.transaction_id = transaction_id
         self.lock_set = lock_set
+        self.create_timestamp = create_timestamp
         self.shadow_table = self.db_server.Table(f"{self.transaction_id}_shadow_table")
 
 
@@ -54,32 +56,56 @@ class BeldiStore:
         else:
             return "", 0
 
-    def acquire_lock(self, key):
+    def acquire_lock(self, key):        
         start = time.time()
         if self.lock_set.get(key, False):
             return time.time() - start
         else:
-            self.data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #l = :txid",
-                ConditionExpression="attribute_not_exists(#l) OR #l = :none OR #l = :txid",
-                ExpressionAttributeNames={
-                    '#l': 'lock'
-                },
-                ExpressionAttributeValues={
-                    ':txid': self.transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
-            )
-            response = self.data_db.get_item(
-                Key={
-                    'key': key
-                }
-            )
-            item = response.get('Item')
-            end = time.time()
-            #logging.info(f"acquire lock for {key}, lock:{item['lock']}")
-            self.lock_set[key] = True
-            return end - start      
+            while True:
+                try:
+                    # 尝试获取锁
+                    self.data_db.update_item(
+                        Key={'key': key},
+                        UpdateExpression="SET #l = :txid, #ct = :create_timestamp",
+                        ConditionExpression="attribute_not_exists(#l) OR #l = :none OR #l = :txid",
+                        ExpressionAttributeNames={
+                            '#l': 'lock',
+                            '#ct': 'create_timestamp'
+                        },
+                        ExpressionAttributeValues={
+                            ':txid': self.transaction_id,
+                            ':none': None,
+                            ':create_timestamp': self.create_timestamp
+                        },
+                        ReturnValues="UPDATED_NEW"
+                    )
+                    # 获取锁成功
+                    self.lock_set[key] = True
+                    return time.time() - start
+                except ClientError as e:
+                    if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                        # 获取锁失败，检查当前锁持有者的时间戳
+                        response = self.data_db.get_item(
+                            Key={'key': key}
+                        )
+                        item = response.get('Item')
+                        if item and 'lock' in item and item['lock']:
+                            # 检查时间戳
+                            current_lock_timestamp = item.get('create_timestamp', float('inf'))
+                            if self.create_timestamp < current_lock_timestamp:
+                                # 自己的时间戳更早，继续尝试
+                                logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
+                                time.sleep(0.005)  # 短暂等待后重试
+                                continue
+                            else:
+                                # 自己的时间戳较晚，抛出异常
+                                logging.error(f"Transaction {self.transaction_id} aborted due to later timestamp on key {key}")
+                                raise Exception(f"Lock acquisition failed for key {key}: transaction timestamp is later than current lock holder")
+                        else:
+                            # 没有锁信息，重试
+                            time.sleep(0.005)
+                            continue
+                    else:
+                        # 其他错误，重新抛出
+                        raise e      
        

@@ -29,7 +29,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], write_set, lock_set):
+    def __init__(self, create_timestamp, transaction_id: str, all_func: List[str], write_set, lock_set):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         # {key: func_ip}
@@ -37,6 +37,7 @@ class TransactionState:
         # {func:{"down_funcs":[], "up_cnt":xx
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
+        self.create_timestamp = create_timestamp
         self.parent_executed: Dict[str, int] = {}
         self.stop_running = False # used to stop running the transaction, e.g., when the function is aborted.
         # used only in remote lock mode.
@@ -80,11 +81,11 @@ class WorkerSPManager:
         # config of different modes.
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id: str, write_set, lock_set) -> TransactionState:
+    def get_state(self, create_timestamp, retry_after_abort, transaction_id: str, write_set, lock_set) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func,  write_set,  lock_set)
+            self.states[transaction_id] = TransactionState(create_timestamp, transaction_id, self.func,  write_set,  lock_set)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
@@ -120,6 +121,7 @@ class WorkerSPManager:
         if function_name == 'END':
             self.repo.beldi_commit(state.transaction_id, state.lock_set)
             self.abort_or_commit_tx(state.transaction_id, False)
+            logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -182,6 +184,7 @@ class WorkerSPManager:
         info = self.function_info[function_name]
         successful, lock_set = self.run_normal(state, info)
         if not successful:
+            # logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
             self.repo.release_lock(state.transaction_id, lock_set)
             self.abort_or_commit_tx(state.transaction_id, True)
             return
@@ -196,10 +199,10 @@ class WorkerSPManager:
         start = time.time()
         name = info['function_name']
         #logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
-        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.lock_set)
+        res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.lock_set)
         end = time.time()
         if res.get("Abort", False):
-            logging.error(f"function {name} trigger abort: {res['error']}")
+            # logging.error(f"function {name} trigger abort: {res['error']}")
             return False, res['lock_set']
             
         state.lock.acquire()

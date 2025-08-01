@@ -20,7 +20,9 @@ script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR / 'config'))
 sys.path.append(str(ROOT_DIR / 'experiment'))
+sys.path.append(str(ROOT_DIR / 'experiment' / 'microbenchmark'))
 import config
+from DB_setup import create_microbenchmark_dataset
 from repository import Repository
 repo = Repository()
 
@@ -35,8 +37,8 @@ table = dynamodb.Table(table_name)
 
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
-CLIENT_CNT = 9
-ROUND = 10
+CLIENT_CNT = 3
+ROUND = 1
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
@@ -89,8 +91,9 @@ def analyze_workflow(workflow, text_size):
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
 
 def analyze_all(text_size):
+    create_microbenchmark_dataset()
+    repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
-        repo.flush_couchdb_workflow_latency()
             # 创建线程函数
         def thread_task():
             for _ in range(ROUND):  # 每个线程调用 ROUND 次

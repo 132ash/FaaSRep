@@ -10,8 +10,11 @@ class Repository:
         self.couch = couchdb.Server(config.COUCHDB_URL)
 
     def flush_couchdb_workflow_latency(self):
-        self.couch.delete('workflow_latency')
-        self.couch.create('workflow_latency')
+        if 'workflow_latency' in self.couch:
+            self.couch.delete('workflow_latency')
+        db = self.couch.create('workflow_latency')
+        # 确保创建成功
+        assert db is not None
 
     def get_latencies(self, txid, phase):
         latencies = []

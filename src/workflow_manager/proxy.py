@@ -50,8 +50,8 @@ class Dispatcher:
        self.node_list = repo.get_all_addrs('common')
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, write_set, lock_set) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, write_set,lock_set)
+    def get_state(self, create_timestamp, retry_after_abort, workflow_name, transaction_id, write_set, lock_set) -> TransactionState:
+        return self.managers[workflow_name].get_state(create_timestamp, retry_after_abort, transaction_id, write_set,lock_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -68,21 +68,6 @@ class Dispatcher:
 
 dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
 
-@app.route('/abort', methods = ['POST'])
-def abort():
-    data = request.get_json(force=True, silent=True)
-    transaction_id = data['transaction_id']
-    lock_set = data.get('lock_set', {})
-    repo.release_lock(transaction_id, lock_set)
-    notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
-    payload = {
-        'transaction_id_list': [[transaction_id]],
-        'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
-        'abort': True
-    }
-    requests.post(notify_url, json=payload)
-    return json.dumps({'status': 'ok'})
-
 # a new request from outside
 # the previous function was done
 @app.route('/request', methods = ['POST'])
@@ -92,11 +77,12 @@ def req():
     transaction_id = data['transaction_id']
     workflow_name = data['workflow_name']
     function_name = data['function_name']
+    create_timestamp = data['create_timestamp']
     no_parent_execution = data['no_parent_execution']
     retry_after_abort = data.get('retry', False)
     write_set = data.get('write_set', {})
     lock_set = data.get('lock_set', {})
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id,  write_set, lock_set)
+    state = dispatcher.get_state(create_timestamp, retry_after_abort, workflow_name, transaction_id,  write_set, lock_set)
     #logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, lock_set:{lock_set} get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)

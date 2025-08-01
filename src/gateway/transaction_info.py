@@ -1,8 +1,6 @@
 from gevent import event
-import sys
 from gateway_repo import Repository
-sys.path.append('../../config')
-import config
+import time
 
 
 class RunningTXTable:
@@ -11,7 +9,9 @@ class RunningTXTable:
         self.repo:Repository = repo
     
     def registerTX(self, workflow, tx_id, tx_params):
-        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'concord':False}
+        create_timestamp = time.time()
+        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'create_timestamp': create_timestamp}
+        return create_timestamp
 
     def finishTX(self, tx_id):
         validate_latency = self.running_txs[tx_id]["validate_latency"]
@@ -26,7 +26,6 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
         if self.running_txs[tx_id]['abort']:
-            print(f"transaction {tx_id} aborted")
             return True
         return False
     

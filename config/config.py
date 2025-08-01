@@ -34,7 +34,7 @@ FUNCTION_INFO_ADDRS = {
 #                         'testflow': '../../../../benchmark/testflow',
                        }
 
-DEFAULT_CONTAINER_NUM = 9
+DEFAULT_CONTAINER_NUM = 3
 CLEAR_MEM = True
 
 
