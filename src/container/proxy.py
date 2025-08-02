@@ -66,7 +66,7 @@ class Runner:
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
         # local cache
         self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
-        logging.info(f"Init function, input {self.input} and output {self.output}, function_pos {self.function_pos}, shadow table {self.shadow_table}, host_addr {self.host_addr}, node_list {self.node_list}")
+        # logging.info(f"Init function, input {self.input} and output {self.output}, function_pos {self.function_pos}, shadow table {self.shadow_table}, host_addr {self.host_addr}, node_list {self.node_list}")
         os.chdir(work_dir)
 
         # compile first
@@ -75,7 +75,7 @@ class Runner:
             self.code = compile(f.read(), filename, mode='exec')
         store.init(self.host_addr, self.workflow, self.function, self.shadow_table, self.cache, db_server, self.function_pos)
 
-        logging.info('init finished...')
+        # logging.info('init finished...')
 
     def save(self, transaction_id, write_set ):
         self.transaction_id = transaction_id
@@ -93,10 +93,10 @@ class Runner:
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}")
+        # logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
-        self.ctx = {'workflow': self.workflow, 'function': self.function, 'store': store}
+        self.ctx = {'workflow': self.workflow, 'function_name': self.function, 'store': store}
         # pre-exec
         try:
             exec(self.code, self.ctx)

@@ -91,12 +91,12 @@ class WorkerSPManager:
     def del_state(self, transaction_id: str):
         self.lock.acquire()
         if transaction_id in self.states:
-            logging.info('delete state of: %s', transaction_id)
+            # logging.info('delete state of: %s', transaction_id)
             del self.states[transaction_id]
         self.lock.release()
 
     def commit_tx(self, transaction_id: str, write_set: Dict[str, int]) -> None:
-        logging.info(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
+        # logging.info(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
         commit_set = {}
         commit_jobs = []
         for key, func in write_set.items():
@@ -114,7 +114,7 @@ class WorkerSPManager:
 
     def abort_tx(self, transaction_id):
         # trigger next run of the transaction under pessimistic repair mode
-        logging.info(f"[ABORT] aborting transaction {transaction_id}")
+        # logging.info(f"[ABORT] aborting transaction {transaction_id}")
         abort_jobs = []
         for ip in self.node_list:
             clear_url = 'http://{}:6000/clear_state'.format(ip)
@@ -175,7 +175,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        logging.info(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        # logging.info(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             # basic infomation
@@ -216,7 +216,7 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
+        # logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set)
         end = time.time()
         if res.get("Abort", False):
@@ -230,7 +230,7 @@ class WorkerSPManager:
         state.lock.release()
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-        logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+        # logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         return True
 
     def clear_mem(self, transaction_id):

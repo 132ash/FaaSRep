@@ -7,7 +7,8 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
     datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
     handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+        logging.StreamHandler(sys.stdout),  # 输出到标准输出
+        logging.FileHandler('agent1.log', encoding='utf-8')  # 输出到文件
     ],
     force=True 
 )
@@ -53,7 +54,7 @@ def concord_data():
     trigger_tx = data.get('trigger_tx', '')
     success = True
     value = data.get('value', '')
-    if mode == 'invalidated':
+    if mode == 'invalidate':
         success = dispatcher.concord_cache_agent[workflow].invalidated_by_home(key, trigger_tx)
     elif mode == "downgrade":
         success, value = dispatcher.concord_cache_agent[workflow].downgrade_by_home(key)

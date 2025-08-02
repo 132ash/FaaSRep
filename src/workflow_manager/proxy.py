@@ -7,11 +7,11 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
     datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
     handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+        logging.StreamHandler(sys.stdout),  # 输出到标准输出
+        logging.FileHandler('workersp1.log', encoding='utf-8')  # 输出到文件
     ],
     force=True 
 )
-
 
 from gevent import monkey
 monkey.patch_all()
@@ -79,7 +79,7 @@ def stop():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
     workflow_name = data['workflow_name']
-    logging.info(f"Stopping transaction {transaction_id} in workflow {workflow_name}")
+    # logging.info(f"Stopping transaction {transaction_id} in workflow {workflow_name}")
     dispatcher.stop_transaction(workflow_name, transaction_id)
 
 # a new request from outside
@@ -95,7 +95,7 @@ def req():
     write_set = data.get('write_set', {})
 
     state = dispatcher.get_state(workflow_name, transaction_id, write_set)
-    logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
+    # logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -107,7 +107,7 @@ def clear():
     transaction_id = data['transaction_id']
     clear_mem = data.get('clear_mem', True)
     if clear_mem:
-        logging.info(f"Clearing memory for workflow {workflow_name}, transaction {transaction_id}")
+        # logging.info(f"Clearing memory for workflow {workflow_name}, transaction {transaction_id}")
         dispatcher.clear_mem(workflow_name, transaction_id)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
@@ -119,7 +119,7 @@ def commit():
     data = request.get_json(force=True, silent=True)
     commit_keys = data['commit_keys']
     # release the containers reserved into container pool.
-    logging.info(f"Worker commit. commit_keys: {commit_keys}")
+    # logging.info(f"Worker commit. commit_keys: {commit_keys}")
     repo.commit_tx_writes(commit_keys)
     return json.dumps({'status': 'ok'})
 

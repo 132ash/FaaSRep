@@ -1,0 +1,281 @@
+2 08:52:59.276 [INFO] create container of function: f1
+2025-08-02 08:52:59.811 [INFO] function: f1 container created
+2025-08-02 08:52:59.814 [INFO] create container of function: f1
+2025-08-02 08:53:00.370 [INFO] function: f1 container created
+function: f1 container pool created, len 9
+2025-08-02 08:53:00.383 [INFO] create container of function: f2
+2025-08-02 08:53:00.923 [INFO] function: f2 container created
+2025-08-02 08:53:00.930 [INFO] create container of function: f2
+2025-08-02 08:53:01.477 [INFO] function: f2 container created
+2025-08-02 08:53:01.481 [INFO] create container of function: f2
+2025-08-02 08:53:02.016 [INFO] function: f2 container created
+2025-08-02 08:53:02.019 [INFO] create container of function: f2
+2025-08-02 08:53:02.547 [INFO] function: f2 container created
+2025-08-02 08:53:02.555 [INFO] create container of function: f2
+2025-08-02 08:53:03.084 [INFO] function: f2 container created
+2025-08-02 08:53:03.088 [INFO] create container of function: f2
+2025-08-02 08:53:03.634 [INFO] function: f2 container created
+2025-08-02 08:53:03.638 [INFO] create container of function: f2
+2025-08-02 08:53:04.179 [INFO] function: f2 container created
+2025-08-02 08:53:04.182 [INFO] create container of function: f2
+2025-08-02 08:53:04.726 [INFO] function: f2 container created
+2025-08-02 08:53:04.731 [INFO] create container of function: f2
+2025-08-02 08:53:05.274 [INFO] function: f2 container created
+function: f2 container pool created, len 9
+2025-08-02 08:53:05.283 [INFO] create container of function: f3
+2025-08-02 08:53:05.808 [INFO] function: f3 container created
+2025-08-02 08:53:05.811 [INFO] create container of function: f3
+2025-08-02 08:53:06.347 [INFO] function: f3 container created
+2025-08-02 08:53:06.354 [INFO] create container of function: f3
+2025-08-02 08:53:06.893 [INFO] function: f3 container created
+2025-08-02 08:53:06.898 [INFO] create container of function: f3
+2025-08-02 08:53:07.433 [INFO] function: f3 container created
+2025-08-02 08:53:07.442 [INFO] create container of function: f3
+2025-08-02 08:53:07.992 [INFO] function: f3 container created
+2025-08-02 08:53:07.996 [INFO] create container of function: f3
+2025-08-02 08:53:08.527 [INFO] function: f3 container created
+2025-08-02 08:53:08.530 [INFO] create container of function: f3
+2025-08-02 08:53:09.068 [INFO] function: f3 container created
+2025-08-02 08:53:09.077 [INFO] create container of function: f3
+2025-08-02 08:53:09.618 [INFO] function: f3 container created
+2025-08-02 08:53:09.625 [INFO] create container of function: f3
+2025-08-02 08:53:10.164 [INFO] function: f3 container created
+function: f3 container pool created, len 9
+2025-08-02 08:53:10.174 [INFO] create container of function: f4
+2025-08-02 08:53:10.694 [INFO] function: f4 container created
+2025-08-02 08:53:10.704 [INFO] create container of function: f4
+2025-08-02 08:53:11.254 [INFO] function: f4 container created
+2025-08-02 08:53:11.262 [INFO] create container of function: f4
+2025-08-02 08:53:11.813 [INFO] function: f4 container created
+2025-08-02 08:53:11.821 [INFO] create container of function: f4
+2025-08-02 08:53:12.389 [INFO] function: f4 container created
+2025-08-02 08:53:12.396 [INFO] create container of function: f4
+2025-08-02 08:53:12.934 [INFO] function: f4 container created
+2025-08-02 08:53:12.942 [INFO] create container of function: f4
+2025-08-02 08:53:13.483 [INFO] function: f4 container created
+2025-08-02 08:53:13.486 [INFO] create container of function: f4
+2025-08-02 08:53:14.029 [INFO] function: f4 container created
+2025-08-02 08:53:14.032 [INFO] create container of function: f4
+2025-08-02 08:53:14.587 [INFO] function: f4 container created
+2025-08-02 08:53:14.590 [INFO] create container of function: f4
+2025-08-02 08:53:15.165 [INFO] function: f4 container created
+function: f4 container pool created, len 9
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.003216
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000277
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000464
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000315
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000294
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000237
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000321
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000285
+2025-08-02 08:53:30.239 [INFO] request [d981fd6c-4b00-4e37-a1e7-a1901446fb2d], workflow_name: c4, function_name: f3, get state latency:7.43865966796875e-05
+2025-08-02 08:53:30.239 [INFO] running function f3, transaction_id: d981fd6c-4b00-4e37-a1e7-a1901446fb2d, write_set: {'key4large': 'f1', 'key5large': 'f2'}
+2025-08-02 08:53:30.241 [INFO] send request to: f3 of: d981fd6c-4b00-4e37-a1e7-a1901446fb2d, rq len: 0, data: {'transaction_id': 'd981fd6c-4b00-4e37-a1e7-a1901446fb2d', 'write_set': {'key4large': 'f1', 'key5large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000185
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000146
+2025-08-02 08:53:30.253 [INFO] request [014f0ce2-c9e4-4de8-9d52-6dca06aa7de5], workflow_name: c4, function_name: f3, get state latency:4.792213439941406e-05
+2025-08-02 08:53:30.253 [INFO] running function f3, transaction_id: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, write_set: {'key11large': 'f1', 'key6large': 'f2'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000161
+2025-08-02 08:53:30.257 [INFO] send request to: f3 of: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, rq len: 0, data: {'transaction_id': '014f0ce2-c9e4-4de8-9d52-6dca06aa7de5', 'write_set': {'key11large': 'f1', 'key6large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000298
+2025-08-02 08:53:30.271 [ERROR] function f3 trigger abort: Concord cache get failed.
+2025-08-02 08:53:30.271 [INFO] [ABORT] aborting transaction 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000277
+2025-08-02 08:53:30.276 [INFO] delete state of: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000241
+2025-08-02 08:53:30.278 [INFO] function f3 done, write_set: {'key18large': 'f3', 'key4large': 'f1', 'key5large': 'f2'}, exec_latency: 0.028617143630981445, io_latency: 0.0186769962310791
+2025-08-02 08:53:30.278 [INFO] running function f4, transaction_id: d981fd6c-4b00-4e37-a1e7-a1901446fb2d, write_set: {'key4large': 'f1', 'key5large': 'f2', 'key18large': 'f3'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.026367
+2025-08-02 08:53:30.279 [INFO] send request to: f4 of: d981fd6c-4b00-4e37-a1e7-a1901446fb2d, rq len: 0, data: {'transaction_id': 'd981fd6c-4b00-4e37-a1e7-a1901446fb2d', 'write_set': {'key4large': 'f1', 'key5large': 'f2', 'key18large': 'f3'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000177
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000188
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000170
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000165
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000181
+2025-08-02 08:53:30.303 [INFO] function f4 done, write_set: {'key18large': 'f3', 'key4large': 'f4', 'key5large': 'f2'}, exec_latency: 0.017543554306030273, io_latency: 0.00901484489440918
+2025-08-02 08:53:30.303 [INFO] [COMMIT] committing transaction d981fd6c-4b00-4e37-a1e7-a1901446fb2d, write_set: {'key4large': 'f4', 'key5large': 'f2', 'key18large': 'f3'}
+2025-08-02 08:53:30.304 [INFO] request [3755ab5b-939a-4536-b8bd-04369bc72ee4], workflow_name: c4, function_name: f3, get state latency:3.695487976074219e-05
+2025-08-02 08:53:30.304 [INFO] running function f3, transaction_id: 3755ab5b-939a-4536-b8bd-04369bc72ee4, write_set: {'key19large': 'f1', 'key13large': 'f2'}
+2025-08-02 08:53:30.305 [INFO] Worker commit. commit_keys: ['key18large', 'key4large']
+2025-08-02 08:53:30.308 [INFO] send request to: f3 of: 3755ab5b-939a-4536-b8bd-04369bc72ee4, rq len: 0, data: {'transaction_id': '3755ab5b-939a-4536-b8bd-04369bc72ee4', 'write_set': {'key19large': 'f1', 'key13large': 'f2'}}
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /commit HTTP/1.1" 200 132 0.009648
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.079379
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000207
+2025-08-02 08:53:30.328 [INFO] Clearing memory for workflow c4, transaction d981fd6c-4b00-4e37-a1e7-a1901446fb2d
+clearing shadow table for d981fd6c-4b00-4e37-a1e7-a1901446fb2d
+2025-08-02 08:53:30.329 [ERROR] function f3 trigger abort: Concord cache put failed.
+2025-08-02 08:53:30.329 [INFO] [ABORT] aborting transaction 3755ab5b-939a-4536-b8bd-04369bc72ee4
+2025-08-02 08:53:30.331 [INFO] delete state of: d981fd6c-4b00-4e37-a1e7-a1901446fb2d
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.003316
+2025-08-02 08:53:30.332 [INFO] delete state of: 3755ab5b-939a-4536-b8bd-04369bc72ee4
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000209
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.029850
+2025-08-02 08:53:30.340 [INFO] request [41522663-5f59-40bd-a283-f4706f05ce7f], workflow_name: c4, function_name: f3, get state latency:0.00019240379333496094
+2025-08-02 08:53:30.340 [INFO] running function f3, transaction_id: 41522663-5f59-40bd-a283-f4706f05ce7f, write_set: {'key12large': 'f2'}
+2025-08-02 08:53:30.342 [INFO] send request to: f3 of: 41522663-5f59-40bd-a283-f4706f05ce7f, rq len: 0, data: {'transaction_id': '41522663-5f59-40bd-a283-f4706f05ce7f', 'write_set': {'key12large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000295
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000198
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000149
+2025-08-02 08:53:30.350 [INFO] request [014f0ce2-c9e4-4de8-9d52-6dca06aa7de5], workflow_name: c4, function_name: f3, get state latency:3.3855438232421875e-05
+2025-08-02 08:53:30.350 [INFO] running function f3, transaction_id: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, write_set: {'key11large': 'f1', 'key6large': 'f2'}
+2025-08-02 08:53:30.352 [INFO] send request to: f3 of: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, rq len: 0, data: {'transaction_id': '014f0ce2-c9e4-4de8-9d52-6dca06aa7de5', 'write_set': {'key11large': 'f1', 'key6large': 'f2'}}
+2025-08-02 08:53:30.358 [INFO] request [b8b8d24c-20cc-4147-982a-ea61e7482ecc], workflow_name: c4, function_name: f3, get state latency:4.267692565917969e-05
+2025-08-02 08:53:30.358 [INFO] running function f3, transaction_id: b8b8d24c-20cc-4147-982a-ea61e7482ecc, write_set: {'key15large': 'f1', 'key13large': 'f2'}
+2025-08-02 08:53:30.363 [INFO] send request to: f3 of: b8b8d24c-20cc-4147-982a-ea61e7482ecc, rq len: 0, data: {'transaction_id': 'b8b8d24c-20cc-4147-982a-ea61e7482ecc', 'write_set': {'key15large': 'f1', 'key13large': 'f2'}}
+2025-08-02 08:53:30.364 [ERROR] function f3 trigger abort: Concord cache put failed.
+2025-08-02 08:53:30.364 [INFO] [ABORT] aborting transaction 41522663-5f59-40bd-a283-f4706f05ce7f
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000206
+2025-08-02 08:53:30.367 [INFO] delete state of: 41522663-5f59-40bd-a283-f4706f05ce7f
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000238
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000180
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.031919
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000754
+2025-08-02 08:53:30.377 [INFO] function f3 done, write_set: {'key11large': 'f1', 'key4large': 'f3', 'key6large': 'f2'}, exec_latency: 0.018275022506713867, io_latency: 0.02984929084777832
+2025-08-02 08:53:30.377 [INFO] running function f4, transaction_id: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, write_set: {'key11large': 'f1', 'key6large': 'f2', 'key4large': 'f3'}
+2025-08-02 08:53:30.379 [INFO] send request to: f4 of: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, rq len: 0, data: {'transaction_id': '014f0ce2-c9e4-4de8-9d52-6dca06aa7de5', 'write_set': {'key11large': 'f1', 'key6large': 'f2', 'key4large': 'f3'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000192
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000175
+2025-08-02 08:53:30.400 [INFO] function f3 done, write_set: {'key13large': 'f2', 'key15large': 'f1', 'key5large': 'f3'}, exec_latency: 0.032486915588378906, io_latency: 0.01729607582092285
+2025-08-02 08:53:30.400 [INFO] running function f4, transaction_id: b8b8d24c-20cc-4147-982a-ea61e7482ecc, write_set: {'key15large': 'f1', 'key13large': 'f2', 'key5large': 'f3'}
+2025-08-02 08:53:30.401 [INFO] send request to: f4 of: b8b8d24c-20cc-4147-982a-ea61e7482ecc, rq len: 0, data: {'transaction_id': 'b8b8d24c-20cc-4147-982a-ea61e7482ecc', 'write_set': {'key15large': 'f1', 'key13large': 'f2', 'key5large': 'f3'}}
+2025-08-02 08:53:30.405 [INFO] function f4 done, write_set: {'key11large': 'f1', 'key19large': 'f4', 'key4large': 'f3', 'key6large': 'f2'}, exec_latency: 0.022180795669555664, io_latency: 0.023442745208740234
+2025-08-02 08:53:30.405 [INFO] [COMMIT] committing transaction 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5, write_set: {'key11large': 'f1', 'key6large': 'f2', 'key4large': 'f3', 'key19large': 'f4'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000190
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000149
+2025-08-02 08:53:30.407 [INFO] Worker commit. commit_keys: ['key19large', 'key4large']
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000161
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /commit HTTP/1.1" 200 132 0.004200
+2025-08-02 08:53:30.415 [INFO] function f4 done, write_set: {'key13large': 'f2', 'key15large': 'f1', 'key5large': 'f4'}, exec_latency: 0.009371042251586914, io_latency: 0.02879476547241211
+2025-08-02 08:53:30.415 [INFO] [COMMIT] committing transaction b8b8d24c-20cc-4147-982a-ea61e7482ecc, write_set: {'key15large': 'f1', 'key13large': 'f2', 'key5large': 'f4'}
+2025-08-02 08:53:30.416 [INFO] Worker commit. commit_keys: ['key5large']
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /commit HTTP/1.1" 200 132 0.002190
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000171
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000126
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000162
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.081439
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.078196
+2025-08-02 08:53:30.448 [INFO] Clearing memory for workflow c4, transaction 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5
+clearing shadow table for 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5
+2025-08-02 08:53:30.449 [INFO] delete state of: 014f0ce2-c9e4-4de8-9d52-6dca06aa7de5
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000961
+2025-08-02 08:53:30.451 [INFO] Clearing memory for workflow c4, transaction b8b8d24c-20cc-4147-982a-ea61e7482ecc
+clearing shadow table for b8b8d24c-20cc-4147-982a-ea61e7482ecc
+2025-08-02 08:53:30.452 [INFO] delete state of: b8b8d24c-20cc-4147-982a-ea61e7482ecc
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000541
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000191
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000230
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000200
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000165
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000170
+2025-08-02 08:53:30.487 [INFO] request [41522663-5f59-40bd-a283-f4706f05ce7f], workflow_name: c4, function_name: f3, get state latency:5.7220458984375e-05
+2025-08-02 08:53:30.487 [INFO] running function f3, transaction_id: 41522663-5f59-40bd-a283-f4706f05ce7f, write_set: {'key12large': 'f2'}
+2025-08-02 08:53:30.491 [INFO] send request to: f3 of: 41522663-5f59-40bd-a283-f4706f05ce7f, rq len: 0, data: {'transaction_id': '41522663-5f59-40bd-a283-f4706f05ce7f', 'write_set': {'key12large': 'f2'}}
+2025-08-02 08:53:30.498 [INFO] request [ea470f39-3291-4a51-a46f-f1b622fa6515], workflow_name: c4, function_name: f3, get state latency:4.2438507080078125e-05
+2025-08-02 08:53:30.498 [INFO] running function f3, transaction_id: ea470f39-3291-4a51-a46f-f1b622fa6515, write_set: {'key2large': 'f1', 'key13large': 'f2'}
+2025-08-02 08:53:30.502 [INFO] send request to: f3 of: ea470f39-3291-4a51-a46f-f1b622fa6515, rq len: 0, data: {'transaction_id': 'ea470f39-3291-4a51-a46f-f1b622fa6515', 'write_set': {'key2large': 'f1', 'key13large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000188
+2025-08-02 08:53:30.516 [INFO] function f3 done, write_set: {'key12large': 'f2', 'key6large': 'f3'}, exec_latency: 0.02179241180419922, io_latency: 0.029320478439331055
+2025-08-02 08:53:30.516 [INFO] running function f4, transaction_id: 41522663-5f59-40bd-a283-f4706f05ce7f, write_set: {'key12large': 'f2', 'key6large': 'f3'}
+2025-08-02 08:53:30.517 [ERROR] function f3 trigger abort: Concord cache put failed.
+2025-08-02 08:53:30.517 [INFO] [ABORT] aborting transaction ea470f39-3291-4a51-a46f-f1b622fa6515
+2025-08-02 08:53:30.519 [INFO] send request to: f4 of: 41522663-5f59-40bd-a283-f4706f05ce7f, rq len: 0, data: {'transaction_id': '41522663-5f59-40bd-a283-f4706f05ce7f', 'write_set': {'key12large': 'f2', 'key6large': 'f3'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000222
+2025-08-02 08:53:30.520 [INFO] delete state of: ea470f39-3291-4a51-a46f-f1b622fa6515
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000222
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000200
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.026354
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000183
+2025-08-02 08:53:30.540 [INFO] function f4 done, write_set: {'key12large': 'f2', 'key4large': 'f4', 'key6large': 'f3'}, exec_latency: 0.018381834030151367, io_latency: 0.037941932678222656
+2025-08-02 08:53:30.540 [INFO] [COMMIT] committing transaction 41522663-5f59-40bd-a283-f4706f05ce7f, write_set: {'key12large': 'f2', 'key6large': 'f3', 'key4large': 'f4'}
+2025-08-02 08:53:30.542 [INFO] Worker commit. commit_keys: ['key4large', 'key6large']
+2025-08-02 08:53:30.542 [INFO] request [3a7f72fb-f90f-4ae8-983b-1ee957730710], workflow_name: c4, function_name: f3, get state latency:2.765655517578125e-05
+2025-08-02 08:53:30.542 [INFO] running function f3, transaction_id: 3a7f72fb-f90f-4ae8-983b-1ee957730710, write_set: {'key9large': 'f1', 'key2large': 'f2'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000204
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /commit HTTP/1.1" 200 132 0.004344
+2025-08-02 08:53:30.547 [INFO] send request to: f3 of: 3a7f72fb-f90f-4ae8-983b-1ee957730710, rq len: 0, data: {'transaction_id': '3a7f72fb-f90f-4ae8-983b-1ee957730710', 'write_set': {'key9large': 'f1', 'key2large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000177
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.065443
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000221
+2025-08-02 08:53:30.565 [INFO] Clearing memory for workflow c4, transaction 41522663-5f59-40bd-a283-f4706f05ce7f
+clearing shadow table for 41522663-5f59-40bd-a283-f4706f05ce7f
+2025-08-02 08:53:30.566 [INFO] delete state of: 41522663-5f59-40bd-a283-f4706f05ce7f
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000684
+2025-08-02 08:53:30.568 [INFO] function f3 done, write_set: {'key14large': 'f3', 'key2large': 'f2', 'key9large': 'f1'}, exec_latency: 0.0179750919342041, io_latency: 0.04592728614807129
+2025-08-02 08:53:30.568 [INFO] running function f4, transaction_id: 3a7f72fb-f90f-4ae8-983b-1ee957730710, write_set: {'key9large': 'f1', 'key2large': 'f2', 'key14large': 'f3'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000287
+2025-08-02 08:53:30.569 [INFO] send request to: f4 of: 3a7f72fb-f90f-4ae8-983b-1ee957730710, rq len: 0, data: {'transaction_id': '3a7f72fb-f90f-4ae8-983b-1ee957730710', 'write_set': {'key9large': 'f1', 'key2large': 'f2', 'key14large': 'f3'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000212
+2025-08-02 08:53:30.587 [INFO] request [3755ab5b-939a-4536-b8bd-04369bc72ee4], workflow_name: c4, function_name: f3, get state latency:3.647804260253906e-05
+2025-08-02 08:53:30.587 [INFO] running function f3, transaction_id: 3755ab5b-939a-4536-b8bd-04369bc72ee4, write_set: {'key19large': 'f1', 'key13large': 'f2'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000154
+2025-08-02 08:53:30.587 [INFO] function f4 done, write_set: {'key14large': 'f3', 'key2large': 'f2', 'key6large': 'f4', 'key9large': 'f1'}, exec_latency: 0.012585639953613281, io_latency: 0.044043779373168945
+2025-08-02 08:53:30.587 [INFO] [COMMIT] committing transaction 3a7f72fb-f90f-4ae8-983b-1ee957730710, write_set: {'key9large': 'f1', 'key2large': 'f2', 'key14large': 'f3', 'key6large': 'f4'}
+2025-08-02 08:53:30.588 [INFO] Worker commit. commit_keys: ['key14large', 'key6large']
+2025-08-02 08:53:30.591 [INFO] send request to: f3 of: 3755ab5b-939a-4536-b8bd-04369bc72ee4, rq len: 0, data: {'transaction_id': '3755ab5b-939a-4536-b8bd-04369bc72ee4', 'write_set': {'key19large': 'f1', 'key13large': 'f2'}}
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /commit HTTP/1.1" 200 132 0.004558
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.054763
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000164
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000149
+2025-08-02 08:53:30.607 [INFO] Clearing memory for workflow c4, transaction 3a7f72fb-f90f-4ae8-983b-1ee957730710
+clearing shadow table for 3a7f72fb-f90f-4ae8-983b-1ee957730710
+2025-08-02 08:53:30.608 [INFO] delete state of: 3a7f72fb-f90f-4ae8-983b-1ee957730710
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.001240
+2025-08-02 08:53:30.615 [INFO] function f3 done, write_set: {'key13large': 'f2', 'key15large': 'f3', 'key19large': 'f1'}, exec_latency: 0.019947290420532227, io_latency: 0.055989742279052734
+2025-08-02 08:53:30.615 [INFO] running function f4, transaction_id: 3755ab5b-939a-4536-b8bd-04369bc72ee4, write_set: {'key19large': 'f1', 'key13large': 'f2', 'key15large': 'f3'}
+2025-08-02 08:53:30.617 [INFO] send request to: f4 of: 3755ab5b-939a-4536-b8bd-04369bc72ee4, rq len: 0, data: {'transaction_id': '3755ab5b-939a-4536-b8bd-04369bc72ee4', 'write_set': {'key19large': 'f1', 'key13large': 'f2', 'key15large': 'f3'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000223
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000171
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000197
+2025-08-02 08:53:30.639 [INFO] function f4 done, write_set: {'key0large': 'f4', 'key13large': 'f2', 'key15large': 'f3', 'key19large': 'f1'}, exec_latency: 0.0181729793548584, io_latency: 0.05483126640319824
+2025-08-02 08:53:30.639 [INFO] [COMMIT] committing transaction 3755ab5b-939a-4536-b8bd-04369bc72ee4, write_set: {'key19large': 'f1', 'key13large': 'f2', 'key15large': 'f3', 'key0large': 'f4'}
+2025-08-02 08:53:30.640 [INFO] Worker commit. commit_keys: ['key0large', 'key15large']
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000803
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /commit HTTP/1.1" 200 132 0.007402
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000169
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000155
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /request HTTP/1.1" 200 132 0.070955
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000158
+2025-08-02 08:53:30.670 [INFO] Clearing memory for workflow c4, transaction 3755ab5b-939a-4536-b8bd-04369bc72ee4
+clearing shadow table for 3755ab5b-939a-4536-b8bd-04369bc72ee4
+2025-08-02 08:53:30.671 [INFO] delete state of: 3755ab5b-939a-4536-b8bd-04369bc72ee4
+10.2.27.24 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.002243
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000503
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000196
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000839
+2025-08-02 08:53:30.717 [INFO] request [ea470f39-3291-4a51-a46f-f1b622fa6515], workflow_name: c4, function_name: f3, get state latency:4.506111145019531e-05
+2025-08-02 08:53:30.717 [INFO] running function f3, transaction_id: ea470f39-3291-4a51-a46f-f1b622fa6515, write_set: {'key2large': 'f1', 'key13large': 'f2'}
+2025-08-02 08:53:30.718 [INFO] send request to: f3 of: ea470f39-3291-4a51-a46f-f1b622fa6515, rq len: 0, data: {'transaction_id': 'ea470f39-3291-4a51-a46f-f1b622fa6515', 'write_set': {'key2large': 'f1', 'key13large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000298
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000379
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000496
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000308
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000719
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000385
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000237
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000695
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000674
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000163
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000664
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000371
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000185
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000369
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000623
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000246
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000198
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000355
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000287
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000141
+2025-08-02 08:53:30.967 [INFO] request [c8039166-cf98-412a-ad32-64145a6efaec], workflow_name: c4, function_name: f3, get state latency:4.220008850097656e-05
+2025-08-02 08:53:30.967 [INFO] running function f3, transaction_id: c8039166-cf98-412a-ad32-64145a6efaec, write_set: {'key6large': 'f1', 'key7large': 'f2'}
+2025-08-02 08:53:30.968 [INFO] send request to: f3 of: c8039166-cf98-412a-ad32-64145a6efaec, rq len: 0, data: {'transaction_id': 'c8039166-cf98-412a-ad32-64145a6efaec', 'write_set': {'key6large': 'f1', 'key7large': 'f2'}}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000217
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000221
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000206
+2025-08-02 08:53:30.991 [INFO] function f3 done, write_set: {'key5large': 'f3', 'key6large': 'f1', 'key7large': 'f2'}, exec_latency: 0.016779422760009766, io_latency: 0.03961658477783203
+2025-08-02 08:53:30.991 [INFO] running function f4, transaction_id: c8039166-cf98-412a-ad32-64145a6efaec, write_set: {'key6large': 'f1', 'key7large': 'f2', 'key5large': 'f3'}
+10.2.30.52 - - [2025-08-02 08:53:30] "POST /clear HTTP/1.1" 200 132 0.000182
+2025-08-02 08:53:30.995 [INFO] send request to: f4 of: c8039166-cf98-412a-ad32-64145a6efaec, rq len: 0, data: {'transaction_id': 'c8039166-cf98-412a-ad32-64145a6efaec', 'write_set': {'key6large': 'f1', 'key7large': 'f2', 'key5large': 'f3'}}
+10.2.30.52 - - [2025-08-02 08:53:31] "POST /clear HTTP/1.1" 200 132 0.000346
+2025-08-02 08:53:31.016 [INFO] function f4 done, write_set: {'key4large': 'f4', 'key5large': 'f3', 'key6large': 'f1', 'key7large': 'f2'}, exec_latency: 0.016750574111938477, io_latency: 0.06110334396362305
+2025-08-02 08:53:31.016 [INFO] [COMMIT] committing transaction c8039166-cf98-412a-ad32-64145a6efaec, write_set: {'key6large': 'f1', 'key7large': 'f2', 'key5large': 'f3', 'key4large': 'f4'}
+2025-08-02 08:53:31.018 [INFO] Worker commit. commit_keys: ['key5large', 'key4large']

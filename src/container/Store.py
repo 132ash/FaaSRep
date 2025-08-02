@@ -85,7 +85,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
-        # logging.info(f"fetch input from mem: {self.fetch_dict}")
+        # # logging.info(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
 
     # return to local redis.
@@ -127,7 +127,7 @@ class Store:
         if not response['success']:
             logging.error(f"Concord cache get failed for key {key} in transaction {self.transaction_id}.")
             raise Exception("Concord cache get failed.")
-        logging.info(f"Concord cache succeeded for key {key} in transaction {self.transaction_id}.")
+        # logging.info(f"Concord cache succeeded for key {key} in transaction {self.transaction_id}.")
         return response['value']
         
     def concord_put(self, key, value):

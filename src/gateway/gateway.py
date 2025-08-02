@@ -71,6 +71,8 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
+    if type(parameters) is not dict:
+        parameters = json.loads(parameters)
     for n in start_functions:
         ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
@@ -89,7 +91,7 @@ def run():
     transaction_id = str(uuid.uuid4())
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    logging.info('processing request ' + transaction_id + '...')
+    # logging.info('processing request ' + transaction_id + '...')
     start = time.time()
     aborted = False
     retry = False
@@ -100,7 +102,7 @@ def run():
         if aborted:
             txTable.resetTX(transaction_id)
         retry = True
-    logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
+    # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
@@ -110,7 +112,7 @@ def run():
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
         jobs = []
-        logging.info(f"clearing shadow table and transaction state on {worker_addrs}")
+        # logging.info(f"clearing shadow table and transaction state on {worker_addrs}")
         for ip in worker_addrs:
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
@@ -126,7 +128,7 @@ def notify():
     timestamps = data['timestamps']
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
         if data.get('abort', False):
-            logging.info(f"transaction {transaction_id_list[0]} aborted.")
+            # logging.info(f"transaction {transaction_id_list[0]} aborted.")
             txTable.notifyTX(transaction_id_list, 0,0, 0, True)
         else:
             first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch
