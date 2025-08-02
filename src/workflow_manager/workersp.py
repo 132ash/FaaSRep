@@ -121,7 +121,7 @@ class WorkerSPManager:
         if function_name == 'END':
             self.repo.beldi_commit(state.transaction_id, state.lock_set)
             self.abort_or_commit_tx(state.transaction_id, False)
-            # logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
+            logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -185,7 +185,7 @@ class WorkerSPManager:
         info = self.function_info[function_name]
         successful, lock_set = self.run_normal(state, info)
         if not successful:
-            # logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
+            logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
             self.repo.release_lock(state.transaction_id, lock_set)
             self.abort_or_commit_tx(state.transaction_id, True)
             return

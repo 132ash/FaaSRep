@@ -67,7 +67,7 @@ class BeldiStore:
                     # 尝试获取锁
                     self.data_db.update_item(
                         Key={'key': key},
-                        UpdateExpression="SET #l = :txid, #ct = :create_timestamp",
+                        UpdateExpression="SET #l = :txid, #ct = :time",
                         ConditionExpression="attribute_not_exists(#l) OR #l = :none OR #l = :txid",
                         ExpressionAttributeNames={
                             '#l': 'lock',
@@ -76,7 +76,7 @@ class BeldiStore:
                         ExpressionAttributeValues={
                             ':txid': self.transaction_id,
                             ':none': None,
-                            ':create_timestamp': self.create_timestamp
+                            ':time': self.create_timestamp
                         },
                         ReturnValues="UPDATED_NEW"
                     )
@@ -90,10 +90,25 @@ class BeldiStore:
                             Key={'key': key}
                         )
                         item = response.get('Item')
-                        locker_txid = item['lock']
-                        current_lock_timestamp = item['create_timestamp']
-                        if current_lock_timestamp == None:
-                            raise Exception(f"current_lock_timestamp is None. Key: {key},locker_txid: {locker_txid}")
+                        if not item:
+                            # 没有找到记录，重试
+                            logging.info(f"No item found for key {key}, retrying...")
+                            time.sleep(0.005)
+                            continue
+                            
+                        locker_txid = item.get('lock')
+                        current_lock_timestamp = item.get('create_timestamp')
+                        
+                        if not locker_txid:
+                            # 没有锁持有者，重试
+                            logging.info(f"No lock holder for key {key}, retrying...")
+                            time.sleep(0.005)
+                            continue
+                            
+                        if current_lock_timestamp is None:
+                            # 有锁但没有时间戳，这是异常情况
+                            logging.error(f"Lock exists but no timestamp for key {key}, locker: {locker_txid}")
+                            raise Exception(f"Lock exists but no timestamp. Key: {key}, locker_txid: {locker_txid}")
                         elif self.create_timestamp < current_lock_timestamp:
                             # 自己的时间戳更早，继续尝试
                             # logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
@@ -103,4 +118,8 @@ class BeldiStore:
                             # 自己的时间戳较晚，抛出异常
                             logging.error(f"Transaction {self.transaction_id} aborted due to later timestamp on key {key}")
                             raise Exception(f"Lock acquisition failed for key {key}: newer than holder {locker_txid}.")
+                    else:
+                        # 其他错误，抛出异常
+                        logging.error(f"Error acquiring lock on key {key}: {e}")
+                        raise e
             

@@ -176,8 +176,25 @@ class Repository:
             )
             table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
+    def delete_shadow_table(self, transaction_id=None):
+        if transaction_id is None:
+            # 删除所有以 "_shadow_table" 结尾的表
+            for table in self.dynamo.tables.all():
+                if table.name.endswith('_shadow_table'):
+                    t = self.dynamo.Table(table.name)
+                    t.delete()
+                    t.meta.client.get_waiter('table_not_exists').wait(TableName=table.name)
+        else:
+            table_name = f"{transaction_id}_shadow_table"
+            existing_tables = self.dynamo.tables.all()
+            if table_name in [table.name for table in existing_tables]:
+                table = self.dynamo.Table(table_name)
+                table.delete()
+                table.meta.client.get_waiter('table_not_exists').wait(TableName=table_name)
+
     def clear_db(self, transaction_id):
         db = self.couch['results']
         if transaction_id in db:
             doc = db[transaction_id]
             db.delete(doc)
+        self.delete_shadow_table(transaction_id)
