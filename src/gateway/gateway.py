@@ -48,7 +48,6 @@ def get_workflow_metadata(workflow_name):
 
 def trigger_function(workflow_name, transaction_id, function_name, ip):
     url = 'http://{}/request'.format(ip)
-    print(f"sending req to {url}")
     data = {
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
@@ -71,6 +70,7 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
+    logging.info(f"[RUNNING] send req of {transaction_id}, retry: {retry}")
     if type(parameters) is not dict:
         parameters = json.loads(parameters)
     for n in start_functions:
@@ -105,9 +105,7 @@ def run():
     # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
-    end = time.time()
     first_run_latency = first_run_finish_time - start
-    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
@@ -116,6 +114,8 @@ def run():
         for ip in worker_addrs:
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
+    end = time.time()
+    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
     
     return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
 
@@ -151,7 +151,7 @@ def clear_container():
 from gevent.pywsgi import WSGIServer
 import logging
 
-# python gateway.py 10.2.27.24 8000
+# python gateway.py 10.2.27.22 8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

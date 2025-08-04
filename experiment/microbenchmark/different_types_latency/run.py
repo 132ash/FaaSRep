@@ -7,6 +7,7 @@ from numpy import random
 import requests
 import numpy as np
 from pathlib import Path
+import time
 
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -42,6 +43,8 @@ ROUND = 10
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
+completion_records = []  # 用于记录完成时间戳和thread_id
+completion_lock = threading.Lock()  # 用于线程安全地访问completion_records
 
 DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
 dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
@@ -81,36 +84,59 @@ def get_function_latency(txid):
     io_time = sum(func_io_latency) 
     return exec_time, io_time
 
-def analyze_workflow(workflow, parameters_input):
+def analyze_workflow(workflow, parameters_input, thread_id):
+    start = time.time()
     rep = run_workflow(workflow, parameters_input) 
+    end = time.time()
     txid = rep['transaction_id']
     validate_time_inside_validator = rep['validate_time_inside_validator']
     validate_latency = rep['validate_latency'] 
-    e2e_latency = rep['e2e_latency']  
+    # e2e_latency = rep['e2e_latency']  
+    e2e_latency = end - start
     first_run_latency = rep['first_run_latency']
     func_exec_time_test, func_io_time_test = get_function_latency(txid)
     func_io_time = func_io_time_test
     func_exec_time = func_exec_time_test 
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
+    
+    # 记录完成时间戳和thread_id
+    completion_timestamp = time.time()
+    with completion_lock:
+        completion_records.append({
+            'timestamp': completion_timestamp,
+            'thread_id': thread_id,
+            'txid': txid,
+            'completion_time': time.strftime('%Y-%m-%d %H:%M:%S.%f', time.localtime(completion_timestamp))
+        })
+    
 
 def analyze_all(text_size):
+    global completion_records
+    completion_records = []  # 重置完成记录
     create_microbenchmark_dataset()
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
         parameters_all = generate_workflow_inputs_for_clients(workflow, text_size)
-        def thread_task(parameters_all_round):
+        def thread_task(parameters_all_round, thread_id):
+
             for i in range(ROUND):  # 每个线程调用 ROUND 次
-                analyze_workflow(workflow, parameters_all_round[i])  # 调用 analyze_workflow
+                analyze_workflow(workflow, parameters_all_round[i], thread_id)  # 传入thread_id
 
         # 创建4个线程
         threads = []
         for i in range(CLIENT_CNT):
-            thread = threading.Thread(target=thread_task, args=(parameters_all[i],))
+            thread = threading.Thread(target=thread_task, args=(parameters_all[i],i))
             threads.append(thread)
             thread.start()
             # 等待所有线程运行结束
         for thread in threads:
             thread.join()
+        
+        # 按时间戳排序完成记录并输出到文件
+        completion_records.sort(key=lambda x: x['timestamp'])
+        completion_df = pd.DataFrame(completion_records)
+        completion_df.to_csv(f"{script_dir}/{workflow}_completion_records.csv", index=False)
+        
         # 统计 result_dict 中的结果
         validate_time_inside_validator = []
         validate_latency = []
@@ -131,12 +157,12 @@ def analyze_all(text_size):
         mode = "Concord"
         avg_results = {
             'mode': mode,
-            "validator overhead": np.percentile(validate_time_inside_validator, 99),
-            "overall validate latency": np.percentile(validate_latency, 99),
-            "e2e latency": np.percentile(e2e_latency, 99),
-            "workflow run latency": np.percentile(first_run_latency, 99),
-            "func io latency": np.percentile(func_io_time, 99),
-            "func exec latency": np.percentile(func_exec_time, 99),
+            "validator overhead": np.percentile(validate_time_inside_validator, 50),
+            "overall validate latency": np.percentile(validate_latency, 50),
+            "e2e latency": np.percentile(e2e_latency, 50),
+            "workflow run latency": np.percentile(first_run_latency, 50),
+            "func io latency": np.percentile(func_io_time, 50),
+            "func exec latency": np.percentile(func_exec_time, 50),
         }
 
 

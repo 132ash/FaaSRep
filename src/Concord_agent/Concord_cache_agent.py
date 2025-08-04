@@ -170,8 +170,7 @@ class ConcordCacheAgent:
                 gevent.joinall(invalidate_jobs)
                 for invalidate_res in invalidate_result.values():
                     if not invalidate_res:
-                        logging.error(f"[CACHE AGENT HOME SERVE REMOTE WRITE] write after read, invalidate others failed. key: {key}, remote_ip: {remote_ip}, transaction_id: {transaction_id}")
-                        # logging.info(f"[CACHE AGENT HOME SERVE REMOTE WRITE] failed, release lock. key: {key}, remote_ip: {remote_ip}, transaction_id: {transaction_id}")
+                        # logging.error(f"[CACHE AGENT HOME SERVE REMOTE WRITE] write after read, invalidate others failed. key: {key}, remote_ip: {remote_ip}, transaction_id: {transaction_id}")
                         directory_line['lock'].release()
                         return False,'', Except
             directory_line['state'] = Except

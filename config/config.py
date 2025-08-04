@@ -1,7 +1,7 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STOREGE_NODE_IP = '10.2.27.24'
+STOREGE_NODE_IP = '10.2.27.22'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984'
 DYNAMODB_URL = f'http://{STOREGE_NODE_IP}:4567'
