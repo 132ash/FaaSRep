@@ -1,2 +1,2 @@
-,mode,validator overhead,overall validate latency,e2e latency,workflow run latency,func io latency,func exec latency
-0,OPTIMISTIC_basic,0.006588046550750731,0.18039822578430176,0.3607000207901001,0.16786718606948853,0.3304124927520752,0.09546243667602539
+mode,validator overhead,overall validate latency,e2e latency,workflow run latency
+OPTIMISTIC_basic,0.0038226763407389324,0.08685329490237766,0.20055775377485488,0.09940500524308947
