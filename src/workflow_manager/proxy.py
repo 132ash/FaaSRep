@@ -114,8 +114,8 @@ def get_container_names():
     container_names = [container.attrs['Name'] for container in docker_client.containers.list()]
 
     
-# python3 proxy.py  10.2.30.52 7500
-# python3 proxy.py  10.2.27.24 7500
+# python3 proxy.py  10.2.30.50 7500
+# python3 proxy.py  10.2.27.22 7500
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

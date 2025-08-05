@@ -50,7 +50,6 @@ def get_workflow_metadata(workflow_name):
 
 def trigger_function(workflow_name, transaction_id, create_timestamp, function_name, ip, retry):
     url = 'http://{}/request'.format(ip)
-    print(f"sending req to {url}")
     data = {
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
@@ -72,6 +71,7 @@ def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
+    logging.info(f"running workflow {workflow_name}, transaction_id: {transaction_id}, retry: {retry}")
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
@@ -112,11 +112,11 @@ def run():
         retry = True
     ## logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
-    first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
+    first_run_finish_time, validate_latency, validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
     # logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}")
-        # clear memory and other stuff
+    #     # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]
         gevent.joinall(clear_jobs)
@@ -157,7 +157,7 @@ def clear_container():
 from gevent.pywsgi import WSGIServer
 import logging
 
-# python3 gateway.py 192.168.162.132 8000
+# python3 gateway.py  10.2.27.22 8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

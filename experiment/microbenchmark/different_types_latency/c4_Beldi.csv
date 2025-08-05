@@ -1,2 +1,2 @@
-,mode,validator overhead,overall validate latency,e2e latency,workflow run latency,func io latency,func exec latency
-0,Beldi,0.0,0.0,1.8513710737228393,1.835227298736572,0.5912227225303649,0.7158830428123473
+mode,validator overhead,overall validate latency,e2e latency,workflow run latency
+Beldi,0.0,0.0,3.1557062578201296,3.1389981532096862

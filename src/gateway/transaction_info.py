@@ -1,7 +1,7 @@
 from gevent import event
 from gateway_repo import Repository
 import time
-
+import logging
 
 class RunningTXTable:
     def __init__(self, repo:Repository):
@@ -41,6 +41,7 @@ class RunningTXTable:
     def notifyTX(self, transaction_id, first_run_finish_time, abort = False):
         if abort:
             # self.repo.delete_latency(transaction_id)
+           # logging.info(f"transaction {transaction_id} aborted.")
             self.running_txs[transaction_id]['abort'] = True
             self.running_txs[transaction_id]['finished'] = True
             self.running_txs[transaction_id]['cond'].set()
