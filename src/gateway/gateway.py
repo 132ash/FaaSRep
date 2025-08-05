@@ -70,7 +70,7 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
-    logging.info(f"[RUNNING] send req of {transaction_id}, retry: {retry}")
+    # logging.info(f"[RUNNING] send req of {transaction_id}, retry: {retry}")
     if type(parameters) is not dict:
         parameters = json.loads(parameters)
     for n in start_functions:
@@ -115,7 +115,7 @@ def run():
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
     end = time.time()
-    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    # logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
     
     return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
 

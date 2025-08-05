@@ -2,12 +2,13 @@ import threading
 import boto3
 import sys
 import json
+import logging
 import pandas as pd
+import multiprocessing
 from numpy import random
 import requests
 import numpy as np
 from pathlib import Path
-import time
 
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -43,11 +44,45 @@ ROUND = 10
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
-completion_records = []  # 用于记录完成时间戳和thread_id
-completion_lock = threading.Lock()  # 用于线程安全地访问completion_records
 
 DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
 dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
+
+def setup_logging_for_process(client_id):
+    """为每个子进程配置独立的日志文件。"""
+    log_dir = script_dir / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"client_{client_id}.log"
+    
+    # 移除旧的 handlers，为子进程设置新的
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+        
+    logging.basicConfig(
+        level=logging.INFO,
+        format=f'%(asctime)s [Client-{client_id}] [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, mode='w'),
+            logging.StreamHandler(sys.stdout) # 也可以同时输出到控制台
+        ]
+    )
+
+def worker_task(client_id, workflow, parameters_all_round, result_queue):
+    """子进程执行的任务。"""
+    setup_logging_for_process(client_id)
+    # logging.info(f"Process started for workflow: {workflow}")
+    
+    local_results = []
+    for i in range(ROUND):
+        #logging.info(f"Starting round {i+1}/{ROUND}")
+        # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
+        # 这里假设 analyze_workflow 返回一个包含结果的字典
+        txid, result = analyze_workflow(workflow, parameters_all_round[i])
+        local_results.append(result)
+        #logging.info(f"Finished round {i+1}/{ROUND} with txid: {txid}")
+
+    result_queue.put(local_results)
+    #logging.info("Process finished.")
 
 def generate_workflow_inputs_for_clients(workflow, text_size):
     dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
@@ -84,91 +119,72 @@ def get_function_latency(txid):
     io_time = sum(func_io_latency) 
     return exec_time, io_time
 
-def analyze_workflow(workflow, parameters_input, thread_id):
-    start = time.time()
-    rep = run_workflow(workflow, parameters_input) 
-    end = time.time()
-    txid = rep['transaction_id']
-    validate_time_inside_validator = rep['validate_time_inside_validator']
-    validate_latency = rep['validate_latency'] 
-    # e2e_latency = rep['e2e_latency']  
-    e2e_latency = end - start
-    first_run_latency = rep['first_run_latency']
-    func_exec_time_test, func_io_time_test = get_function_latency(txid)
-    func_io_time = func_io_time_test
-    func_exec_time = func_exec_time_test 
-    result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
-    
-    # 记录完成时间戳和thread_id
-    completion_timestamp = time.time()
-    with completion_lock:
-        completion_records.append({
-            'timestamp': completion_timestamp,
-            'thread_id': thread_id,
-            'txid': txid,
-            'completion_time': time.strftime('%Y-%m-%d %H:%M:%S.%f', time.localtime(completion_timestamp))
-        })
-    
+def analyze_workflow(workflow, parameters_input):
+    rep = run_workflow(workflow, parameters_input)
+    # func_exec_time_test, func_io_time_test = get_function_latency(rep['transaction_id'])
+    # func_io_time = func_io_time_test
+    # func_exec_time = func_exec_time_test 
+    # rep['func_io_time'] = func_io_time
+    # rep['func_exec_time'] = func_exec_time
+    return rep['transaction_id'], {
+        "validate_time_inside_validator": rep['validate_time_inside_validator'],
+        "validate_latency": rep['validate_latency'],
+        "e2e_latency": rep['e2e_latency'],
+        "first_run_latency": rep['first_run_latency'],
+    }
 
 def analyze_all(text_size):
-    global completion_records
-    completion_records = []  # 重置完成记录
     create_microbenchmark_dataset()
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
         parameters_all = generate_workflow_inputs_for_clients(workflow, text_size)
-        def thread_task(parameters_all_round, thread_id):
-
-            for i in range(ROUND):  # 每个线程调用 ROUND 次
-                analyze_workflow(workflow, parameters_all_round[i], thread_id)  # 传入thread_id
-
+        result_queue = multiprocessing.Queue()
         # 创建4个线程
-        threads = []
+        processes = []
         for i in range(CLIENT_CNT):
-            thread = threading.Thread(target=thread_task, args=(parameters_all[i],i))
-            threads.append(thread)
-            thread.start()
-            # 等待所有线程运行结束
-        for thread in threads:
-            thread.join()
+            process = multiprocessing.Process(
+                target=worker_task, 
+                args=(i, workflow, parameters_all[i], result_queue)
+            )
+            processes.append(process)
         
-        # 按时间戳排序完成记录并输出到文件
-        completion_records.sort(key=lambda x: x['timestamp'])
-        completion_df = pd.DataFrame(completion_records)
-        completion_df.to_csv(f"{script_dir}/{workflow}_completion_records.csv", index=False)
-        
+        for i in range(CLIENT_CNT):
+            processes[i].start()
+            print(f"Started process {processes[i].pid} for client {i}")
+
+        # 等待所有子进程运行结束
+        for process in processes:
+            process.join()
+
+        # 从队列中收集所有结果
+        all_results = []
+        while not result_queue.empty():
+            all_results.extend(result_queue.get())
+
         # 统计 result_dict 中的结果
-        validate_time_inside_validator = []
-        validate_latency = []
-        e2e_latency = []
-        first_run_latency = []
-        func_io_time = []
-        func_exec_time = []
+        if not all_results:
+            print(f"No results collected for workflow {workflow}. Skipping.")
+            continue
 
-        for result in result_dict.values():
-            validate_time_inside_validator.append(result["validate_time_inside_validator"])
-            validate_latency.append(result["validate_latency"])
-            e2e_latency.append(result["e2e_latency"])
-            first_run_latency.append(result["first_run_latency"])
-            func_io_time.append(result["func_io_time"])
-            func_exec_time.append(result["func_exec_time"])
-         
-        # 计算99%-ile延迟
-        mode = "Concord"
-        avg_results = {
-            'mode': mode,
-            "validator overhead": np.percentile(validate_time_inside_validator, 50),
-            "overall validate latency": np.percentile(validate_latency, 50),
-            "e2e latency": np.percentile(e2e_latency, 50),
-            "workflow run latency": np.percentile(first_run_latency, 50),
-            "func io latency": np.percentile(func_io_time, 50),
-            "func exec latency": np.percentile(func_exec_time, 50),
+        df = pd.DataFrame(all_results)
+        
+        # 计算平均延迟
+        mode = "Concord_avg"
+        avg_latency = df.mean()
+
+        summary = {
+            "mode": mode,
+            "validator overhead": avg_latency.get("validate_time_inside_validator"),
+            "overall validate latency": avg_latency.get("validate_latency"),
+            "e2e latency": avg_latency.get("e2e_latency"),
+            "workflow run latency": avg_latency.get("first_run_latency")
         }
-
-
-        # 创建 DataFrame
-        df = pd.DataFrame([avg_results])
-        df.to_csv(f"{script_dir}/{workflow}_{mode}.csv")
+        
+        summary_df = pd.DataFrame([summary])
+        output_file = script_dir / f"{workflow}_{mode}.csv"
+        summary_df.to_csv(output_file, index=False)
+        
+        print(f"Results summary saved to {output_file}")
    
 if __name__ == '__main__':
 

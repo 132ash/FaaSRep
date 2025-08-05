@@ -220,7 +220,7 @@ class WorkerSPManager:
         res = self.function_manager.run(name, state.transaction_id, state.write_set)
         end = time.time()
         if res.get("Abort", False):
-            logging.error(f"function {name} trigger abort: {res['error']}")
+            #logging.error(f"function {name} trigger abort: {res['error']}")
             return False
             
         state.lock.acquire()

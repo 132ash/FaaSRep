@@ -1,2 +1,0 @@
-,mode,validator overhead,overall validate latency,e2e latency,workflow run latency,func io latency,func exec latency
-0,Concord,0.0,1754292294.0565476,0.15326035022735596,0.12184786796569824,1.3485193252563477,0.06502211093902588
