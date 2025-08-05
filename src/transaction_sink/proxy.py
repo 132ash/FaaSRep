@@ -51,8 +51,8 @@ class Dispatcher:
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
        gevent.spawn_later(validate_interval, self._validate_loop)
 
-    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state):
-        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state)
+    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair):
+        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state, skip_repair)
 
     def register_repair_info_after_validate(self, workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx):
         return self.sinks[workflow_name].register_repair_info_after_validate(batch_id, batch_sub, tx_sub, sub_per_tx)
@@ -76,8 +76,9 @@ def fin_repair():
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     repair_mode = data['repair_mode']
+    skip_repair = data.get('skip_repair', False)
     #logging.info(f"[FIN REPAIR] workflow: {workflow_name}, batch_id: {batch_id}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
-    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED)
+    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED, skip_repair)
     return json.dumps({'status': 'ok'})
 
 @app.route('/abort', methods = ['POST'])
@@ -121,8 +122,8 @@ def repair_pessimistic():
     res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
     return res
 
-# python3 proxy.py  10.2.30.52 6000
-# python3 proxy.py  10.2.27.24 6000
+# python3 proxy.py  10.2.30.50 6000
+# python3 proxy.py  10.2.27.22 6000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

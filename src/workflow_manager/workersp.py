@@ -48,8 +48,10 @@ class ReservePool:
     def release(self, fin_tx_list):
         for transaction_id in fin_tx_list:
             if transaction_id in self.pool:
+                self.pool[transaction_id]["lock"].acquire()
                 for container in self.pool[transaction_id]["containers"]:
                     container.return_to_pool()
+                self.pool[transaction_id]["lock"].release()
                 self.pool.pop(transaction_id, None)
 
 class TransactionState:
@@ -211,7 +213,6 @@ class WorkerSPManager:
         state.parent_executed[function_name] += 1
         runnable = self.check_runnable(state, function_name)
         if runnable:
-            state.executed[function_name] = True
             state.lock.release()
             self.run_function(state, function_name)
         else:
@@ -219,7 +220,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
-        #logging.info(f'trigger local function: {function_name} of: {state.transaction_id}')
+        #logging.info(f'trigger local function: {function_name} of: {state.transaction_id}, repair:{state.repair}')
         state.lock.acquire()
         if state.repair and state.repair_mode_changed:
             upstream_keys = state.repair_states[function_name]["upstream_keys"]
@@ -228,13 +229,11 @@ class WorkerSPManager:
             #logging.info(f"[REPAIR FETCH UPSTREAM] upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
             state.repair_subjection_upcnt[function_name] = upstream_waiting_count
             state.parent_executed[function_name] = 0
-            state.executed[function_name] = False
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         runnable = self.check_runnable(state, function_name)
         # remember to release state.lock
         if runnable:
-            state.executed[function_name] = True
             state.lock.release()
             self.run_function(state, function_name)
         else:
@@ -281,7 +280,7 @@ class WorkerSPManager:
         if state.repair:
             up_cnt = state.repair_subjection_upcnt.get(function_name, 0)
             # parent count: the sum of parents in workflow graph and parents in subject table
-        return state.parent_executed[function_name] == info['parent_cnt'] + up_cnt and not state.executed[function_name] 
+        return state.parent_executed[function_name] == info['parent_cnt'] + up_cnt
 
     # run a function on local
     def run_function(self, state: TransactionState, function_name: str) -> None:
@@ -313,7 +312,6 @@ class WorkerSPManager:
         state.lock.acquire()
         if not state.repair:
             state.parent_executed[function_name] = 0
-            state.executed[function_name] = False
         
         state.lock.release()
         # trigger downstream functions, including the ones in write relation table.
@@ -327,7 +325,6 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        #logging.info(f"running function {name}, REPAIR: {state.repair} transaction_id: {state.transaction_id}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):

@@ -98,6 +98,7 @@ def repair():
     dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
     return json.dumps({'status': 'ok'})
 
+
 @app.route('/crosstx_req', methods = ['POST'])
 def crosstx_req():
     data = request.get_json(force=True, silent=True)
@@ -142,6 +143,7 @@ def clear():
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     if abort_clear:
         if FAST_PATH:
+            #logging.info(f"transaction {transaction_id} abort, return its containers to pool.")
             dispatcher.reserve_pools[workflow_name].release([transaction_id])
     else:
         dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
@@ -168,10 +170,20 @@ def commit():
     if FAST_PATH:
         workflow_name = data['workflow_name']
         fin_tx_list = commit_list['txs']
+        #logging.info(f"transactions {fin_tx_list} commited, release containers.")
         dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
     return json.dumps({'status': 'ok'})
 
+@app.route('/release', methods = ['POST'])
+def release():
+    data = request.get_json(force=True, silent=True)
+    tx_lists = data['tx_lists']
+    workflow_name = data['workflow_name']
+    for fin_tx_list in tx_lists:
+        #logging.info(f"transactions {fin_tx_list} commited, release containers.")
+        dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
+    return json.dumps({'status': 'ok'})
 
 
 @app.route('/clear_container', methods = ['GET'])
@@ -186,8 +198,8 @@ GET_NODE_INFO_INTERVAL = 0.1
 
 
 
-# python3 proxy.py  10.2.30.52 7500
-# python3 proxy.py  10.2.27.24 7500
+# python3 proxy.py  10.2.30.50 7500
+# python3 proxy.py  10.2.27.22 7500
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

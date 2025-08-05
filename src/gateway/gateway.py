@@ -112,7 +112,7 @@ def run():
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    logging.info(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    #logging.info(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
@@ -159,7 +159,7 @@ def clear_container():
 from gevent.pywsgi import WSGIServer
 import logging
 
-# python3 gateway.py 10.2.27.24 8000
+# python3 gateway.py 10.2.27.22 8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

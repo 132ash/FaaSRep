@@ -85,10 +85,7 @@ class RepairEngine:
 
     def trigger_function(self, FAST_PATH_ENABLED, workflow_name, transaction_id, function_name, ip, port, batch_id, repair_metadata_per_tx, mode):
         route = "repair" if FAST_PATH_ENABLED else "request"
-        if not ip.endswith(":7500"):
-            url = f'http://{ip}:7500/{route}'
-        else:
-            url = f'http://{ip}/{route}'
+        url = f'http://{ip}/{route}'
         # print(f"-----repair function: {function_name}, ip: {ip}, port: {port}, batch_id: {batch_id}, repair_states:{repair_metadata_per_tx}-----")
         data = {
             'batch_id': batch_id,
@@ -103,12 +100,21 @@ class RepairEngine:
         }
         requests.post(url, json=data)
 
+    def finish_batch_skipping_repair(self, batch_id):
+        #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR SKIP] Skipping repair for batch {batch_id}. finish on sink")
+        url = f'http://{self.tx_sink_addr}:6000/fin_repair'
+        data = {
+                'batch_id': batch_id,
+                'workflow_name': self.workflow_name,
+                'transaction_id': '',
+                'repair_mode': PESSI_REPAIR,
+                'skip_repair': True
+            }
+        requests.post(url, json=data)
+
     def register_on_sink(self,batch_id, pessi_sink_info):
         ip = self.tx_sink_addr
-        if not ip.endswith(":6000"):
-            url = f'http://{ip}:6000/repair_pessi'
-        else:
-            url = f'http://{ip}/repair_pessi'
+        url = f'http://{ip}:6000/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
         res = requests.post(url, json=data).json()
         #log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
@@ -121,10 +127,7 @@ class RepairEngine:
         #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
         if not repair_metadata and not expired_keys:
             return
-        if not worker_ip.endswith(":7500"):
-            url = 'http://{}:7500/prepare'.format(worker_ip)
-        else:
-            url = 'http://{}/prepare'.format(worker_ip)
+        url = 'http://{}/prepare'.format(worker_ip)
         data = {
             'batch_id': batch_id,
             'repair_metadata': repair_metadata,

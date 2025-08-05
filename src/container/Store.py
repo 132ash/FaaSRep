@@ -125,7 +125,7 @@ class Store:
         # SECOND run or not RYW, read from cache or shadow table.
         else:
             if self.keys_from_RYW.get(key, None):
-                #logging.info(f"[REPAIR RYW] Fetching from RYW for key: {key}")
+                #logging.info(f"[REPAIR RYW] Fetching from RYW for key: {key}, keys_from_RYW:{self.keys_from_RYW}")
                 upstream_func = self.keys_from_RYW[key]
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)

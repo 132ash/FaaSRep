@@ -76,27 +76,31 @@ class RepairingBatchState:
         #logging.info(f"[PESSIMISTIC REMINDER NEXT] batch_id: {batch_id}, tx_id: {tx_id}, ready_txs: {ready_txs}")
         return ready_txs 
        
-    def after_transaction_finish(self, batch_id, repair_mode, tx_id, state):
+    def after_transaction_finish(self, origin_batch_id, repair_mode, tx_id, state, skip_repair):
         finished_txs_and_state = []
         tasks_tx_finish_repair = {} # {batch_id: {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}}
         tasks_cascaded_repair = {}
-        if not PESSIMISTIC_REPAIR:
-            rejected, successors_to_be_pessimistic = self.optimistic_state_per_transaction[tx_id].optimistic_state_change_after_repair(repair_mode, state)
-            if rejected:
-                #logging.info(f"[OPTIMISTIC REPAIR REJECTED] Transaction {tx_id} in batch {batch_id} is rejected, state: {state}")
-                return False, []
-            if state == ABORTED:
-                for next_tx_id in successors_to_be_pessimistic:
-                    #logging.info(f"[OPTIMISTIC REPAIR CASCADED] Transaction {next_tx_id} should be repaired pessimistically.")
-                    self.optimistic_state_per_transaction[next_tx_id].need_pessimistic_repair = True
-            if self.pessimistic_state_per_batch[batch_id].pessimistic_repair_ready[tx_id]:
-                finished_txs_and_state = [(batch_id, tx_id, state)]
+        if skip_repair:
+            finished_txs_and_state = [(origin_batch_id, self.transaction_list_per_batch[origin_batch_id][-1], state)]
+            self.tx_finished_table_per_batch[origin_batch_id]["finished"] = self.tx_finished_table_per_batch[origin_batch_id]["total"] - 1
         else:
-            finished_txs_and_state = [(batch_id, tx_id, state)]
+            if not PESSIMISTIC_REPAIR:
+                rejected, successors_to_be_pessimistic = self.optimistic_state_per_transaction[tx_id].optimistic_state_change_after_repair(repair_mode, state)
+                if rejected:
+                    #logging.info(f"[OPTIMISTIC REPAIR REJECTED] Transaction {tx_id} in batch {origin_batch_id} is rejected, state: {state}")
+                    return False, []
+                if state == ABORTED:
+                    for next_tx_id in successors_to_be_pessimistic:
+                        #logging.info(f"[OPTIMISTIC REPAIR CASCADED] Transaction {next_tx_id} should be repaired pessimistically.")
+                        self.optimistic_state_per_transaction[next_tx_id].need_pessimistic_repair = True
+                if self.pessimistic_state_per_batch[origin_batch_id].pessimistic_repair_ready[tx_id]:
+                    finished_txs_and_state = [(origin_batch_id, tx_id, state)]
+            else:
+                finished_txs_and_state = [(origin_batch_id, tx_id, state)]
    
         while finished_txs_and_state:
             batch_id, tx_id, state = finished_txs_and_state.pop(0)
-            logging.info(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}, state: {state}, batch_finished: {self.tx_finished_table_per_batch[batch_id]['finished']}/{self.tx_finished_table_per_batch[batch_id]['total']}")
+            #logging.info(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}, state: {state}, batch_finished: {self.tx_finished_table_per_batch[batch_id]['finished']}/{self.tx_finished_table_per_batch[batch_id]['total']}")
             self.tx_finished_table_per_batch[batch_id]["finished"] += 1
             batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
             ready_successor_tx_pessi = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
@@ -123,6 +127,8 @@ class RepairingBatchState:
                 for tx_id in self.transaction_list_per_batch[batch_id]:
                     self.optimistic_state_per_transaction.pop(tx_id, None)
                 self.transaction_list_per_batch.pop(batch_id, None)
+        if skip_repair:
+            tasks_tx_finish_repair.pop(origin_batch_id, None)
         #logging.info(f"[REPAIR FINISH] tasks_tx_finish_repair: {tasks_tx_finish_repair}, tasks_cascaded_repair: {tasks_cascaded_repair}")
         return tasks_tx_finish_repair, tasks_cascaded_repair
 
@@ -183,8 +189,8 @@ class TransactionSink:
         self.send_validate_request(batch, first_run_finish_time)
 
 
-    def fin_repair_or_abort(self, batch_id, transaction_id, repair_mode, state):
-        tasks_tx_finish_repair, tasks_cascaded_repair = self.repairing_batch_state.after_transaction_finish(batch_id, repair_mode, transaction_id, state)
+    def fin_repair_or_abort(self, batch_id, transaction_id, repair_mode, state, skip_repair):
+        tasks_tx_finish_repair, tasks_cascaded_repair = self.repairing_batch_state.after_transaction_finish(batch_id, repair_mode, transaction_id, state, skip_repair)
         if tasks_tx_finish_repair:
             tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_tx_finish_repair)]
             gevent.joinall(tasks)
@@ -211,7 +217,7 @@ class TransactionSink:
             "batch_id": batch["batch_id"],
             "first_run_finish_time": first_run_finish_time
         }
-        #logging.info(f"[VALIDATE] batch_id:{batch['batch_id']}")
+        #logging.info(f"[VALIDATE] batch_id:{batch['batch_id']}, batch_info:{batch}")
         response = requests.post(remote_url, json=data)
         response.close() 
         

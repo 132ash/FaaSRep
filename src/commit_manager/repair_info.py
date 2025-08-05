@@ -21,7 +21,7 @@ class RepairInfo:
         self.container_port_per_batch = {}
 
 
-# TODO: construct repair metadata, check code.
+# b94ad94b0080's upstream key is substituted by RYW.
 
     def batch_init(self, batch_id):
         self.repair_basic_info_dict[batch_id] = {}

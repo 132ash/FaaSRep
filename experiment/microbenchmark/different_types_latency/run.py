@@ -5,8 +5,9 @@ import json
 import pandas as pd
 from numpy import random
 import requests
-import time
+import numpy as np
 from pathlib import Path
+import time
 
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -20,7 +21,9 @@ script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR / 'config'))
 sys.path.append(str(ROOT_DIR / 'experiment'))
+sys.path.append(str(ROOT_DIR / 'experiment' / 'microbenchmark'))
 import config
+from DB_setup import create_microbenchmark_dataset
 from repository import Repository
 repo = Repository()
 
@@ -40,28 +43,31 @@ ROUND = 10
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
-
 DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
 dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
 
-def generate_workflow_input(workflow, text_size):
+def generate_workflow_inputs_for_clients(workflow, text_size):
     dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
     all_func = repo.get_all_functions(workflow)
-    parameters_input = {'f1': {'payload_size': text_size, 'keys':{func: {} for func in all_func}}}
-    for func in all_func:
-        zipf_param = 1.1
-        dataset_len = len(dataset)
-        indices = set()
-        while len(indices) < 3:
-            idx = random.zipf(zipf_param) - 1
-            if 0 <= idx < dataset_len:
-                indices.add(idx)
-        keys = [dataset[i] for i in indices]
-        parameters_input['f1']['keys'][func] = {keys[0]:'R', keys[1]:'R', keys[2]:'W'}
-    parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
-    return parameters_input
-
-    # print(f"Generated parameters inputs for workflow {workflow}: {parameters_inputs[workflow]}")
+    client_round_inputs = []
+    for client_id in range(CLIENT_CNT):
+        round_inputs = []
+        for round_id in range(ROUND):
+            parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
+            for func in all_func:
+                zipf_param = 1.1
+                dataset_len = len(dataset)
+                indices = set()
+                while len(indices) < 3:
+                    idx = random.zipf(zipf_param) - 1
+                    if 0 <= idx < dataset_len:
+                        indices.add(idx)
+                keys = [dataset[i] for i in indices]
+                parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
+            parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
+            round_inputs.append(parameters_input)
+        client_round_inputs.append(round_inputs)
+    return client_round_inputs
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
@@ -75,36 +81,43 @@ def get_function_latency(txid):
     io_time = sum(func_io_latency) 
     return exec_time, io_time
 
-def analyze_workflow(workflow, text_size):
-    parameters_input = generate_workflow_input(workflow, text_size)
+def analyze_workflow(workflow, parameters_input):
+    start = time.time()
     rep = run_workflow(workflow, parameters_input) 
+    end = time.time()
     txid = rep['transaction_id']
     validate_time_inside_validator = rep['validate_time_inside_validator']
     validate_latency = rep['validate_latency'] 
-    e2e_latency = rep['e2e_latency']  
+    # e2e_latency = rep['e2e_latency']  
+    e2e_latency = end - start
     first_run_latency = rep['first_run_latency']
     func_exec_time_test, func_io_time_test = get_function_latency(txid)
     func_io_time = func_io_time_test
     func_exec_time = func_exec_time_test 
     result_dict[txid] = {"first_run_latency":first_run_latency, "validate_time_inside_validator": validate_time_inside_validator, "validate_latency": validate_latency, "e2e_latency": e2e_latency, "func_io_time": func_io_time, "func_exec_time": func_exec_time}
+    
+    
 
 def analyze_all(_system_mode, _opt, text_size):
+    create_microbenchmark_dataset()
+    repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
-        repo.flush_couchdb_workflow_latency()
-            # 创建线程函数
-        def thread_task():
-            for _ in range(ROUND):  # 每个线程调用 ROUND 次
-                analyze_workflow(workflow, text_size)  # 调用 analyze_workflow
+        parameters_all = generate_workflow_inputs_for_clients(workflow, text_size)
+        def thread_task(parameters_all_round):
+
+            for i in range(ROUND):  # 每个线程调用 ROUND 次
+                analyze_workflow(workflow, parameters_all_round[i])  # 传入thread_id
 
         # 创建4个线程
         threads = []
         for i in range(CLIENT_CNT):
-            thread = threading.Thread(target=thread_task)
+            thread = threading.Thread(target=thread_task, args=(parameters_all[i],))
             threads.append(thread)
             thread.start()
             # 等待所有线程运行结束
         for thread in threads:
             thread.join()
+        
         # 统计 result_dict 中的结果
         validate_time_inside_validator = []
         validate_latency = []
@@ -120,18 +133,19 @@ def analyze_all(_system_mode, _opt, text_size):
             first_run_latency.append(result["first_run_latency"])
             func_io_time.append(result["func_io_time"])
             func_exec_time.append(result["func_exec_time"])
-
-        # 计算平均值
+         
+        # 计算99%-ile延迟
         mode = f"{_system_mode}_{_opt}"
         avg_results = {
             'mode': mode,
-            "validator overhead": sum(validate_time_inside_validator) / len(validate_time_inside_validator),
-            "overall validate latency": sum(validate_latency) / len(validate_latency),
-            "e2e latency": sum(e2e_latency) / len(e2e_latency),
-            "workflow run latency": sum(first_run_latency) / len(first_run_latency),
-            "func io latency": sum(func_io_time) / len(func_io_time),
-            "func exec latency": sum(func_exec_time) / len(func_exec_time),
+            "validator overhead": np.percentile(validate_time_inside_validator, 99),
+            "overall validate latency": np.percentile(validate_latency, 99),
+            "e2e latency": np.percentile(e2e_latency, 99),
+            "workflow run latency": np.percentile(first_run_latency, 99),
+            "func io latency": np.percentile(func_io_time, 99),
+            "func exec latency": np.percentile(func_exec_time, 99),
         }
+
 
         # 创建 DataFrame
         df = pd.DataFrame([avg_results])

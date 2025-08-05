@@ -18,6 +18,7 @@ sys.path.append('../../config')
 import config
 
 PESSIMISTIC_REPAIR_ENABLED = not config.OPTIMISTIC_REPAIR
+FAST_PATH_ENABLED = config.FAST_PATH
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -44,6 +45,7 @@ class ValidatorPool:
         self.repo = Repository()
         self.handler_task_queues = []
         self.serializer_return_pipes = []
+        self.processor_id_to_assign = 0
         self.workflow_name = workflow_name
         self.batch_processor_table = {}  # {batch_id: processor_id}
         self.function_pos = {}
@@ -80,19 +82,11 @@ class ValidatorPool:
                 self.handler_task_queues[processor_id].put(req)
                 #logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
                 return
-            min_len = None
-            min_idx = None
-            for idx, q in enumerate(self.handler_task_queues):
-                qsize = q.qsize()
-                if min_len is None or qsize < min_len:
-                    min_len = qsize
-                    min_idx = idx
-                    if min_len == 0:
-                        break
-            self.batch_processor_table[batch_id] = min_idx
-            self.batch_processor_table[batch_id] = min_idx
-            self.handler_task_queues[min_idx].put(req)
-            #logging.info(f"Dispatched request {req[0]} to handler {min_idx} (queue size: {min_len})")
+            self.batch_processor_table[batch_id] = self.processor_id_to_assign
+            self.handler_task_queues[self.processor_id_to_assign].put(req)
+            #logging.info(f"Dispatched request {req[0]} to handler {self.processor_id_to_assign} (newly assigned)")
+            self.processor_id_to_assign = (self.processor_id_to_assign+1) % self.num_validators
+            
 
     def submit(self, batch_id, op, data={}):
         self.pool_task_queue.put((batch_id, op, data))
@@ -172,7 +166,8 @@ class ValidatorProcess(Process):
             if batch_need_repair:
                 self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
             else:
-                self.commit_batch_list(commit_list_for_current_handler, commit_keys_on_worker)
+                self.repair_engine.finish_batch_skipping_repair(batch_id)
+                self.commit_batch_list(commit_list_for_current_handler, commit_keys_on_worker, [])
         elif op == REPAIR_FINISH:
             batch_finished = data['batch_finished']
             pessi_repair_txs = data['pessi_repair_txs']
@@ -186,8 +181,14 @@ class ValidatorProcess(Process):
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
         elif op == CASCADED_COMMIT:
-            txid_lists = [self.successed_tx_list_per_batch[batch_id] for batch_id in data['batch_ids']]
-            timestamps = [self.time_tuple_per_batch[batch_id] for batch_id in data['batch_ids']]
+            txid_lists = [self.successed_tx_list_per_batch[batch_id] for batch_id in data]
+            timestamps = [self.time_tuple_per_batch[batch_id] for batch_id in data]
+            if FAST_PATH_ENABLED:
+                jobs = [
+                    gevent.spawn(requests.post, url=f"http://{worker_ip}/release", json={"tx_lists":txid_lists, 'workflow_name':self.workflow_name})
+                    for worker_ip in self.worker_ip_set
+                    ]
+                gevent.joinall(jobs)
             self.notify_gateway(txid_lists, True, timestamps)
 
                         
@@ -215,33 +216,33 @@ class ValidatorProcess(Process):
 
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip, aborted_txs=[]):
-        txid_lists, timestamps = [], []
-        worker_commit_set = {worker_ip:{'keys':[], 'txs':[]} for worker_ip in self.worker_ip_set}
-        for key, commit_key_info in keys_for_commit_per_ip.items():
-            writer_tx_id, writer_func, version = commit_key_info
-            target_ip = self.function_pos[writer_func]
-            worker_commit_set[target_ip]['keys'].append([f'{writer_tx_id}:PUT:{writer_func}:{key}', version])
+        if commit_batch_list:
+            txid_lists, timestamps = [], []
+            worker_commit_set = {worker_ip:{'keys':[], 'txs':[]} for worker_ip in self.worker_ip_set}
+            for key, commit_key_info in keys_for_commit_per_ip.items():
+                writer_tx_id, writer_func, version = commit_key_info
+                target_ip = self.function_pos[writer_func]
+                worker_commit_set[target_ip]['keys'].append([f'{writer_tx_id}:PUT:{writer_func}:{key}', version])
 
-        for batch_id in commit_batch_list:
-            timestamps.append(self.time_tuple_per_batch[batch_id])
-            successed_tx_list = self.successed_tx_list_per_batch[batch_id]
-            txid_lists.append(successed_tx_list)
-            for worker_ip in self.worker_ip_set:
-                worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
-            self.tx_list_per_batch.pop(batch_id, None)
-            self.time_tuple_per_batch.pop(batch_id, None)
-            self.read_set_per_batch.pop(batch_id, None)
-            self.write_set_per_batch.pop(batch_id, None)
-            self.repair_engine.clean_table_of_batch(batch_id)
-            self.container_port_per_batch.pop(batch_id, None)
-        #log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, timestamps: {timestamps}, worker_commit_set: {worker_commit_set}")
-        jobs = [
-            gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
-            for ip in worker_commit_set
-        ]
-        gevent.joinall(jobs)
-        self.notify_gateway(txid_lists, True, timestamps, aborted_txs)
-
+            for batch_id in commit_batch_list:
+                timestamps.append(self.time_tuple_per_batch[batch_id])
+                successed_tx_list = self.successed_tx_list_per_batch[batch_id]
+                txid_lists.append(successed_tx_list)
+                for worker_ip in self.worker_ip_set:
+                    worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
+                self.tx_list_per_batch.pop(batch_id, None)
+                self.time_tuple_per_batch.pop(batch_id, None)
+                self.read_set_per_batch.pop(batch_id, None)
+                self.write_set_per_batch.pop(batch_id, None)
+                self.repair_engine.clean_table_of_batch(batch_id)
+                self.container_port_per_batch.pop(batch_id, None)
+            #log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, timestamps: {timestamps}, worker_commit_set: {worker_commit_set}")
+            jobs = [
+                gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
+                for ip in worker_commit_set
+            ]
+            gevent.joinall(jobs)
+            self.notify_gateway(txid_lists, True, timestamps, aborted_txs)
 
     def abort_on_worker(self, ip, aborted_txs):
         if not ip.endswith(":7500"):
@@ -267,7 +268,7 @@ class ValidatorProcess(Process):
 
         requests.post(url, json=data)
 
-    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs):
+    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs=[]):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
         data = {
             'transaction_id_lists': txid_lists,
