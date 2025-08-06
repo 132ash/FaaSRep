@@ -1,19 +1,29 @@
 import boto3
-import sys
+import logging
 import json
+import sys
+
+from pathlib import Path
+script_dir = Path(__file__).parent
+def get_root_dir(script_dir: Path) -> Path:
+    project_root = script_dir
+    while project_root != project_root.parent:
+        if (project_root / "README.md").exists():
+            break
+        project_root = project_root.parent
+    return project_root
+
+ROOT_DIR = get_root_dir(script_dir)
+sys.path.append(str(ROOT_DIR))
+
 import pandas as pd
 import multiprocessing
-from numpy import random
 import requests
-import numpy as np
-from pathlib import Path
 import config.config as config
 from experiment.common import repository, client_logs
 from experiment.common import generate_param
 repo = repository.Repository()
 
-
-script_dir = Path(__file__).parent
 
 DB_NODE_IP = config.STOREGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
@@ -21,7 +31,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 # travel_reservation_config
 FLIGHT_IDS = config.FLIGHT_IDS
-FILGHT_CAPATICY = config.FILGHT_CAPATICY
+FLIGHT_CAPATICY = config.FLIGHT_CAPATICY
 RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
@@ -43,9 +53,9 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
         #logging.info(f"Starting round {i+1}/{ROUND}")
         # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
         # 这里假设 analyze_workflow 返回一个包含结果的字典
-        txid, result = analyze_workflow(workflow, parameters_all_round[i])
+        txid, result, tx_res = analyze_workflow(workflow, parameters_all_round[i])
         local_results.append(result)
-        #logging.info(f"Finished round {i+1}/{ROUND} with txid: {txid}")
+        # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
     result_queue.put(local_results)
     #logging.info("Process finished.")
@@ -75,9 +85,9 @@ def analyze_workflow(workflow, parameters_input):
         "validate_latency": rep['validate_latency'],
         "e2e_latency": rep['e2e_latency'],
         "first_run_latency": rep['first_run_latency'],
-    }
+    }, rep['res']
 
-def analyze_all():
+def analyze_all(compute_mode='avg'):
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
         parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
@@ -112,24 +122,41 @@ def analyze_all():
         df = pd.DataFrame(all_results)
         
         # 计算99%-ile延迟
-        mode = "Beldi_avg"
-        avg_latency = df.mean()
+        if compute_mode == 'avg':
+            mode = f"Beldi_{compute_mode}"
+            avg_latency = df.mean()
 
-        summary = {
-            "mode": mode,
-            "validator overhead": avg_latency.get("validate_time_inside_validator"),
-            "overall validate latency": avg_latency.get("validate_latency"),
-            "e2e latency": avg_latency.get("e2e_latency"),
-            "workflow run latency": avg_latency.get("first_run_latency")
-        }
+            summary = {
+                "mode": mode,
+                "validator overhead": avg_latency.get("validate_time_inside_validator"),
+                "overall validate latency": avg_latency.get("validate_latency"),
+                "e2e latency": avg_latency.get("e2e_latency"),
+                "workflow run latency": avg_latency.get("first_run_latency")
+            }
 
-        summary_df = pd.DataFrame([summary])
-        output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
-        summary_df.to_csv(output_file, index=False)
+            summary_df = pd.DataFrame([summary])
+            output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
+            summary_df.to_csv(output_file, index=False)
+        elif compute_mode == '99p':
+            mode = f"Beldi_{compute_mode}"
+            p99_latency = df.quantile(0.99)
+
+            summary = {
+                "mode": mode,
+                "validator overhead": p99_latency.get("validate_time_inside_validator"),
+                "overall validate latency": p99_latency.get("validate_latency"),
+                "e2e latency": p99_latency.get("e2e_latency"),
+                "workflow run latency": p99_latency.get("first_run_latency")
+            }
+
+            summary_df = pd.DataFrame([summary])
+            output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
+            summary_df.to_csv(output_file, index=False)
         print(f"[{workflow}] Results summary saved to {output_file}")
 
 if __name__ == '__main__':
-    analyze_all()
+    compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
+    analyze_all(compute_mode=compute_mode)
 
 
 

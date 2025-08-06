@@ -2,8 +2,8 @@ import couchdb
 import sys
 from pathlib import Path
 experiment_dir = Path(__file__).parent.parent
-sys.path.append(str(experiment_dir.parent / 'config'))
-import config
+sys.path.append(str(experiment_dir.parent))
+import config.config as config
 
 class Repository:
     def __init__(self):

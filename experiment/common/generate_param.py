@@ -14,7 +14,7 @@ repo = repository.Repository()
 
 # travel_reservation parameters
 FLIGHT_IDS = config.FLIGHT_IDS
-FILGHT_CAPATICY = config.FILGHT_CAPATICY
+FLIGHT_CAPATICY = config.FLIGHT_CAPATICY
 RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
@@ -23,7 +23,7 @@ DATE_FORMAT = config.DATE_FORMAT
 microbenchmark_dir = script_dir.parent / "microbenchmark"
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
-DS_JSON_PATH  = microbenchmark_dir / "experiment/microbenchmark/db_keys.json"
+DS_JSON_PATH  = microbenchmark_dir / "db_keys.json"
 dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
 
 
@@ -63,15 +63,15 @@ def generate_travel_reservation_parameters(client_cnt, round_cnt):
                 'reserve_flight':{
                     'transaction_id': transaction_id,
                     'flight_id': selected_flight_id,
-                    'rental_start': actual_rental_start,
-                    'rental_end': actual_rental_end,
+                    'rentle_from': actual_rental_start,
+                    'rentle_to': actual_rental_end,
                 },
                 'transaction_id': transaction_id,
             }
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
-def generate_workflow_inputs_for_clients(client_cnt, round_cnt, workflow_parameters):
+def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters):
     workflow = workflow_parameters.get('workflow', {})
     text_size = workflow_parameters.get('text_size', 8)  # Default to 8B if not specified
     dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
@@ -100,6 +100,6 @@ def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, workfl
     if workflow == 'travel_reservation':
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
-        return generate_workflow_inputs_for_clients(client_cnt, round_cnt, workflow_parameters)
+        return generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters)
     else:
         raise ValueError(f"Unknown workflow: {workflow}")

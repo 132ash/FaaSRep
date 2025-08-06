@@ -1,17 +1,24 @@
-import threading
+
 import boto3
 import sys
 import json
-import logging
 import pandas as pd
 import multiprocessing
-from numpy import random
 import requests
-import numpy as np
 from pathlib import Path
+import logging
 
+def get_root_dir(script_dir: Path) -> Path:
+    project_root = script_dir
+    while project_root != project_root.parent:
+        if (project_root / "README.md").exists():
+            break
+        project_root = project_root.parent
+    return project_root
 
 script_dir = Path(__file__).parent
+ROOT_DIR = get_root_dir(script_dir)
+sys.path.append(str(ROOT_DIR))
 microbenchmark_dir = script_dir.parent
 import config.config as config
 from experiment.common import repository, client_logs, generate_param
@@ -25,8 +32,8 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
-CLIENT_CNT = 9
-ROUND = 10
+CLIENT_CNT = 1
+ROUND = 1
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
@@ -77,7 +84,7 @@ def analyze_workflow(workflow, parameters_input):
 def analyze_all(text_size):
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
-        parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark',CLIENT_CNT, ROUND, {'workflow': workflow, 'text_size': text_size})
+        parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', CLIENT_CNT, ROUND, {'workflow': workflow, 'text_size': text_size})
         result_queue = multiprocessing.Queue()
         # 创建4个线程
         processes = []

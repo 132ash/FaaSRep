@@ -87,7 +87,7 @@ class Runner:
         try:
             exec(self.code, self.ctx)
             # run function
-            out = eval('main()', self.ctx)               
+            out = eval('main()', self.ctx)
         except Exception as e:
             aborted = True
             msg = json.dumps({'Abort': True, 'error': str(e), 'lock_set': self.lock_set})       
