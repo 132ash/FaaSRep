@@ -66,7 +66,7 @@ class Dispatcher:
         self.managers[workflow_name].stop_transaction(transaction_id)
 
 
-dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
+dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 
 # a new request from outside
 # the previous function was done

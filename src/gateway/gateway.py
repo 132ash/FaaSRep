@@ -92,7 +92,7 @@ def run():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow']
     parameters = data['parameters']
-    transaction_id = str(uuid.uuid4())
+    transaction_id = data.get('transaction_id', str(uuid.uuid4()))
     create_timestamp = txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
     ## logging.info('processing request ' + transaction_id + '...')

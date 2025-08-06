@@ -20,25 +20,33 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                     # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
+                    'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
                     'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                    'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                    'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                    'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                    'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                    'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
+                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                     # 'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4',
                     # "sectestflow": '/home/ash/FaaSnap/benchmark/sectestflow/workflow.yaml',
                     # "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"
                     # #   'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'         
                       }
-FUNCTION_INFO_ADDRS = {
-                        #  'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                          'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                        #  'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4'
-#                         'sectestflow': '../../../../benchmark/sectestflow',
-#                         'testflow': '../../../../benchmark/testflow',
-                       }
 
 DEFAULT_CONTAINER_NUM = 9
 CLEAR_MEM = True
 
+# app configuration
 
-
+# travel reservation
+FLIGHT_IDS = 100
+FILGHT_CAPATICY = "100"
+RENTAL_START = '2025-07-01'
+RENTAL_END = '2025-07-31'
+CAR_NUM = '100'
+DATE_FORMAT = "%Y-%m-%d"
 
 
 

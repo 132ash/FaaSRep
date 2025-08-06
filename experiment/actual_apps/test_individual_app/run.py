@@ -1,35 +1,37 @@
-import threading
 import boto3
 import sys
 import json
-import logging
 import pandas as pd
 import multiprocessing
 from numpy import random
 import requests
 import numpy as np
 from pathlib import Path
-
-
-script_dir = Path(__file__).parent
-microbenchmark_dir = script_dir.parent
 import config.config as config
-from experiment.common import repository, client_logs, generate_param
+from experiment.common import repository, client_logs
+from experiment.common import generate_param
 repo = repository.Repository()
 
 
+script_dir = Path(__file__).parent
 
 DB_NODE_IP = config.STOREGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
 
-TEXT_SIZE_SMALL = 8
-TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
+# travel_reservation_config
+FLIGHT_IDS = config.FLIGHT_IDS
+FILGHT_CAPATICY = config.FILGHT_CAPATICY
+RENTAL_START = config.RENTAL_START
+RENTAL_END = config.RENTAL_END
+DATE_FORMAT = config.DATE_FORMAT
+
 CLIENT_CNT = 9
 ROUND = 10
 parameters_inputs = {}
-all_workflows = ['c4']
+all_workflows = ['travel_reservation']
 result_dict = {}
+
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程执行的任务。"""
@@ -50,7 +52,8 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
-    inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters)}
+    transaction_id = parameters.pop('transaction_id', '')
+    inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters), 'transaction_id': transaction_id}
     rep = requests.post(url, json = inputs)
     return rep.json()
 
@@ -74,10 +77,10 @@ def analyze_workflow(workflow, parameters_input):
         "first_run_latency": rep['first_run_latency'],
     }
 
-def analyze_all(text_size):
+def analyze_all():
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
-        parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark',CLIENT_CNT, ROUND, {'workflow': workflow, 'text_size': text_size})
+        parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
         result_queue = multiprocessing.Queue()
         # 创建4个线程
         processes = []
@@ -111,22 +114,22 @@ def analyze_all(text_size):
         # 计算99%-ile延迟
         mode = "Beldi_avg"
         avg_latency = df.mean()
+
         summary = {
             "mode": mode,
             "validator overhead": avg_latency.get("validate_time_inside_validator"),
             "overall validate latency": avg_latency.get("validate_latency"),
             "e2e latency": avg_latency.get("e2e_latency"),
             "workflow run latency": avg_latency.get("first_run_latency")
-        }       
-        summary_df = pd.DataFrame([summary])
-        output_file = script_dir / f"{workflow}_{mode}.csv"
-        summary_df.to_csv(output_file, index=False)
-        
-        print(f"Results summary saved to {output_file}")
-if __name__ == '__main__':
+        }
 
-    TEXT_SIZE = int(sys.argv[1])
-    analyze_all(TEXT_SIZE)
+        summary_df = pd.DataFrame([summary])
+        output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
+        summary_df.to_csv(output_file, index=False)
+        print(f"[{workflow}] Results summary saved to {output_file}")
+
+if __name__ == '__main__':
+    analyze_all()
 
 
 

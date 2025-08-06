@@ -1,0 +1,105 @@
+from config import config
+import uuid
+import random
+import json
+from datetime import datetime, timedelta
+from experiment.common import repository
+from pathlib import Path
+import numpy as np
+
+
+script_dir = Path(__file__).parent
+repo = repository.Repository()
+
+
+# travel_reservation parameters
+FLIGHT_IDS = config.FLIGHT_IDS
+FILGHT_CAPATICY = config.FILGHT_CAPATICY
+RENTAL_START = config.RENTAL_START
+RENTAL_END = config.RENTAL_END
+DATE_FORMAT = config.DATE_FORMAT
+
+# mircobenchmark parameters
+microbenchmark_dir = script_dir.parent / "microbenchmark"
+TEXT_SIZE_SMALL = 8
+TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
+DS_JSON_PATH  = microbenchmark_dir / "experiment/microbenchmark/db_keys.json"
+dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
+
+
+def generate_travel_reservation_parameters(client_cnt, round_cnt):
+    parameters_inputs = {}
+    all_flight_ids = [f'flight_{i}' for i in range(FLIGHT_IDS)]
+
+    for client_id in range(client_cnt):
+        parameters_inputs[client_id] = []
+        for round_id in range(round_cnt):
+            transaction_id =  str(uuid.uuid4())
+            # Randomly sample a flight_id from all_flight_ids
+            selected_flight_id = random.choice(all_flight_ids)
+
+            # Parse date strings and calculate random rental period
+            start_date = datetime.strptime(RENTAL_START, DATE_FORMAT)
+            end_date = datetime.strptime(RENTAL_END, DATE_FORMAT)
+
+            # Randomly pick a day from [RENTAL_START, RENTAL_END)
+            days_range = (end_date - start_date).days
+            random_start_offset = random.randint(0, days_range - 1)
+            rental_start_date = start_date + timedelta(days=random_start_offset)
+
+            # Randomly choose rental duration from [1, 5] days
+            rental_duration = random.randint(1, 5)
+            rental_end_date = rental_start_date + timedelta(days=rental_duration)
+
+            # Ensure rental_end doesn't exceed RENTAL_END
+            if rental_end_date > end_date:
+                rental_end_date = end_date
+
+            # Convert back to string format
+            actual_rental_start = rental_start_date.strftime(DATE_FORMAT)
+            actual_rental_end = rental_end_date.strftime(DATE_FORMAT)
+
+            parameters_input = {
+                'reserve_flight':{
+                    'transaction_id': transaction_id,
+                    'flight_id': selected_flight_id,
+                    'rental_start': actual_rental_start,
+                    'rental_end': actual_rental_end,
+                },
+                'transaction_id': transaction_id,
+            }
+            parameters_inputs[client_id].append(parameters_input)
+    return parameters_inputs
+
+def generate_workflow_inputs_for_clients(client_cnt, round_cnt, workflow_parameters):
+    workflow = workflow_parameters.get('workflow', {})
+    text_size = workflow_parameters.get('text_size', 8)  # Default to 8B if not specified
+    dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
+    all_func = repo.get_all_functions(workflow)
+    client_round_inputs = []
+    for client_id in range(client_cnt):
+        round_inputs = []
+        for round_id in range(round_cnt):
+            parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
+            for func in all_func:
+                zipf_param = 1.1
+                dataset_len = len(dataset)
+                indices = set()
+                while len(indices) < 3:
+                    idx = np.random.zipf(zipf_param) - 1
+                    if 0 <= idx < dataset_len:
+                        indices.add(idx)
+                keys = [dataset[i] for i in indices]
+                parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
+            parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
+            round_inputs.append(parameters_input)
+        client_round_inputs.append(round_inputs)
+    return client_round_inputs
+
+def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, workflow_parameters=None):
+    if workflow == 'travel_reservation':
+        return generate_travel_reservation_parameters(client_cnt, round_cnt)
+    elif workflow == 'microbenchmark':
+        return generate_workflow_inputs_for_clients(client_cnt, round_cnt, workflow_parameters)
+    else:
+        raise ValueError(f"Unknown workflow: {workflow}")
