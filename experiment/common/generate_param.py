@@ -14,7 +14,7 @@ repo = repository.Repository()
 
 # travel_reservation parameters
 FLIGHT_IDS = config.FLIGHT_IDS
-FLIGHT_CAPATICY = config.FLIGHT_CAPATICY
+FLIGHT_CAPATICY = config.FLIGHT_CAPACITY
 RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
@@ -31,6 +31,14 @@ BANKING_ACCOUNTS = config.BANKING_ACCOUNTS
 BANKING_ORIGINAL_BALANCE = config.BANKING_ORIGINAL_BALANCE
 LOGIN_FAIL_PROB = config.LOGIN_FAIL_PROB
 BANKING_PWD_DIR = actual_apps_dir / "banking_pwd.json"
+
+# social network parameters
+SOCIAL_NETWORK_USERS = config.SOCIAL_NETWORK_USERS
+STARTUP_POSTS = config.STARTUP_POSTS
+FOLLOWERS_PER_USER = config.FOLLOWERS_PER_USER
+SOCIAL_PWD_DIR = actual_apps_dir / "social_pwd.json"
+SOCIAL_POST_IDS_DIR = actual_apps_dir / "social_posts.json"
+
 
 def generate_banking_system_parameters(client_cnt, round_cnt):
     parameters_inputs = {}
@@ -63,7 +71,7 @@ def generate_banking_system_parameters(client_cnt, round_cnt):
             amount = random.choice(amount_options)
             
             parameters_input = {
-                'login': {
+                'banking_login': {
                     'src_account': src_account,
                     'password': password,
                     'dst_account': dst_account,
@@ -118,6 +126,31 @@ def generate_travel_reservation_parameters(client_cnt, round_cnt):
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
+def generate_social_media_parameters(client_cnt, round_cnt):
+    parameters_inputs = {}
+    all_users = [f"user_{i}" for i in range(SOCIAL_NETWORK_USERS)]
+    all_posts = json.load(open(SOCIAL_POST_IDS_DIR, 'r', encoding='utf-8'))
+    social_pwds = json.load(open(SOCIAL_PWD_DIR, 'r', encoding='utf-8'))
+
+    for client_id in range(client_cnt):
+        parameters_inputs[client_id] = []
+        for _ in range(round_cnt):
+            transaction_id =  str(uuid.uuid4())
+            user_id = random.choice(all_users)
+            if random.random() < LOGIN_FAIL_PROB:
+                password = social_pwds[user_id]+ "_wrong"
+            else:
+                password = social_pwds[user_id]
+            comment_post_id = random.choice(all_posts)
+            parameters_input = {
+                'user_id': user_id,
+                'comment_post_id': comment_post_id,
+                'password': password,
+                'transaction_id': transaction_id,
+            }
+            parameters_inputs[client_id].append(parameters_input)
+    return parameters_inputs
+
 def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters):
     dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     workflow = workflow_parameters.get('workflow', {})
@@ -149,5 +182,7 @@ def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, workfl
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
         return generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters)
+    elif workflow == 'banking_system':
+        return generate_banking_system_parameters(client_cnt, round_cnt)
     else:
         raise ValueError(f"Unknown workflow: {workflow}")

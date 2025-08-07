@@ -31,7 +31,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 # travel_reservation_config
 FLIGHT_IDS = config.FLIGHT_IDS
-FLIGHT_CAPATICY = config.FLIGHT_CAPATICY
+FLIGHT_CAPACITY = config.FLIGHT_CAPACITY
 RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
@@ -39,7 +39,8 @@ DATE_FORMAT = config.DATE_FORMAT
 CLIENT_CNT = 1
 ROUND = 1
 parameters_inputs = {}
-all_workflows = ['banking_system']
+# all_workflows = ['banking_system']
+all_workflows = ['social_network']
 result_dict = {}
 
 
@@ -62,8 +63,10 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
-    transaction_id = parameters.pop('transaction_id', '')
-    inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters), 'transaction_id': transaction_id}
+    inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters)}
+    transaction_id = parameters.pop('transaction_id', None)
+    if transaction_id:
+        inputs['transaction_id'] = transaction_id
     rep = requests.post(url, json = inputs)
     return rep.json()
 

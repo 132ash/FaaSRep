@@ -44,7 +44,7 @@ def create_banking_system_dataset():
     # generate flight capacity data
     for i in range(BANKING_ACCOUNTS):
         account_id = f"account_{i}"
-        pwd_key = f"{account_id}_pwd"
+        pwd_key = f"{account_id}_bank_pwd"
         balance_key = f"{account_id}_balance"
         random_pwd = generate_random_text(10)
         table.put_item(

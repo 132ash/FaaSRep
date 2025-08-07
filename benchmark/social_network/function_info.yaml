@@ -1,0 +1,9 @@
+workflow: travel_reservation
+functions:
+- {image: social_login, name: social_login}
+- {image: send_comment, name: send_comment}
+- {image: publish, name: publish}
+- {image: notify_follower, name: notify_follower}
+- {image: modify_timeline, name: modify_timeline}
+- {image: check_mailbox, name: check_mailbox}
+max_containers: 30

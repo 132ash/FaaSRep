@@ -71,7 +71,6 @@ def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
-    # logging.info(f"running workflow {workflow_name}, transaction_id: {transaction_id}, retry: {retry}")
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []

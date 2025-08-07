@@ -6,7 +6,7 @@ def main():
     password = func_input["password"]
     dst_account = func_input["dst_account"]
     amount = func_input["amount"]
-    pwd_key = f"{src_account}_pwd"
+    pwd_key = f"{src_account}_bank_pwd"
     src_pwd = store.get(pwd_key)
     if src_pwd != password:
         store.abort_tx(f"Password for account {src_account} does not match. given: {password}, expected: {src_pwd}")

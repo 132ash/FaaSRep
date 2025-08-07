@@ -26,7 +26,7 @@ import config
 
 FLIGHT_IDS = config.FLIGHT_IDS
 
-FLIGHT_CAPATICY = config.FLIGHT_CAPATICY
+FLIGHT_CAPACITY = config.FLIGHT_CAPACITY
 RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 CAR_NUM = config.CAR_NUM
@@ -47,10 +47,10 @@ def create_travel_reservation_dataset():
             Item={
                 'key': flight_id,
                 'version': startup_version,
-                'value': FLIGHT_CAPATICY
+                'value': FLIGHT_CAPACITY
             }
         )
-    print(f"Generated {FLIGHT_IDS} flight records with capacity {FLIGHT_CAPATICY}")
+    print(f"Generated {FLIGHT_IDS} flight records with capacity {FLIGHT_CAPACITY}")
     start_date = datetime.strptime(RENTAL_START, DATE_FORMAT)
     end_date = datetime.strptime(RENTAL_END, DATE_FORMAT)
     current_date = start_date

@@ -1,4 +1,4 @@
-echo "Build images for workflow travel_reservation"
+echo "Build images for workflow banking system"
 
 SCRIPT_DIR=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)
 

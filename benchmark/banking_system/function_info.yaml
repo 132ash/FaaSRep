@@ -1,6 +1,6 @@
 workflow: banking_system
 functions:
 - {image: banking_login, name: banking_login}
-- {image: withdraw, name: reserve_car_rental}
-- {image: deposit, name: confirm_reservation}
+- {image: withdraw, name: withdraw}
+- {image: deposit, name: deposit}
 max_containers: 30
