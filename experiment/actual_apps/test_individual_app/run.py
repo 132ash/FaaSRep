@@ -36,10 +36,10 @@ RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
 
-CLIENT_CNT = 9
-ROUND = 10
+CLIENT_CNT = 1
+ROUND = 1
 parameters_inputs = {}
-all_workflows = ['travel_reservation']
+all_workflows = ['banking_system']
 result_dict = {}
 
 

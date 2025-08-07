@@ -36,6 +36,7 @@ declare -A WORKFLOWS
 WORKFLOWS=(
     ["microbenchmark"]="$CURRENT_SH_DIR/init/micro_benchmark/gen_image.sh"
     ['travel_reservation']="$CURRENT_SH_DIR/init/travel_reservation/gen_image.sh"
+    ['banking_system']="$CURRENT_SH_DIR/init/banking_system/gen_image.sh"
 )
 
 # Read workflow name from argument

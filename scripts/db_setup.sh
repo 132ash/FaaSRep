@@ -42,6 +42,7 @@ declare -A WORKFLOWS_INIT
 WORKFLOWS_INIT=(
     ["microbenchmark"]="$CURRENT_SH_DIR/init/micro_benchmark/init.sh"
     ['travel_reservation']="$CURRENT_SH_DIR/init/travel_reservation/init.sh"
+    ['banking_system']="$CURRENT_SH_DIR/init/banking_system/init.sh"
 )
 
 # List of microbenchmark workflows from c2 to w16

@@ -28,14 +28,11 @@ WORKFLOW_YAML_ADDR = {
                     # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                     # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    # 'c4': '/home/shao/FaaSnap/benchmark/micro_benchmark/c4',
-                    # "sectestflow": '/home/ash/FaaSnap/benchmark/sectestflow/workflow.yaml',
-                    # "testflow": "/home/ash/FaaSnap/benchmark/testflow/workflow.yaml"
-                    # #   'simpleseq': '/home/ash/FaaSnap/benchmark/simpleseq/workflow.yaml'         
+                    # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",     
                       }
 
-DEFAULT_CONTAINER_NUM = 9
+DEFAULT_CONTAINER_NUM = 1
 CLEAR_MEM = True
 
 # app configuration
@@ -47,6 +44,12 @@ RENTAL_START = '2025-07-01'
 RENTAL_END = '2025-07-31'
 CAR_NUM = '100'
 DATE_FORMAT = "%Y-%m-%d"
+
+# banking system
+BANKING_ACCOUNTS = 1000
+BANKING_ORIGINAL_BALANCE = "10000"
+LOGIN_FAIL_PROB = 0.1
+
 
 
 
