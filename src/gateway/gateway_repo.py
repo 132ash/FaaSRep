@@ -114,8 +114,8 @@ class Repository:
                     'key': dynamo_key
                 }
             )
-        item = response.get('Item')
-        result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
+            item = response.get('Item')
+            result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
     def release_lock(self, transaction_id, lock_set):

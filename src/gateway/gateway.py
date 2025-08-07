@@ -114,7 +114,7 @@ def run():
     first_run_finish_time, validate_latency, validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}")
+    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, res: {res}")
     #     # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]

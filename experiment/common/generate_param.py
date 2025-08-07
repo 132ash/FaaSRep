@@ -142,11 +142,12 @@ def generate_social_media_parameters(client_cnt, round_cnt):
             else:
                 password = social_pwds[user_id]
             comment_post_id = random.choice(all_posts)
-            parameters_input = {
+            parameters_input = {'social_login':{
                 'user_id': user_id,
                 'comment_post_id': comment_post_id,
                 'password': password,
                 'transaction_id': transaction_id,
+            }, 'transaction_id': transaction_id,
             }
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
@@ -184,5 +185,7 @@ def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, workfl
         return generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters)
     elif workflow == 'banking_system':
         return generate_banking_system_parameters(client_cnt, round_cnt)
+    elif workflow == 'social_network':
+        return generate_social_media_parameters(client_cnt, round_cnt)
     else:
         raise ValueError(f"Unknown workflow: {workflow}")
