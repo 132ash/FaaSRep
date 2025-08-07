@@ -137,10 +137,10 @@ def generate_social_media_parameters(client_cnt, round_cnt):
         for _ in range(round_cnt):
             transaction_id =  str(uuid.uuid4())
             user_id = random.choice(all_users)
-            if random.random() < LOGIN_FAIL_PROB:
-                password = social_pwds[user_id]+ "_wrong"
-            else:
-                password = social_pwds[user_id]
+            # if random.random() < LOGIN_FAIL_PROB:
+            #     password = social_pwds[user_id]+ "_wrong"
+            # else:
+            password = social_pwds[user_id]
             comment_post_id = random.choice(all_posts)
             parameters_input = {'social_login':{
                 'user_id': user_id,

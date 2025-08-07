@@ -186,8 +186,9 @@ class WorkerSPManager:
         successful, lock_set = self.run_normal(state, info)
         if not successful:
            # logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
-            self.repo.release_lock(state.transaction_id, lock_set)
-            self.abort_or_commit_tx(state.transaction_id, True)
+            already_aborted = self.repo.release_lock(state.transaction_id, lock_set)
+            if not already_aborted:
+                self.abort_or_commit_tx(state.transaction_id, True)
             return
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
@@ -203,7 +204,7 @@ class WorkerSPManager:
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.lock_set)
         end = time.time()
         if res.get("Abort", False):
-           # logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}, lock_set: {res['lock_set']}")
+            logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}, lock_set: {res['lock_set']}")
             if 'current_lock_timestamp' in res['error']:
                 raise ValueError(f"Function {name} failed due to lock acquisition error: {res['error']}")
             return False, res['lock_set']
