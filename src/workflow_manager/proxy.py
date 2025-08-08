@@ -78,7 +78,7 @@ class Dispatcher:
 
 
 
-dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
+dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 if config.FILLUP_CACHE:
     repo.fillup_cache()
 

@@ -1,0 +1,69 @@
+functions:
+  - name: banking_login
+    source: banking_login
+    input: 
+        src_account:
+            from: GLOBAL
+            type: str
+        password:
+            from: GLOBAL
+            type: str
+        dst_account:
+            from: GLOBAL
+            type: str
+        amount:
+            from: GLOBAL   
+            type: int
+    output:
+        src_account:
+            type: str
+        dst_account:
+            type: str
+        amount:
+            type: int
+    next: 
+        type: pass
+        nodes:
+            - withdraw
+  - name: withdraw
+    source: withdraw
+    input: 
+        src_account:
+            from: banking_login
+            type: str
+        dst_account:
+            from: banking_login
+            type: str
+        amount:
+            from: banking_login
+            type: int
+    output:
+        dst_account:
+            type: str
+        amount:
+            type: int
+        src_balance:
+            type: int
+    next: 
+        type: pass
+        nodes:
+            - deposit
+  - name: deposit
+    source: deposit
+    input: 
+        dst_account:
+            from: withdraw
+            type: str
+        amount:
+            from: withdraw
+            type: int
+        src_balance:
+            from: withdraw
+            type: int
+    output:
+        src_balance:
+            type: int
+        dst_balance:
+            type: int
+    next: 
+        type: FINISH

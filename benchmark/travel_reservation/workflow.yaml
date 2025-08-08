@@ -1,0 +1,99 @@
+functions:
+  - name: reserve_flight
+    source: reserve_flight
+    input: 
+        transaction_id:
+            from: GLOBAL
+            type: str
+        flight_id:
+            from: GLOBAL
+            type: str
+        rentle_from:
+            from: GLOBAL
+            type: str
+        rentle_to:
+            from: GLOBAL   
+            type: str
+    output:
+        transaction_id:
+            type: str
+        flight_reservation_id:
+            type: str
+        rentle_from:
+            type: str
+        rentle_to:
+            type: str
+    next: 
+        type: pass
+        nodes:
+            - reserve_car_rental
+  - name: reserve_car_rental
+    source: reserve_car_rental
+    input: 
+        flight_reservation_id:
+            from: reserve_flight
+            type: str
+        transaction_id:
+            from: reserve_flight
+            type: str
+        rentle_from:
+            from: reserve_flight
+            type: str
+        rentle_to:
+            from: reserve_flight
+            type: str
+    output:
+        flight_reservation_id:
+            type: str
+        car_reservation_id:
+            type: str
+        transaction_id:
+            type: str
+    next: 
+        type: pass
+        nodes:
+            - payment
+  - name: payment
+    source: payment
+    input: 
+        flight_reservation_id:
+            from: reserve_car_rental
+            type: str
+        car_reservation_id:
+            from: reserve_car_rental
+            type: str
+        transaction_id:
+            from: reserve_car_rental
+            type: str
+    output:
+        flight_reservation_id:
+            type: str
+        car_reservation_id:
+            type: str
+        payment_id:
+            type: str
+    next: 
+        type: pass
+        nodes:
+            - confirm_reservation
+  - name: confirm_reservation
+    source: confirm_reservation
+    input: 
+        flight_reservation_id:
+            from: payment
+            type: str
+        car_reservation_id:
+            from: payment
+            type: str
+        payment_id:
+            from: payment
+            type: str
+    output:
+        flight_reservation_id:
+            type: str
+        car_reservation_id:
+            type: str
+        payment_id:
+            type: str
+    next: 
+        type: FINISH

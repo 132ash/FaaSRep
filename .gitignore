@@ -10,3 +10,4 @@
 **/test_input
 /FaaSnap
 /.venv
+*.json
