@@ -1,9 +1,10 @@
-workflow: travel_reservation
+workflow: social_network
 functions:
 - {image: social_login, name: social_login}
-- {image: send_comment, name: send_comment}
+- {image: comment_post_1, name: comment_post_1}
+- {image: comment_post_2, name: comment_post_2}
+- {image: comment_post_3, name: comment_post_3}
 - {image: publish, name: publish}
-- {image: notify_follower, name: notify_follower}
 - {image: modify_timeline, name: modify_timeline}
-- {image: check_mailbox, name: check_mailbox}
+- {image: comment_user, name: comment_user}
 max_containers: 30

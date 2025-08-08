@@ -18,7 +18,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # install python packages
 # pip3 install -r requirements.txt
 # install redis
-# # docker pull redis
+# docker pull redis
 
 # Stop and remove the container named redis if it exists
 # if [ "$(docker ps -aq -f name=redis)" ]; then

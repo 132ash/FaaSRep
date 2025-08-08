@@ -52,4 +52,3 @@ class RunningTXTable:
             self.running_txs[transaction_id]["validate_latency"] = 0
             self.running_txs[transaction_id]['validate_time_inside_validator'] = 0
             condition.set()
-            print(f"notified {transaction_id}")

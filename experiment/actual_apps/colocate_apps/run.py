@@ -40,7 +40,7 @@ CLIENT_CNT = 8
 ROUND = 2
 parameters_inputs = {}
 # all_workflows = ['banking_system']
-all_workflows = ['social_network']
+all_workflows = ['social_network', 'banking_system', 'travel_reservation']
 result_dict = {}
 
 

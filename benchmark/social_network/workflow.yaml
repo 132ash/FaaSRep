@@ -51,7 +51,6 @@ functions:
        comment_post_id_1:
            from: social_login
            type: str
-    output:
     next: 
         type: pass
         nodes:
@@ -65,7 +64,6 @@ functions:
        comment_post_id_2:
            from: social_login
            type: str
-    output:
     next: 
         type: pass
         nodes:
@@ -79,7 +77,6 @@ functions:
        comment_post_id_3:
            from: social_login
            type: str
-    output:
     next: 
         type: pass
         nodes:
@@ -93,7 +90,6 @@ functions:
         comment_user_id:
            from: social_login
            type: str
-    output:
     next: 
         type: pass
         nodes:
