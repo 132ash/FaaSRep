@@ -45,7 +45,7 @@ VALIDATORS_PER_POOL = 2
 BATCH_SIZE = 3
 
 # mode setting
-FAST_PATH = True
+FAST_PATH = False
 OPTIMISTIC_REPAIR = True
 
 

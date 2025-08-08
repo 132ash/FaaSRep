@@ -15,7 +15,7 @@ VALIDATE = 1
 REPAIR_FINISH = 2
 CASCADED_COMMIT = 3
 
-workflows = config.FUNCTION_INFO_ADDRS.keys()
+workflows = config.WORKFLOW_YAML_ADDR.keys()
 validator_pools = {workflow: ValidatorPool(config.VALIDATORS_PER_POOL, workflow) for workflow in workflows}
 
 # receive a set of rw sets and validate them. they belongs to the same workflow.
