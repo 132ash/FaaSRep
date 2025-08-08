@@ -35,7 +35,6 @@ BANKING_PWD_DIR = actual_apps_dir / "banking_pwd.json"
 # social network parameters
 SOCIAL_NETWORK_USERS = config.SOCIAL_NETWORK_USERS
 STARTUP_POSTS = config.STARTUP_POSTS
-FOLLOWERS_PER_USER = config.FOLLOWERS_PER_USER
 SOCIAL_PWD_DIR = actual_apps_dir / "social_pwd.json"
 SOCIAL_POST_IDS_DIR = actual_apps_dir / "social_posts.json"
 
@@ -137,14 +136,19 @@ def generate_social_media_parameters(client_cnt, round_cnt):
         for _ in range(round_cnt):
             transaction_id =  str(uuid.uuid4())
             user_id = random.choice(all_users)
+            comment_post_id_1, comment_post_id_2, comment_post_id_3 = random.sample(all_posts, 3)
+            available_dst_user_id = [acc for acc in all_users if acc != user_id]
+            comment_user_id = random.choice(available_dst_user_id)
             # if random.random() < LOGIN_FAIL_PROB:
             #     password = social_pwds[user_id]+ "_wrong"
             # else:
             password = social_pwds[user_id]
-            comment_post_id = random.choice(all_posts)
             parameters_input = {'social_login':{
                 'user_id': user_id,
-                'comment_post_id': comment_post_id,
+                'comment_user_id': comment_user_id,
+                'comment_post_id_1': comment_post_id_1,
+                'comment_post_id_2': comment_post_id_2,
+                'comment_post_id_3': comment_post_id_3,
                 'password': password,
                 'transaction_id': transaction_id,
             }, 'transaction_id': transaction_id,

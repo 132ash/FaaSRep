@@ -26,7 +26,6 @@ import config
 
 SOCIAL_NETWORK_USERS = config.SOCIAL_NETWORK_USERS
 STARTUP_POSTS = config.STARTUP_POSTS
-FOLLOWERS_PER_USER = config.FOLLOWERS_PER_USER
 STOREGE_NODE_IP = config.STOREGE_NODE_IP
 couch_db = couchdb.Server(f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984')
 dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STOREGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
@@ -54,23 +53,7 @@ def create_social_network_dataset():
             }
         )
         password_per_account[user_id] = random_pwd
-        # Select FOLLOWERS_PER_USER different users as followers
-        followers = random.sample([u for u in all_users if u != user_id], FOLLOWERS_PER_USER)
-        table.put_item(
-            Item={
-                'key': f"{user_id}_followers",
-                'version': startup_version,
-                'value': json.dumps(followers)
-            }
-        )
-        mailbox_key = f"{user_id}_mailbox"
-        table.put_item(
-            Item={
-                'key': mailbox_key,
-                'version': startup_version,
-                'value':'[]'
-            }
-        )
+
         startup_post_ids = [f"{user_id}_startup_post_{j}" for j in range(STARTUP_POSTS)]
         original_post_ids.extend(startup_post_ids)
         for post_id in startup_post_ids:
@@ -91,7 +74,7 @@ def create_social_network_dataset():
         )
     json.dump(password_per_account, open(ROOT_DIR /"experiment"/"actual_apps"/ "social_pwd.json", 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
     json.dump(original_post_ids, open(ROOT_DIR /"experiment"/"actual_apps"/ "social_posts.json", 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
-    print(f"Generated {SOCIAL_NETWORK_USERS} user records with {FOLLOWERS_PER_USER} followers each.")
+    print(f"Generated {SOCIAL_NETWORK_USERS} user records with {STARTUP_POSTS} startup posts each.")
 
 if __name__ == "__main__":
     create_social_network_dataset()
