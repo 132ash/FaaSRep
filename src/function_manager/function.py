@@ -18,7 +18,7 @@ class RequestInfo:
 
 # manage a function's container pool
 class Function:
-    def __init__(self, client, function_info:FunctionInfo, port_controller, default_container_num, input, output):
+    def __init__(self, host_addr, function_pos, client, function_info:FunctionInfo, port_controller, default_container_num, input, output):
         self.client = client
         self.info:FunctionInfo = function_info
         self.port_controller = port_controller
@@ -32,13 +32,14 @@ class Function:
         # container pool
         self.container_pool = ContainerPool(self.info.max_containers, self.info.function_name)
 
-        # while self.container_pool.len() < self.default_container_num:
-        #     container = self.create_container()
-        #     if container == None:
-        #         raise Exception("Container creation failed")
-        #     self.container_pool.put(container)
-        # print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
-    
+        if function_pos[self.info.function_name] == host_addr:
+            while self.container_pool.len() < self.default_container_num:
+                container = self.create_container()
+                if container == None:
+                    raise Exception("Container creation failed")
+                self.container_pool.put(container)
+            print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
+        
     # put the request into request queue
     def send_request(self, create_timestamp, transaction_id, write_set,lock_set):
         data = {'transaction_id': transaction_id, 'write_set':write_set,"lock_set":lock_set, 'create_timestamp': create_timestamp}

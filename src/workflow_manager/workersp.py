@@ -69,11 +69,11 @@ class WorkerSPManager:
         self.function_pos = {}
         for function_name in self.func:
             self.function_info[function_name] = self.repo.get_function_info(function_name, self.info_db)
-            self.function_pos[function_name] = self.function_info[function_name]['ip']
+            self.function_pos[function_name] = extract_ip(self.function_info[function_name]['ip'])
 
         self.node_list = node_list
         
-        self.function_manager = FunctionManager(workflow_name, function_info_addr,  min_port)
+        self.function_manager = FunctionManager(extract_ip(self.host_addr), self.function_pos, workflow_name, function_info_addr,  min_port)
         # repairing batches and finished transactions
         self.repair_table: Dict[str, int] = {}
         min_port += 5000
