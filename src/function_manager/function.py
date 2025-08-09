@@ -34,13 +34,13 @@ class Function:
 
         # container pool
         self.container_pool = ContainerPool(self.info.max_containers, self.info.function_name)
-
-        while self.container_pool.len() < self.default_container_num:
-            container = self.create_container()
-            if container == None:
-                raise Exception("Container creation failed")
-            self.container_pool.put(container)
-        print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
+        if function_pos[self.info.function_name] == self.host_addr:
+            while self.container_pool.len() < self.default_container_num:
+                container = self.create_container()
+                if container == None:
+                    raise Exception("Container creation failed")
+                self.container_pool.put(container)
+            print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
     
     # put the request into request queue
     def send_request(self, transaction_id, write_set):

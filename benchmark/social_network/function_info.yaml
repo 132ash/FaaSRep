@@ -1,0 +1,10 @@
+workflow: social_network
+functions:
+- {image: social_login, name: social_login}
+- {image: comment_post_1, name: comment_post_1}
+- {image: comment_post_2, name: comment_post_2}
+- {image: comment_post_3, name: comment_post_3}
+- {image: publish, name: publish}
+- {image: modify_timeline, name: modify_timeline}
+- {image: comment_user, name: comment_user}
+max_containers: 30

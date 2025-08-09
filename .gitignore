@@ -9,3 +9,5 @@
 **/.VSCodeCounter
 **/test_input
 /.venv
+*.json
+*log

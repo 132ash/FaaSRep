@@ -1,14 +1,12 @@
-import threading
+
 import boto3
 import sys
 import json
-import logging
 import pandas as pd
 import multiprocessing
-from numpy import random
 import requests
-import numpy as np
 from pathlib import Path
+import logging
 
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -20,56 +18,29 @@ def get_root_dir(script_dir: Path) -> Path:
 
 script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
-sys.path.append(str(ROOT_DIR / 'config'))
-sys.path.append(str(ROOT_DIR / 'experiment'))
-sys.path.append(str(ROOT_DIR / 'experiment' / 'microbenchmark'))
-import config
-from DB_setup import create_microbenchmark_dataset
-from repository import Repository
-repo = Repository()
+sys.path.append(str(ROOT_DIR))
+microbenchmark_dir = script_dir.parent
+import config.config as config
+from experiment.common import repository, client_logs, generate_param
+repo = repository.Repository()
 
 
 
 DB_NODE_IP = config.STOREGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
-table_name = "data"
-# 创建名为data的表，以字符串key作为键，每个键对应version和value两个字段，都是字符串
-table = dynamodb.Table(table_name)
 
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
-CLIENT_CNT = 9
-ROUND = 10
+CLIENT_CNT = 1
+ROUND = 1
 parameters_inputs = {}
 all_workflows = ['c4']
 result_dict = {}
 
-DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
-dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
-
-def setup_logging_for_process(client_id):
-    """为每个子进程配置独立的日志文件。"""
-    log_dir = script_dir / "logs"
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / f"client_{client_id}.log"
-    
-    # 移除旧的 handlers，为子进程设置新的
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-        
-    logging.basicConfig(
-        level=logging.INFO,
-        format=f'%(asctime)s [Client-{client_id}] [%(levelname)s] %(message)s',
-        handlers=[
-            logging.FileHandler(log_file, mode='w'),
-            logging.StreamHandler(sys.stdout) # 也可以同时输出到控制台
-        ]
-    )
-
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程执行的任务。"""
-    setup_logging_for_process(client_id)
+    client_logs.setup_logging_for_process(script_dir, client_id)
     # logging.info(f"Process started for workflow: {workflow}")
     
     local_results = []
@@ -83,29 +54,6 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
 
     result_queue.put(local_results)
     #logging.info("Process finished.")
-
-def generate_workflow_inputs_for_clients(workflow, text_size):
-    dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
-    all_func = repo.get_all_functions(workflow)
-    client_round_inputs = []
-    for client_id in range(CLIENT_CNT):
-        round_inputs = []
-        for round_id in range(ROUND):
-            parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
-            for func in all_func:
-                zipf_param = 1.1
-                dataset_len = len(dataset)
-                indices = set()
-                while len(indices) < 3:
-                    idx = random.zipf(zipf_param) - 1
-                    if 0 <= idx < dataset_len:
-                        indices.add(idx)
-                keys = [dataset[i] for i in indices]
-                parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
-            parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
-            round_inputs.append(parameters_input)
-        client_round_inputs.append(round_inputs)
-    return client_round_inputs
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
@@ -134,10 +82,9 @@ def analyze_workflow(workflow, parameters_input):
     }
 
 def analyze_all(text_size):
-    create_microbenchmark_dataset()
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
-        parameters_all = generate_workflow_inputs_for_clients(workflow, text_size)
+        parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', CLIENT_CNT, ROUND, {'workflow': workflow, 'text_size': text_size})
         result_queue = multiprocessing.Queue()
         # 创建4个线程
         processes = []
@@ -168,24 +115,21 @@ def analyze_all(text_size):
 
         df = pd.DataFrame(all_results)
         
-        # 计算平均延迟
-        mode = "Concord_avg"
+        # 计算99%-ile延迟
+        mode = "Beldi_avg"
         avg_latency = df.mean()
-
         summary = {
             "mode": mode,
             "validator overhead": avg_latency.get("validate_time_inside_validator"),
             "overall validate latency": avg_latency.get("validate_latency"),
             "e2e latency": avg_latency.get("e2e_latency"),
             "workflow run latency": avg_latency.get("first_run_latency")
-        }
-        
+        }       
         summary_df = pd.DataFrame([summary])
         output_file = script_dir / f"{workflow}_{mode}.csv"
         summary_df.to_csv(output_file, index=False)
         
         print(f"Results summary saved to {output_file}")
-   
 if __name__ == '__main__':
 
     TEXT_SIZE = int(sys.argv[1])

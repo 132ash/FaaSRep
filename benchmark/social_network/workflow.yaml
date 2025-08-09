@@ -1,0 +1,128 @@
+functions:
+  - name: social_login
+    source: social_login
+    input: 
+        user_id:
+            from: GLOBAL
+            type: str
+        password:
+            from: GLOBAL
+            type: str
+        comment_post_id_1:
+            from: GLOBAL
+            type: str
+        comment_post_id_2:
+            from: GLOBAL
+            type: str
+        comment_post_id_3:
+            from: GLOBAL
+            type: str
+        comment_user_id:
+            from: GLOBAL
+            type: str
+        transaction_id:
+            from: GLOBAL
+            type: str
+    output:
+        user_id:
+            type: str
+        comment_post_id_1:
+            type: str
+        comment_post_id_2:
+            type: str
+        comment_post_id_3:
+            type: str
+        comment_user_id:
+            type: str
+        transaction_id:
+            type: str
+    next: 
+        type: pass
+        nodes:
+            - comment_post_1
+            - comment_post_2
+            - comment_post_3
+  - name: comment_post_1
+    source: comment_post_1
+    input: 
+       user_id:
+           from: social_login
+           type: str
+       comment_post_id_1:
+           from: social_login
+           type: str
+    next: 
+        type: pass
+        nodes:
+            - comment_user
+  - name: comment_post_2
+    source: comment_post_2
+    input: 
+       user_id:
+           from: social_login
+           type: str
+       comment_post_id_2:
+           from: social_login
+           type: str
+    next: 
+        type: pass
+        nodes:
+            - comment_user
+  - name: comment_post_3
+    source: comment_post_3
+    input: 
+       user_id:
+           from: social_login
+           type: str
+       comment_post_id_3:
+           from: social_login
+           type: str
+    next: 
+        type: pass
+        nodes:
+            - comment_user
+  - name: comment_user
+    source: comment_user
+    input: 
+        user_id:
+            from: social_login
+            type: str
+        comment_user_id:
+           from: social_login
+           type: str
+    next: 
+        type: pass
+        nodes:
+            - publish
+  - name: publish
+    source: publish
+    input:
+        user_id:
+            from: social_login
+            type: str
+        transaction_id:
+            from: social_login
+            type: str
+    output:
+        publish_post_id:
+            type: str
+    next:
+        type: pass
+        nodes:
+            - modify_timeline
+  - name: modify_timeline
+    source: modify_timeline
+    input: 
+        user_id:
+            from: social_login
+            type: str
+        publish_post_id:
+            from: publish
+            type: str
+    output:
+        timeline_length:
+            type: int
+        publish_post_id:
+            type: str
+    next: 
+        type: FINISH
