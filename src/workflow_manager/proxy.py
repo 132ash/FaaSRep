@@ -1,17 +1,41 @@
 import sys
 import logging
-# 配置日志记录
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    # 设置日志级别为 INFO
-    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
-    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ],
-    force=True 
-)
+import os
+# 配置日志记录 - 输出到文件并每次运行时刷新
+log_file = '../../logging/proxy.log'
 
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('proxy')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 from gevent import monkey
 monkey.patch_all()
@@ -50,7 +74,7 @@ class Dispatcher:
        repo.shadowtable_init(sys.argv[1])
        repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
-       #logging.info(f"Node list: {self.node_list}")
+       log_message(f"Node list: {self.node_list}")
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
        
@@ -94,7 +118,7 @@ def repair():
     repair_mode = data['repair_mode']
     no_parent_execution = data['no_parent_execution']
     port = data['port']
-    #logging.info(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
+    log_message(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
     dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
     return json.dumps({'status': 'ok'})
 
@@ -129,6 +153,8 @@ def req():
     repair = data.get('repair', False)
     repair_mode = data.get('repair_mode', "")
     repair_states = data.get('repair_states', {})
+    if repair:
+        log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
     state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -143,7 +169,7 @@ def clear():
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     if abort_clear:
         if FAST_PATH:
-            #logging.info(f"transaction {transaction_id} abort, return its containers to pool.")
+            log_message(f"transaction {transaction_id} abort, return its containers to pool.")
             dispatcher.reserve_pools[workflow_name].release([transaction_id])
     else:
         dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
@@ -170,7 +196,7 @@ def commit():
     if FAST_PATH:
         workflow_name = data['workflow_name']
         fin_tx_list = commit_list['txs']
-        #logging.info(f"transactions {fin_tx_list} commited, release containers.")
+        log_message(f"transactions {fin_tx_list} commited, release containers.")
         dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
     return json.dumps({'status': 'ok'})
@@ -181,7 +207,7 @@ def release():
     tx_lists = data['tx_lists']
     workflow_name = data['workflow_name']
     for fin_tx_list in tx_lists:
-        #logging.info(f"transactions {fin_tx_list} commited, release containers.")
+        log_message(f"transactions {fin_tx_list} commited, release containers.")
         dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     return json.dumps({'status': 'ok'})
 
@@ -203,7 +229,5 @@ GET_NODE_INFO_INTERVAL = 0.1
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()
-   

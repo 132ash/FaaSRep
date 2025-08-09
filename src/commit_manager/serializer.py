@@ -5,6 +5,7 @@ monkey.patch_all()
 from multiprocessing import Process
 import time
 import re
+import os
 import validator_repo
 from datetime import datetime
 import logging
@@ -13,6 +14,12 @@ repo = validator_repo.Repository()
 VALIDATE = 1
 COMMIT = 3
 CASCADED_COMMIT = 4
+
+log_file = '../../logging/serializer.log'
+
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
 
 # 配置logging模块
 def setup_logger():
@@ -92,7 +99,7 @@ class SerializerProcess(Process):
                 commit_list_for_current_handler = []
                 commit_keys_on_worker = {}
                 batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
-                #log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
+                log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
                 if not batch_need_repair:
                     self.commit_keys_per_batch[batch_id] = self.batch_write_info[batch_id]['writes'].copy()  # commit keys for this batch.
                     commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
@@ -108,7 +115,7 @@ class SerializerProcess(Process):
     # in pessimistic mode, the batch is ready for sure: only flush the ready writes.
     def commit_all_ready_batches(self, current_handler_id, current_batch_id):
         ready, commit_list_per_handler, commit_keys_on_worker = self.get_commitable_batches(current_batch_id)
-        #log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
+        log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
         commit_list_for_current_handler = commit_list_per_handler.pop(current_handler_id, [])
         if ready:
             for handler_id, commit_batch_list in commit_list_per_handler.items():
@@ -149,7 +156,8 @@ class SerializerProcess(Process):
                 # prev_writer_tuple: (batch_id, tx_id, func) 
                 if not prev_writers:
                     # expired key.
-                    if version < self.key_version_table.get(key):
+                    prev_version = self.key_version_table.get(key, None)
+                    if prev_version is not None and version < prev_version:
                         expired_set[tx_id][func][key] = True
                         subjection_set[tx_id][func]["dirty"] = True
                         need_repair = True
@@ -200,7 +208,7 @@ class SerializerProcess(Process):
 
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
-            #log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
+            log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
             return False, {}, {}
         batches_ready_for_committing = [target_batch_id]
         commit_keys_on_worker = {} # {key: [(tx_id, func, version)]}
@@ -215,7 +223,7 @@ class SerializerProcess(Process):
             version =  current_batch_write_info['version']
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
-                #log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
+                log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
                 current_key_writers = self.key_writers[key]
                 _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
                 if current_batch_commit_keys.pop(key, False):

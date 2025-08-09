@@ -36,8 +36,8 @@ RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
 
-CLIENT_CNT = 8
-ROUND = 2
+CLIENT_CNT = 16
+ROUND = 50
 parameters_inputs = {}
 # all_workflows = ['banking_system']
 all_workflows = ['social_network']
@@ -51,7 +51,6 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     
     local_results = []
     for i in range(ROUND):
-        #logging.info(f"Starting round {i+1}/{ROUND}")
         # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
         # 这里假设 analyze_workflow 返回一个包含结果的字典
         txid, result, tx_res = analyze_workflow(workflow, parameters_all_round[i])
@@ -61,7 +60,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
         # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
     result_queue.put(local_results)
-    #logging.info("Process finished.")
+    logging.info("Process finished.")
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
@@ -127,7 +126,7 @@ def analyze_all(system_mode,opt, compute_mode='avg'):
         df = pd.DataFrame(all_results)
         
         # 计算99%-ile延迟
-        mode = f"{system_mode}_{opt}_{compute_mode}"
+        mode = f"[PRE_CREATE]_{system_mode}_{opt}_{compute_mode}"
         if compute_mode == 'avg':
             avg_latency = df.mean()
 
@@ -162,8 +161,8 @@ system_mode = ["PESSIMISTIC", "OPTIMISTIC"]
 opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
-    _system_mode= system_mode[1]
-    _opt = opt[0] 
+    _system_mode= system_mode[0]
+    _opt = opt[1] 
     compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
     analyze_all(_system_mode, _opt, compute_mode=compute_mode)
 

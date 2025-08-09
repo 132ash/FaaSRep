@@ -21,16 +21,16 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                    'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                    'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                    'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                    'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    # 'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                    # 'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                    # 'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                    # 'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                    # 'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                    # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                    # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                    # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
+                    # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 # cache setting
@@ -45,8 +45,8 @@ VALIDATORS_PER_POOL = 2
 BATCH_SIZE = 3
 
 # mode setting
-FAST_PATH = False
-OPTIMISTIC_REPAIR = True
+FAST_PATH = True
+OPTIMISTIC_REPAIR = False
 
 
 # repair setting
@@ -57,7 +57,7 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
-DEFAULT_CONTAINER_NUM = 9
+DEFAULT_CONTAINER_NUM = 16
 CLEAR_MEM = True
 
 # app configuration

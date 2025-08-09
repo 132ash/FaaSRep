@@ -41,15 +41,16 @@ class Function:
 
 
         # container pool
-        # self.container_pool = ContainerPool(self.info.max_containers, self.info.function_name)
+        self.container_pool = ContainerPool(self.info.max_containers, self.info.function_name)
 
-        # while self.container_pool.len() < self.default_container_num:
-        #     container = self.create_container()
-        #     if container == None:
-        #         raise Exception("Container creation failed")
-        #     self.container_pool.put(container)
-        # print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
-    
+        if self.function_pos[self.info.function_name] == self.host_addr:
+            while self.container_pool.len() < self.default_container_num:
+                container = self.create_container()
+                if container == None:
+                    raise Exception("Container creation failed")
+                self.container_pool.put(container)
+            print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
+        
     # put the request into request queue
     def send_request(self, transaction_id, write_set, is_repair,repair_mode,batch_id, repair_states):
         data = {'transaction_id': transaction_id, 'repair': is_repair, 'batch_id':batch_id, 'repair_mode':repair_mode,
@@ -72,7 +73,7 @@ class Function:
         # create a new container
         while container is None:
         # if container is None:
-            logging.warning(f"Container pool is empty, creating a new container for function: {self.info.function_name}")
+            # logging.warning(f"Container pool is empty, creating a new container for function: {self.info.function_name}")
             container = self.create_container()
            
         # the number of exec container hits limit
@@ -103,21 +104,21 @@ class Function:
         if not self.container_pool.check_pool_full_and_occupy():
             return None
 
-        # ##logging.info('create container of function: %s', self.info.function_name)
+        # #logging.info('create container of function: %s', self.info.function_name)
         try:
             container = Container.create(self.client, self.info.img_name, self.port_controller.get(), 'exec', self.container_pool)
         except Exception as e:
             print(e)
             self.container_pool.num_exec -= 1
             return None
-        # ##logging.info('function: %s container created', self.info.function_name)
+        # #logging.info('function: %s container created', self.info.function_name)
         self.init_container(container)
         return container
 
     # after the destruction of container
     # its port should be give back to port manager
     def remove_container(self, container):
-        # ##logging.info('remove container: %s, pool size: %d', self.info.function_name, len(self.container_pool))
+        # #logging.info('remove container: %s, pool size: %d', self.info.function_name, len(self.container_pool))
         container.destroy()
         self.port_controller.put(container.port)
 

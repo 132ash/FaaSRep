@@ -1,0 +1,2 @@
+mode,validator overhead,overall validate latency,e2e latency,workflow run latency
+OPTIMISTIC_basic_avg,0.004209343194961548,0.0983483538031578,0.39582272469997404,0.2818092006444931

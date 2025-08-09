@@ -74,15 +74,15 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     
     local_results = []
     for i in range(ROUND):
-        #logging.info(f"Starting round {i+1}/{ROUND}")
+        logging.info(f"Starting round {i+1}/{ROUND}")
         # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
         # 这里假设 analyze_workflow 返回一个包含结果的字典
         txid, result = analyze_workflow(workflow, parameters_all_round[i])
         local_results.append(result)
-        #logging.info(f"Finished round {i+1}/{ROUND} with txid: {txid}")
+        logging.info(f"Finished round {i+1}/{ROUND} with txid: {txid}")
 
     result_queue.put(local_results)
-    #logging.info("Process finished.")
+    logging.info("Process finished.")
 
 def generate_workflow_inputs_for_clients(workflow, text_size):
     dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']

@@ -20,9 +20,11 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
 # docker stop couchdb
 # docker rm couchdb
-# install and initialize DynamoDB
-# docker pull amazon/dynamodb-local:latest
-# aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
+# docker stop redis
+# docker rm redis
+# # install and initialize DynamoDB
+# # docker pull amazon/dynamodb-local:latest
+# # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
 # docker run -d -p 4567:8000 amazon/dynamodb-local:latest
 # Default region name: us-west-2
 
@@ -34,7 +36,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 python $CURRENT_SH_DIR/db_starter.py
 
 # # install redis
-# docker pull redis
+# # docker pull redis
 # docker run -itd -p 6379:6379 --name redis redis
 
 declare -A WORKFLOWS_INIT

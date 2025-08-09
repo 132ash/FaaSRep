@@ -152,6 +152,3 @@ class Repository:
                 }
             )
             table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-
-
-# TODO: cascaded abort in optimistic repair, sequencially commit for optimistic repair, larger test for repair mode.
