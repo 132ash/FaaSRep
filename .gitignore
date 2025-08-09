@@ -11,3 +11,4 @@
 /FaaSnap
 /.venv
 *.json
+*.log
