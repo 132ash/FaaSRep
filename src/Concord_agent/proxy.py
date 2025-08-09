@@ -35,7 +35,7 @@ class ConcordDispatcher:
         self.node_list = repo.get_all_addrs('common')
         self.concord_cache_agent = {name:ConcordCacheAgent(name, repo, self.node_list, sys.argv[1])  for name in info_addrs}
 
-dispatcher = ConcordDispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
+dispatcher = ConcordDispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 
 @app.route('/clear_state', methods = ['POST'])
 def clear_state():

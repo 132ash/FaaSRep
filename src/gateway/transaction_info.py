@@ -11,7 +11,7 @@ class RunningTXTable:
         self.running_txs = {}
     
     def registerTX(self, workflow, tx_id, tx_params):
-        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'concord':False}
+        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False, "Abort_type":'',"cond":event.Event(), 'concord':False}
 
     def finishTX(self, tx_id):
         validate_latency = self.running_txs[tx_id]["validate_latency"]
@@ -26,8 +26,8 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
         if self.running_txs[tx_id]['abort']:
-            return True
-        return False
+            return True, self.running_txs[tx_id]["Abort_type"]
+        return False, ''
     
     def resetTX(self, tx_id):
         self.running_txs[tx_id]['abort'] = False
@@ -38,10 +38,11 @@ class RunningTXTable:
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
 
-    def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
+    def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False, Abort_type=''):
         if abort:
             tx_id = transaction_id_list[0]
             self.running_txs[tx_id]['abort'] = True
+            self.running_txs[tx_id]["Abort_type"] = Abort_type
             self.running_txs[tx_id]['finished'] = True
             self.running_txs[tx_id]['cond'].set()
             # logging.info(f"[ABORT] tx_id {tx_id} Aborted. Need to retry.")

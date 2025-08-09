@@ -71,7 +71,7 @@ class Dispatcher:
         self.managers[workflow_name].del_state(transaction_id)
 
 
-dispatcher = Dispatcher(info_addrs=config.FUNCTION_INFO_ADDRS)
+dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 
 
 @app.route('/stop', methods = ['POST'])

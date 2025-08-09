@@ -17,6 +17,18 @@ logging.basicConfig(
     ]
 )
 
+class ActiveAbortException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.abort_type = "ACTIVE"
+        self.message = message
+
+class PassiveAbortException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.abort_type = "PASSIVE"
+        self.message = message
+
 class Store:
     def __init__(self):
         self.fetch_dict = {}
@@ -57,8 +69,8 @@ class Store:
         else:
             return self.function_pos[upstream]
         
-    def abort_tx(self):
-        raise Exception("Transaction abort triggered by itself.")
+    def abort_tx(self, message):
+        raise ActiveAbortException(f"Transaction abort triggered by itself: {message}")
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
         ip = self.get_redis_ip(upstream)
@@ -126,7 +138,7 @@ class Store:
         response = requests.post(url, json=data).json()
         if not response['success']:
             logging.error(f"Concord cache get failed for key {key} in transaction {self.transaction_id}.")
-            raise Exception("Concord cache get failed.")
+            raise PassiveAbortException("Concord cache get failed.")
         # logging.info(f"Concord cache succeeded for key {key} in transaction {self.transaction_id}.")
         return response['value']
         
@@ -136,5 +148,5 @@ class Store:
         response = requests.post(url, json=data).json()
         if not response['success']:
             logging.error(f"Concord cache put failed for key {key} in transaction {self.transaction_id}.")
-            raise Exception("Concord cache put failed.")
+            raise PassiveAbortException("Concord cache put failed.")
 

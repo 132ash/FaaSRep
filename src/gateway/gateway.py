@@ -94,14 +94,20 @@ def run():
     # logging.info('processing request ' + transaction_id + '...')
     start = time.time()
     aborted = False
+    abort_type = ''
     retry = False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
-        aborted = txTable.waitTX(transaction_id)
+        aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
-            txTable.resetTX(transaction_id)
+            if abort_type == 'PASSIVE':
+                txTable.resetTX(transaction_id)
+            else:
+                break
         retry = True
+    if aborted and abort_type == 'ACTIVE':
+        return json.dumps({'status':'aborted', "res": {}})
     # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
@@ -128,8 +134,9 @@ def notify():
     timestamps = data['timestamps']
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
         if data.get('abort', False):
+            Abort_type = data.get('Abort_type', 'ACTIVE')
             # logging.info(f"transaction {transaction_id_list[0]} aborted.")
-            txTable.notifyTX(transaction_id_list, 0,0, 0, True)
+            txTable.notifyTX(transaction_id_list, 0,0, 0, True, Abort_type)
         else:
             first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch
             end_time = time.time()

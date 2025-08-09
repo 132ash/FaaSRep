@@ -112,7 +112,7 @@ class WorkerSPManager:
         self.notify_gateway(transaction_id)
 
 
-    def abort_tx(self, transaction_id):
+    def abort_tx(self, transaction_id, Abort_type):
         # trigger next run of the transaction under pessimistic repair mode
         # logging.info(f"[ABORT] aborting transaction {transaction_id}")
         abort_jobs = []
@@ -124,7 +124,7 @@ class WorkerSPManager:
             clear_state_data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'clear_mem': False}
             abort_jobs.append(gevent.spawn(requests.post, clear_state_url, json=clear_state_data))
         gevent.joinall(abort_jobs)
-        self.notify_gateway(transaction_id, True)
+        self.notify_gateway(transaction_id, True, Abort_type)
 
     def clear_access_log_on_worker(self, transaction_id: str) -> None:
         clear_jobs = []
@@ -134,12 +134,13 @@ class WorkerSPManager:
             clear_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
         gevent.joinall(clear_jobs)
 
-    def notify_gateway(self, transaction_id, abort=False):
+    def notify_gateway(self, transaction_id, abort=False, Abort_type=''):
         notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
         payload = {
             'transaction_id_list': [[transaction_id]],
-            'timestamps': [[time.time(), 0, 0]],
-            'abort': abort
+            'timestamps': [[time.time(), time.time(), 0]],
+            'abort': abort,
+            'Abort_type': Abort_type
         }
         requests.post(notify_url, json=payload)
 
@@ -200,9 +201,9 @@ class WorkerSPManager:
         # if function in repair mode and not dirty, skip running
         info = self.function_info[function_name]
         # if function in repair mode and not dirty, skip running
-        successful = self.run_normal(state, info)
+        successful, Abort_type = self.run_normal(state, info)
         if not successful:
-            self.abort_tx(state.transaction_id)
+            self.abort_tx(state.transaction_id, Abort_type)
             return
 
         # clear parent cnt and run state. For repairing. Remove the repair state of this function.
@@ -221,8 +222,8 @@ class WorkerSPManager:
         end = time.time()
         if res.get("Abort", False):
             #logging.error(f"function {name} trigger abort: {res['error']}")
-            return False
-            
+            return False, res['Abort_type']
+
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
@@ -231,7 +232,7 @@ class WorkerSPManager:
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         # logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
-        return True
+        return True, ''
 
     def clear_mem(self, transaction_id):
         self.repo.clear_mem(transaction_id)

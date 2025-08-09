@@ -11,7 +11,7 @@ import boto3
 
 from flask import Flask, request
 from gevent.pywsgi import WSGIServer
-from Store import Store
+from Store import Store, ActiveAbortException, PassiveAbortException
 import container_config
 from redis_component import RedisShadowTable, RedisCache
 
@@ -102,9 +102,12 @@ class Runner:
             exec(self.code, self.ctx)
         # run function
             out = eval('main()', self.ctx)               
-        except Exception as e:
+        except ActiveAbortException as e:
             aborted = True
-            msg = json.dumps({'Abort': True, 'error': str(e)})
+            msg = json.dumps({'Abort': True, 'Abort_type':'ACTIVE', 'error': str(e)})
+        except PassiveAbortException as e:
+            aborted = True
+            msg = json.dumps({'Abort': True, 'Abort_type':'PASSIVE', 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..       
         io_latency = store.io_latency
         return aborted, msg, TxMetaData_thisFunc["write_set"],io_latency

@@ -36,8 +36,8 @@ RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
 
-CLIENT_CNT = 8
-ROUND = 2
+CLIENT_CNT = 16
+ROUND = 50
 parameters_inputs = {}
 # all_workflows = ['banking_system']
 all_workflows = ['social_network']
@@ -57,7 +57,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
         txid, result, tx_res = analyze_workflow(workflow, parameters_all_round[i])
         local_results.append(result)
         if i % 10 == 0:
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
         # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
     result_queue.put(local_results)
@@ -128,7 +128,7 @@ def analyze_all(compute_mode='avg'):
         
         # 计算99%-ile延迟
         if compute_mode == 'avg':
-            mode = f"Beldi_{compute_mode}"
+            mode = f"Concord_{compute_mode}"
             avg_latency = df.mean()
 
             summary = {
