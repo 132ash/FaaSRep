@@ -40,7 +40,7 @@ CLIENT_CNT = 16
 ROUND = 50
 parameters_inputs = {}
 # all_workflows = ['banking_system']
-all_workflows = ['social_network']
+all_workflows = ['travel_reservation']
 result_dict = {}
 
 
@@ -54,7 +54,10 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
         #logging.info(f"Starting round {i+1}/{ROUND}")
         # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
         # 这里假设 analyze_workflow 返回一个包含结果的字典
-        txid, result, tx_res = analyze_workflow(workflow, parameters_all_round[i])
+        txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
+        if tx_status == 'aborted':
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
+            continue
         local_results.append(result)
         if i % 10 == 0:
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
@@ -85,12 +88,12 @@ def analyze_workflow(workflow, parameters_input):
     # func_exec_time = func_exec_time_test 
     # rep['func_io_time'] = func_io_time
     # rep['func_exec_time'] = func_exec_time
-    return rep['transaction_id'], {
-        "validate_time_inside_validator": rep['validate_time_inside_validator'],
-        "validate_latency": rep['validate_latency'],
-        "e2e_latency": rep['e2e_latency'],
-        "first_run_latency": rep['first_run_latency'],
-    }, rep['res']
+    return rep.get('transaction_id', ''), {
+        "validate_time_inside_validator": rep.get('validate_time_inside_validator', 0),
+        "validate_latency": rep.get('validate_latency', 0),
+        "e2e_latency": rep.get('e2e_latency', 0),
+        "first_run_latency": rep.get('first_run_latency', 0),
+    }, rep['status']
 
 def analyze_all(compute_mode='avg'):
     repo.flush_couchdb_workflow_latency()
