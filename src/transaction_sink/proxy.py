@@ -32,7 +32,7 @@ from validate_struct import TransactionSink
 sys.path.append('../../config')
 import config
 
-validate_interval = 0.01
+VALIDATE_INTERVAL = config.VALIDATE_INTERVAL
 
 FAST_PATH = config.FAST_PATH
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR

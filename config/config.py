@@ -40,6 +40,7 @@ EXPIRED_CACHE = True
 
 # validator setting
 VALIDATORS_PER_POOL = 2
+VALIDATE_INTERVAL = 0.02
 
 # batch setting
 BATCH_SIZE = 3
