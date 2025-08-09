@@ -103,11 +103,14 @@ def run():
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
-            logging.info(f"[ABORT] transaction {transaction_id} aborted, clear state and retrying...")
-            txTable.resetTX(transaction_id)
+            logging.info(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
             clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
             gevent.joinall(clear_jobs)
-        retry = True
+            break
+        #     txTable.resetTX(transaction_id)
+        # retry = True
+    if aborted:
+        return json.dumps({'status':'aborted', "res": {}})
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()

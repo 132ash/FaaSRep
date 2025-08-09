@@ -42,9 +42,10 @@ class RunningTXTable:
 
     def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
         if abort:
-            self.running_txs[transaction_id_list[0]]['abort'] = True
-            self.running_txs[transaction_id_list[0]]['finished'] = True
-            self.running_txs[transaction_id_list[0]]['cond'].set()
+            for tx_id in transaction_id_list:
+                self.running_txs[tx_id]['abort'] = True
+                self.running_txs[tx_id]['finished'] = True
+                self.running_txs[tx_id]['cond'].set()
         else:
             for tx_id in transaction_id_list:
                 condition = self.running_txs[tx_id]['cond']
