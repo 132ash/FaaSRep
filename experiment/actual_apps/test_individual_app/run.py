@@ -47,7 +47,7 @@ result_dict = {}
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程执行的任务。"""
     client_logs.setup_logging_for_process(script_dir, client_id)
-    # logging.info(f"Process started for workflow: {workflow}")
+    # #logging.info(f"Process started for workflow: {workflow}")
     
     local_results = []
     for i in range(ROUND):
@@ -55,15 +55,15 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
         # 这里假设 analyze_workflow 返回一个包含结果的字典
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
+            #logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
             continue
         local_results.append(result)
         if i % 10 == 0:
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
-        # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
+        # #logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
     result_queue.put(local_results)
-    logging.info("Process finished.")
+    #logging.info("Process finished.")
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'

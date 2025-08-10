@@ -81,11 +81,11 @@ class ValidatorPool:
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
                 self.handler_task_queues[processor_id].put(req)
-                logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
+                #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
                 return
             self.batch_processor_table[batch_id] = self.processor_id_to_assign
             self.handler_task_queues[self.processor_id_to_assign].put(req)
-            logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {self.processor_id_to_assign} (newly assigned)")
+            #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {self.processor_id_to_assign} (newly assigned)")
             self.processor_id_to_assign = (self.processor_id_to_assign+1) % self.num_validators
             
 

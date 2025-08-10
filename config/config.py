@@ -1,7 +1,7 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STOREGE_NODE_IP = '10.2.27.22'
+STOREGE_NODE_IP = '10.2.64.4'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984'
 DYNAMODB_URL = f'http://{STOREGE_NODE_IP}:4567'
@@ -30,8 +30,8 @@ WORKFLOW_YAML_ADDR = {
                     # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
                      'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                     'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 # cache setting
 CLEAR_MEM = True
@@ -40,13 +40,13 @@ EXPIRED_CACHE = True
 
 # validator setting
 VALIDATORS_PER_POOL = 2
-VALIDATE_INTERVAL = 0.02
+VALIDATE_INTERVAL = 0.01
 
 # batch setting
 BATCH_SIZE = 3
 
 # mode setting
-FAST_PATH = True
+FAST_PATH = False
 OPTIMISTIC_REPAIR = True
 
 
@@ -74,7 +74,7 @@ DATE_FORMAT = "%Y-%m-%d"
 # banking system
 BANKING_ACCOUNTS = 100
 BANKING_ORIGINAL_BALANCE = "10000"
-LOGIN_FAIL_PROB = 0.05
+LOGIN_FAIL_PROB = 0
 
 # social network
 SOCIAL_NETWORK_USERS = 300

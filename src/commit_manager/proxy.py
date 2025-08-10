@@ -25,7 +25,7 @@ def validate_tx():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow_name']
     batch_id = data['batch_id']
-    logging.info(f"[VALIDATE] Received validation request for batch {batch_id} in workflow {workflow}")
+    #logging.info(f"[VALIDATE] Received validation request for batch {batch_id} in workflow {workflow}")
     validator_pools[workflow].submit(batch_id, VALIDATE, data)
     return json.dumps({'status': 'processing'})  
 
@@ -34,12 +34,12 @@ def finish_repair():
     inp = request.get_json(force=True, silent=True)
     workflow_name = inp['workflow_name']
     data = inp['data']  
-    logging.info(f"[FIN REPAIR] Received repair finish request for workflow {workflow_name} with data: {data}")
+    #logging.info(f"[FIN REPAIR] Received repair finish request for workflow {workflow_name} with data: {data}")
     for batch_id, batch_data in data.items():
         validator_pools[workflow_name].submit(batch_id, REPAIR_FINISH, batch_data)
     return json.dumps({'status': 'successed'})
 
-# python proxy.py  10.2.27.22 9000
+# python proxy.py  10.2.64.4 9000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
