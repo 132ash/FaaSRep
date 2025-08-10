@@ -25,7 +25,7 @@ from experiment.common import generate_param
 repo = repository.Repository()
 
 
-DB_NODE_IP = config.STOREGE_NODE_IP
+DB_NODE_IP = config.STORAGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
 
@@ -39,8 +39,8 @@ DATE_FORMAT = config.DATE_FORMAT
 CLIENT_CNT = 16
 ROUND = 50
 parameters_inputs = {}
-all_workflows = ['social_network', 'banking_system', 'travel_reservation']
-# all_workflows = ['travel_reservation']
+# all_workflows = ['social_network', 'banking_system', 'travel_reservation']
+all_workflows = ['social_network']
 result_dict = {}
 
 
@@ -52,7 +52,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     for i in range(ROUND):
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
+            # logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
             continue
         local_results.append(result)
         if i % 10 == 0:
