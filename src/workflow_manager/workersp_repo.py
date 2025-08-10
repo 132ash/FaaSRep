@@ -196,6 +196,14 @@ class Repository:
             self.data_db.store_data_to_db(key, version, value)
         cache_pipe.execute()
 
+    def clear_aborted_txs(self, aborted_txs):
+        self_shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()
+        for txid in aborted_txs:
+            keys = self.shadowtable_redis_all_addr[self.ip].keys(f"{txid}:*")
+            for key in keys:
+                self_shadow_table_pipe.delete(key)
+        self_shadow_table_pipe.execute()
+
     def fillup_cache(self):
         data = self.data_db.get_all_data_from_db()
         expired_version = datetime(1970, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')

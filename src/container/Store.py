@@ -62,8 +62,8 @@ class Store:
         else:
             return self.function_pos[upstream]
         
-    def abort_tx(self):
-        raise Exception("Transaction abort triggered by itself.")
+    def abort_tx(self, message):
+        raise Exception(f"Transaction abort triggered by itself: {message}")
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
         ip = self.get_redis_ip(upstream)

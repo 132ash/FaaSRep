@@ -49,9 +49,9 @@ class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
-       gevent.spawn_later(validate_interval, self._validate_loop)
+       gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
 
-    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair):
+    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair=False):
         self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state, skip_repair)
 
     def register_repair_info_after_validate(self, workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx):
@@ -59,9 +59,12 @@ class Dispatcher:
     
     def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection):
         self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection)
- 
+
+    def sink_release_optimistic_info(self, workflow_name, batch_list):
+        self.sinks[workflow_name].clear_opt_table_after_finish(batch_list)
+
     def _validate_loop(self):
-        gevent.spawn_later(validate_interval, self._validate_loop)
+        gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
         for sink in self.sinks.values():
             gevent.spawn(sink.validate_batch)
 
@@ -121,6 +124,14 @@ def repair_pessimistic():
     sub_per_tx = data.get('whole_tx_sub', {})
     res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
     return res
+
+@app.route('/release_opt', methods = ['POST'])
+def release_opt_table():
+    data = request.get_json(force=True, silent=True)
+    batch_list = data['batch_list']
+    workflow_name = data['workflow_name']
+    dispatcher.sink_release_optimistic_info(workflow_name, batch_list)
+    return json.dumps({'status': 'ok'})
 
 # python3 proxy.py  10.2.30.50 6000
 # python3 proxy.py  10.2.27.22 6000

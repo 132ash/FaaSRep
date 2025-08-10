@@ -193,12 +193,14 @@ def prepare():
 def commit():
     data = request.get_json(force=True, silent=True)
     commit_list = data['commit_list']
+    aborted_txs = commit_list['aborted_txs']
     if FAST_PATH:
         workflow_name = data['workflow_name']
         fin_tx_list = commit_list['txs']
         log_message(f"transactions {fin_tx_list} commited, release containers.")
         dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
+    repo.clear_aborted_txs(aborted_txs)
     return json.dumps({'status': 'ok'})
 
 @app.route('/release', methods = ['POST'])

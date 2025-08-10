@@ -39,8 +39,7 @@ DATE_FORMAT = config.DATE_FORMAT
 CLIENT_CNT = 16
 ROUND = 50
 parameters_inputs = {}
-all_workflows = ['social_network', 'banking_system', 'travel_reservation']
-# all_workflows = ['travel_reservation']
+all_workflows = ['travel_reservation', 'social_network', 'banking_system']
 result_dict = {}
 
 
@@ -50,13 +49,14 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     
     local_results = []
     for i in range(ROUND):
+        transaction_id = parameters_all_round[i]['transaction_id']
+        logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
-            continue
-        local_results.append(result)
-        if i % 10 == 0:
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}, txid: {txid}")
+        else:
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
+            local_results.append(result)
     result_queue.put(local_results)
 
 def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mode):
@@ -226,26 +226,11 @@ def analyze_all_workflows(system_mode, opt, compute_mode):
         print("Error: No valid results collected from any workflow")
         return None
 
-if __name__ == '__main__':
-    # 确保 results 目录存在
-    results_dir = script_dir / 'results'
-    results_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 分析所有工作流
-    summary_df = analyze_all_workflows()
-    
-    if summary_df is not None:
-        print("\n=== 执行完成 ===")
-        print("所有工作流已并行处理完成，结果已保存")
-    else:
-        print("\n=== 执行失败 ===")
-        print("未能收集到有效结果")
-
 system_mode = ["PESSIMISTIC", "OPTIMISTIC"]
 opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
-    _system_mode= system_mode[0]
+    _system_mode= system_mode[1]
     _opt = opt[1] 
     compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
     results_dir = script_dir / 'results'

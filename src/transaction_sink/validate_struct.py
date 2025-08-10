@@ -50,20 +50,28 @@ class RepairingBatchState:
         for prev_batch_id, next_txs in batch_sub.items():
             prev_batch_info = self.pessimistic_state_per_batch.get(prev_batch_id, None)
             if prev_batch_info:
+                logging.info(f"[PESSIMISTIC UPDATE] prev_batch_id: {prev_batch_id}, prev_batch_info: {prev_batch_info}, batch_id: {batch_id}")
                 self.pessimistic_state_per_batch[prev_batch_id].modify_batch_successors(batch_id, next_txs, batch_successors)
         self.pessimistic_state_per_batch[batch_id].init_tx_info(ready_txs, tx_sub, batch_successors)
         # update optimistic subjection
-        txs_need_pessimistic_repair = []
+        opt_txs_become_pessi = {}
         for prev_transaction_id, next_txs in sub_per_tx_optimistic.items():
             prev_tx_opt_state = self.optimistic_state_per_transaction.get(prev_transaction_id, None)
             if prev_tx_opt_state:
                 next_txs = list(next_txs.keys())
                 prev_repair_state = self.optimistic_state_per_transaction[prev_transaction_id].modify_transaction_subjection(next_txs)
                 if prev_repair_state == ABORTED:
-                    txs_need_pessimistic_repair.extend(next_txs)
-        for tx in txs_need_pessimistic_repair:
-            self.optimistic_state_per_transaction[tx].need_pessimistic_repair = True
-        return list(ready_txs.keys())
+                    for next_tx in next_txs:
+                        opt_txs_become_pessi[next_tx] = True
+                        self.optimistic_state_per_transaction[next_tx].need_pessimistic_repair = True
+        logging.info(f"[BECOME PESSIMISTIC] batch_id: {batch_id}, txs_need_pessimistic_repair: {opt_txs_become_pessi}")     
+        return ready_txs, opt_txs_become_pessi
+
+    def clear_opt_table_after_finish(self, batch_id_list):
+        for batch_id in batch_id_list:
+            for tx_id in self.transaction_list_per_batch[batch_id]:
+                self.optimistic_state_per_transaction.pop(tx_id, None)
+            self.transaction_list_per_batch.pop(batch_id, None)
 
     def reminder_successor_tx_pessi(self, batch_id, tx_id, batch_finished):
         ready_txs = {}
@@ -124,9 +132,6 @@ class RepairingBatchState:
                 tasks_tx_finish_repair[batch_id] = tasks_cascaded_repair.pop(batch_id)
                 self.tx_finished_table_per_batch.pop(batch_id, None)
                 self.pessimistic_state_per_batch.pop(batch_id, None)
-                for tx_id in self.transaction_list_per_batch[batch_id]:
-                    self.optimistic_state_per_transaction.pop(tx_id, None)
-                self.transaction_list_per_batch.pop(batch_id, None)
         if skip_repair:
             tasks_tx_finish_repair.pop(origin_batch_id, None)
         logging.info(f"[REPAIR FINISH] tasks_tx_finish_repair: {tasks_tx_finish_repair}, tasks_cascaded_repair: {tasks_cascaded_repair}")
@@ -198,12 +203,14 @@ class TransactionSink:
             tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_cascaded_repair)]
             gevent.joinall(tasks)
 
+    def clear_opt_table_after_finish(self, batch_list):
+        self.repairing_batch_state.clear_opt_table_after_finish(batch_list)
 
     # called only in pessimistic repair, to update the subjection info of the batch.
     def register_repair_info_after_validate(self, batch_id, batch_sub, tx_sub, sub_per_tx):
         logging.info(f"[PESSIMISTIC REGISTER] batch_id: {batch_id}, batch_sub: {batch_sub}, tx_sub: {tx_sub}, sub_per_tx_optimistic: {sub_per_tx}")
-        ready_txs = self.repairing_batch_state.update_subjection_info(batch_id, batch_sub, tx_sub, sub_per_tx)
-        return {'ready_txs': ready_txs}
+        ready_txs, opt_txs_become_pessi = self.repairing_batch_state.update_subjection_info(batch_id, batch_sub, tx_sub, sub_per_tx)
+        return {'ready_txs': ready_txs, 'opt_txs_become_pessi':opt_txs_become_pessi}
     
     def repair_finish_on_validator(self, data):
         remote_url = 'http://{}/fin_repair'.format(VALIDATOR_ADDR)
@@ -218,8 +225,7 @@ class TransactionSink:
             "first_run_finish_time": first_run_finish_time
         }
         logging.info(f"[VALIDATE] batch_id:{batch['batch_id']}, batch_info:{batch}")
-        response = requests.post(remote_url, json=data)
-        response.close() 
+        requests.post(remote_url, json=data)
         
 
     def commit_batch(self, batch_id):
@@ -229,4 +235,5 @@ class TransactionSink:
                 "batch_id": batch_id
             }
         requests.post(remote_url, json=data)
+
         

@@ -44,16 +44,27 @@ class RepairEngine:
         start = time.time()
         self.pessi_register_lock.acquire()
         self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
-        ready_txs = self.register_on_sink(batch_id, pessi_sink_info)
-        self.pessi_register_lock.release()
-        if not OPTIMISTIC_REPAIR:
-            expired_keys = {}
-            self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, ready_txs)
-            mode = PESSI_REPAIR
+        ready_txs, opt_txs_become_pessi = self.register_on_sink(batch_id, pessi_sink_info)
+        self.pessi_register_lock.release()    
+        txs_for_optimistic_repair = []
+        txs_for_pessimistic_repair = []
+        if OPTIMISTIC_REPAIR:
+            for tx_id in tx_list:
+                if opt_txs_become_pessi.get(tx_id, False):
+                    if ready_txs.get(tx_id, False):
+                        txs_for_pessimistic_repair.append(tx_id)
+                else:
+                    txs_for_optimistic_repair.append(tx_id)
         else:
-            ready_txs = tx_list
-            mode = OPT_REPAIR
-        self.repair_transactions(batch_id, ready_txs, expired_keys, container_port, mode)
+            txs_for_pessimistic_repair = ready_txs
+        repair_jobs = []
+        if  txs_for_pessimistic_repair:
+            expired_keys_pessi = {}
+            self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys_pessi, ready_txs)
+            repair_jobs.append(gevent.spawn(self.repair_transactions, batch_id, txs_for_pessimistic_repair, expired_keys_pessi, container_port, PESSI_REPAIR))
+        if txs_for_optimistic_repair:
+            repair_jobs.append(gevent.spawn(self.repair_transactions, batch_id, txs_for_optimistic_repair, expired_keys, container_port, OPT_REPAIR))
+        gevent.joinall(repair_jobs)
         return time.time() - start
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
@@ -112,13 +123,21 @@ class RepairEngine:
             }
         requests.post(url, json=data)
 
+    def sink_release_optimistic_info(self, batch_list):
+        url = f'http://{self.tx_sink_addr}:6000/release_opt'
+        data = {
+            'workflow_name':self.workflow_name,
+            'batch_list': batch_list
+        }
+        requests.post(url, json=data)
+
     def register_on_sink(self,batch_id, pessi_sink_info):
         ip = self.tx_sink_addr
         url = f'http://{ip}:6000/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
         res = requests.post(url, json=data).json()
         log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
-        return res['ready_txs']
+        return res['ready_txs'], res['opt_txs_become_pessi']
 
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}
     # send metadata to the proxy on worker node.

@@ -246,15 +246,15 @@ class Runner:
             store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
             self.ctx = {'workflow_name': self.workflow, 'function_name': self.function, 'store': store}
             # pre-exec
-            # try:
-            exec(self.code, self.ctx)
+            try:
+                exec(self.code, self.ctx)
         # run function
-            out = eval('main()', self.ctx)               
-        #     except Exception as e:
-        #         aborted = True
-        #         msg = json.dumps({'Abort': True, 'error': str(e)})
-        #         logging.error(f"Function {self.function} execution failed: {msg}")
-        # # the function finished repair, not abort, send data to waiting functions in fastpath..
+                out = eval('main()', self.ctx)               
+            except Exception as e:
+                aborted = True
+                msg = json.dumps({'Abort': True, 'error': str(e)})
+                logging.error(f"Function {self.function} execution failed: {msg}")
+        # the function finished repair, not abort, send data to waiting functions in fastpath..
         if is_repair:
             if self.fast_path_enabled:
                 if aborted:

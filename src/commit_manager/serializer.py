@@ -22,25 +22,7 @@ if os.path.exists(log_file):
     os.remove(log_file)
 
 # 配置logging模块
-def setup_logger():
-    logger = logging.getLogger('serializer')
-    logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    handler = logging.FileHandler('../../logging/serializer.log', mode='a')
-    handler.setLevel(logging.INFO)
-    
-    # 创建格式化器
-    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                datefmt='%Y-%m-%d %H:%M:%S')
-    handler.setFormatter(formatter)
-    # 添加处理器到logger
-    if not logger.handlers:
-        logger.addHandler(handler)
-    
-    return logger
 
-# 全局logger实例
-logger = setup_logger()
 
 def get_timestamp():
     # use timestamp as the version of batch.
@@ -55,17 +37,13 @@ def extract_ip(address: str) -> str:
     else:
         raise ValueError("Invalid address format")
 
-def log_message(message):
-    logger.info(message)
-    # 强制刷新缓冲区
-    for handler in logger.handlers:
-        handler.flush()
-
 class SerializerProcess(Process):
-    def __init__(self, req_queue, result_pipes, handler_task_queues, function_pos):
+    def __init__(self, workflow_name, req_queue, result_pipes, handler_task_queues, function_pos):
         super().__init__()
+        self.workflow_name = workflow_name
         self.req_queue = req_queue
         self.result_pipes = result_pipes 
+        self.logger = self.setup_logger()
         self.handler_task_queues = handler_task_queues  # {handler_id: task_queue}, used to trigger seq commits  
         self.key_version_table = repo.get_initial_global_table() # {key: version}
         self.key_writers = {}   # {key: [('batch_id':xx, 'tx_id':xx, 'func':xx)]}                                                   # {key: [{'batch_id',xx, 'tx_id':xx, 'func':xx}] }
@@ -77,6 +55,30 @@ class SerializerProcess(Process):
         self.function_pos = function_pos  # {func_name: {'ip': ip, 'port': port}}, used to get the ip of the function for commit.
         for func, ip in function_pos.items():
             self.function_pos[func] = extract_ip(ip)  # Extract IP without port
+
+    def setup_logger(self):
+        logger = logging.getLogger(f'{self.workflow_name}_serializer')
+        logger.setLevel(logging.INFO)
+        # 创建文件处理器
+        handler = logging.FileHandler(f'../../logging/{self.workflow_name}_serializer.log', mode='a')
+        handler.setLevel(logging.INFO)
+        
+        # 创建格式化器
+        formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                    datefmt='%Y-%m-%d %H:%M:%S')
+        handler.setFormatter(formatter)
+        # 添加处理器到logger
+        if not logger.handlers:
+            logger.addHandler(handler)
+        
+        return logger
+
+
+    def log_message(self, message):
+        self.logger.info(message)
+        # 强制刷新缓冲区
+        for handler in self.logger.handlers:
+            handler.flush()
         
     def run(self):
         last_task_time = time.time()
@@ -99,7 +101,7 @@ class SerializerProcess(Process):
                 commit_list_for_current_handler = []
                 commit_keys_on_worker = {}
                 batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
-                log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
+                self.log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
                 if not batch_need_repair:
                     self.commit_keys_per_batch[batch_id] = self.batch_write_info[batch_id]['writes'].copy()  # commit keys for this batch.
                     commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
@@ -115,7 +117,7 @@ class SerializerProcess(Process):
     # in pessimistic mode, the batch is ready for sure: only flush the ready writes.
     def commit_all_ready_batches(self, current_handler_id, current_batch_id):
         ready, commit_list_per_handler, commit_keys_on_worker = self.get_commitable_batches(current_batch_id)
-        log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
+        self.log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
         commit_list_for_current_handler = commit_list_per_handler.pop(current_handler_id, [])
         if ready:
             for handler_id, commit_batch_list in commit_list_per_handler.items():
@@ -208,7 +210,7 @@ class SerializerProcess(Process):
 
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
-            log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
+            self.log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
             return False, {}, {}
         batches_ready_for_committing = [target_batch_id]
         commit_keys_on_worker = {} # {key: [(tx_id, func, version)]}
@@ -223,7 +225,7 @@ class SerializerProcess(Process):
             version =  current_batch_write_info['version']
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
-                log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
+                self.log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
                 current_key_writers = self.key_writers[key]
                 _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
                 if current_batch_commit_keys.pop(key, False):

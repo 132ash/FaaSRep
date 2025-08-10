@@ -1,0 +1,2 @@
+workflow,mode,validator_overhead,overall_validate_latency,e2e_latency,workflow_run_latency
+travel_reservation,OPTIMISTIC_fast-path,0.004143559038639068,0.11371436268091202,0.24884993195533753,0.11861461699008942

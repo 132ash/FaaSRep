@@ -36,6 +36,7 @@ GATEWAY_ADDR = config.GATEWAY_ADDR
 DISPATCH_INTERVAL = 0.005 
 import re
 Serializer_timeout = 10  # seconds
+
 class ValidatorPool:
     def __init__(self, num_validators, workflow_name=None):
         self.num_validators = num_validators
@@ -61,7 +62,7 @@ class ValidatorPool:
             p.start()
             self.handler_task_queues.append(task_queue)
             self.serializer_return_pipes.append(serializer_return_pipe)
-        self.serializer = SerializerProcess(self.serializer_req_queue, self.serializer_return_pipes, self.handler_task_queues, self.function_pos)
+        self.serializer = SerializerProcess(self.workflow_name, self.serializer_req_queue, self.serializer_return_pipes, self.handler_task_queues, self.function_pos)
         self.serializer.daemon = True
         self.serializer.start()
         self.init()
@@ -80,11 +81,11 @@ class ValidatorPool:
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
                 self.handler_task_queues[processor_id].put(req)
-                logging.info(f"Dispatched request {req[0]} to handler {processor_id} (previously assigned processor)")
+                logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
                 return
             self.batch_processor_table[batch_id] = self.processor_id_to_assign
             self.handler_task_queues[self.processor_id_to_assign].put(req)
-            logging.info(f"Dispatched request {req[0]} to handler {self.processor_id_to_assign} (newly assigned)")
+            logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {self.processor_id_to_assign} (newly assigned)")
             self.processor_id_to_assign = (self.processor_id_to_assign+1) % self.num_validators
             
 
@@ -115,7 +116,7 @@ class ValidatorProcess(Process):
 
     def run(self):
         # 进程内初始化所有共享属性
-        self.logger = setup_validator_logger(self.validator_id)
+        self.logger = setup_validator_logger(self.workflow_name, self.validator_id)
         self.repo = Repository()
         self.function_pos = {}
         self.workflow_graph_topo = {}
@@ -137,6 +138,7 @@ class ValidatorProcess(Process):
         self.read_set_per_batch = {}
         self.write_set_per_batch = {}
         self.successed_tx_list_per_batch = {}  # {batch_id: [tx_id1, tx_id2, ...]}
+        self.aborted_tx_list_per_batch = {}
         self.time_tuple_per_batch = {}  # {batch_id: (first_run_finish_time, last_task_time)} 
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
         last_task_time = time.time()
@@ -157,6 +159,7 @@ class ValidatorProcess(Process):
             first_run_finish_time = data['first_run_finish_time']
             self.tx_list_per_batch[batch_id] = batch['transaction_list']
             self.successed_tx_list_per_batch[batch_id] = {txid:True for txid in batch['transaction_list']}
+            self.aborted_tx_list_per_batch[batch_id] = []
             self.read_set_per_batch[batch_id] = batch['read_set']
             self.write_set_per_batch[batch_id] = batch['write_set']
             self.container_port_per_batch[batch_id] = batch['container_port']
@@ -167,17 +170,18 @@ class ValidatorProcess(Process):
                 self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
             else:
                 self.repair_engine.finish_batch_skipping_repair(batch_id)
-                self.commit_batch_list(commit_list_for_current_handler, commit_keys_on_worker, [])
+                self.commit_batch_list(commit_list_for_current_handler, commit_keys_on_worker)
         elif op == REPAIR_FINISH:
             batch_finished = data['batch_finished']
             pessi_repair_txs = data['pessi_repair_txs']
             aborted_txs = data['aborted_txs']
             # {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}
+            self.aborted_tx_list_per_batch[batch_id].extend(aborted_txs)
             self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, aborted_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
             if batch_finished:
                 commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
                 ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
-                self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker, aborted_txs)
+                self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
         elif op == CASCADED_COMMIT:
@@ -215,10 +219,10 @@ class ValidatorProcess(Process):
 
 
     # commit_batch_list : [(batch_id, version), ...]
-    def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip, aborted_txs=[]):
+    def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
         if commit_batch_list:
-            txid_lists, timestamps = [], []
-            worker_commit_set = {worker_ip:{'keys':[], 'txs':[]} for worker_ip in self.worker_ip_set}
+            txid_lists, timestamps, abort_txs = [], [], []
+            worker_commit_set = {worker_ip:{'keys':[], 'txs':[], 'aborted_txs': []} for worker_ip in self.worker_ip_set}
             for key, commit_key_info in keys_for_commit_per_ip.items():
                 writer_tx_id, writer_func, version = commit_key_info
                 target_ip = self.function_pos[writer_func]
@@ -228,32 +232,28 @@ class ValidatorProcess(Process):
                 timestamps.append(self.time_tuple_per_batch[batch_id])
                 successed_tx_list = self.successed_tx_list_per_batch[batch_id]
                 txid_lists.append(successed_tx_list)
+                aborted_txs_this_batch = self.aborted_tx_list_per_batch.get(batch_id, [])
+                abort_txs.extend(aborted_txs_this_batch)
                 for worker_ip in self.worker_ip_set:
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
+                    worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
                 self.tx_list_per_batch.pop(batch_id, None)
                 self.time_tuple_per_batch.pop(batch_id, None)
                 self.read_set_per_batch.pop(batch_id, None)
                 self.write_set_per_batch.pop(batch_id, None)
+                self.aborted_tx_list_per_batch.pop(batch_id, None)
+                self.successed_tx_list_per_batch.pop(batch_id, None)
                 self.repair_engine.clean_table_of_batch(batch_id)
                 self.container_port_per_batch.pop(batch_id, None)
-            log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, timestamps: {timestamps}, worker_commit_set: {worker_commit_set}")
+            log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set
             ]
             gevent.joinall(jobs)
-            self.notify_gateway(txid_lists, True, timestamps, aborted_txs)
+            self.repair_engine.sink_release_optimistic_info(commit_batch_list)
+            self.notify_gateway(txid_lists, True, timestamps, abort_txs)
 
-    def abort_on_worker(self, ip, aborted_txs):
-        if not ip.endswith(":7500"):
-            url = f"http://{ip}:7500/abort"
-        else:
-            url = f"http://{ip}/abort"
-        data = {
-            'workflow_name': self.workflow_name,
-            'aborted_txs': aborted_txs
-        }
-        requests.post(url, json=data)
 
     def trigger_worker_commit(self, ip, commit_list):
         if not ip.endswith(":7500"):

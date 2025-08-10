@@ -110,7 +110,7 @@ def run():
         #     txTable.resetTX(transaction_id)
         # retry = True
     if aborted:
-        return json.dumps({'status':'aborted', "res": {}})
+        return json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
@@ -125,7 +125,6 @@ def run():
         gevent.joinall(jobs)
     
     return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
-
 
 
 @app.route('/notify', methods = ['POST'])

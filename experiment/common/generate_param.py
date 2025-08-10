@@ -48,6 +48,7 @@ def generate_banking_system_parameters(client_cnt, round_cnt):
     for client_id in range(client_cnt):
         parameters_inputs[client_id] = []
         for round_id in range(round_cnt):
+            transaction_id =  str(uuid.uuid4())
             # 从account_1到account_BANKING_ACCOUNTS中采样src_account和dst_account
             # 确保两个账户不同
             src_account = random.choice(all_accounts)
@@ -75,7 +76,7 @@ def generate_banking_system_parameters(client_cnt, round_cnt):
                     'password': password,
                     'dst_account': dst_account,
                     'amount': amount
-                }
+                }, 'transaction_id': transaction_id,
             }
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
