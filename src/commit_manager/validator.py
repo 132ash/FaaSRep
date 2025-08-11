@@ -4,6 +4,7 @@ import gevent
 from gevent import event
 import sys
 import gevent.lock
+import gevent.queue
 import logging
 import time
 from subprocess_log import setup_validator_logger, log_validator_message
@@ -40,7 +41,7 @@ Serializer_timeout = 10  # seconds
 class ValidatorPool:
     def __init__(self, num_validators, workflow_name=None):
         self.num_validators = num_validators
-        self.pool_task_queue = Queue()
+        self.pool_task_queue = gevent.queue.Queue()
         self.serializer_req_queue = Queue()
         self.assign_lock = gevent.lock.BoundedSemaphore()
         self.repo = Repository()
@@ -75,21 +76,25 @@ class ValidatorPool:
         gevent.spawn(self.dispatch)
     
     def dispatch(self):
-        if not self.pool_task_queue.empty():
+        self.assign_lock.acquire()
+        while not self.pool_task_queue.empty():
             req = self.pool_task_queue.get()
             batch_id = req[0]
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
+                logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
                 self.handler_task_queues[processor_id].put(req)
-                #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
-                return
-            self.batch_processor_table[batch_id] = self.processor_id_to_assign
-            self.handler_task_queues[self.processor_id_to_assign].put(req)
-            #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {self.processor_id_to_assign} (newly assigned)")
+                break
+            target_processor_id = self.processor_id_to_assign
+            self.batch_processor_table[batch_id] = target_processor_id
+            logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {target_processor_id} (newly assigned)")
+            self.handler_task_queues[target_processor_id].put(req)
             self.processor_id_to_assign = (self.processor_id_to_assign+1) % self.num_validators
+        self.assign_lock.release()
             
 
     def submit(self, batch_id, op, data={}):
+        logging.info(f"[{self.workflow_name}] submit batch {batch_id}.")
         self.pool_task_queue.put((batch_id, op, data))
 
 class ValidatorProcess(Process):
