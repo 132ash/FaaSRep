@@ -276,7 +276,7 @@ class Runner:
 
         io_latency = 0
 
-        if not self.fast_path_enabled or not is_repair or self.dirty:
+        if not is_repair:
             io_latency = store.io_latency
 
         return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency

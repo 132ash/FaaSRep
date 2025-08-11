@@ -82,19 +82,19 @@ class ValidatorPool:
             batch_id = req[0]
             if batch_id in self.batch_processor_table:
                 processor_id = self.batch_processor_table[batch_id]
-                logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
+                #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
                 self.handler_task_queues[processor_id].put(req)
                 break
             target_processor_id = self.processor_id_to_assign
             self.batch_processor_table[batch_id] = target_processor_id
-            logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {target_processor_id} (newly assigned)")
+            #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {target_processor_id} (newly assigned)")
             self.handler_task_queues[target_processor_id].put(req)
             self.processor_id_to_assign = (self.processor_id_to_assign+1) % self.num_validators
         self.assign_lock.release()
             
 
     def submit(self, batch_id, op, data={}):
-        logging.info(f"[{self.workflow_name}] submit batch {batch_id}.")
+        #logging.info(f"[{self.workflow_name}] submit batch {batch_id}.")
         self.pool_task_queue.put((batch_id, op, data))
 
 class ValidatorProcess(Process):
@@ -215,11 +215,11 @@ class ValidatorProcess(Process):
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
         batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, commit_keys_on_worker, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
         if not batch_need_repair:
-            log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} does not need repair. Commit list: {commit_list_for_current_handler}, commit keys on worker: {commit_keys_on_worker}")
+            #log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} does not need repair. Commit list: {commit_list_for_current_handler}, commit keys on worker: {commit_keys_on_worker}")
             expired_keys_per_ip = {}
         else:
             expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
-            log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: need_repair={batch_need_repair}, expired_keys={expired_keys}, subjection_set={subjection_set}, commit_list_for_current_handler={commit_list_for_current_handler}, commit_keys_on_worker={commit_keys_on_worker}, pessi_sink_info={pessi_sink_info}")
+            #log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: need_repair={batch_need_repair}, expired_keys={expired_keys}, subjection_set={subjection_set}, commit_list_for_current_handler={commit_list_for_current_handler}, commit_keys_on_worker={commit_keys_on_worker}, pessi_sink_info={pessi_sink_info}")
         return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, commit_keys_on_worker, time.time() - start_time, pessi_sink_info
 
 
@@ -250,7 +250,7 @@ class ValidatorProcess(Process):
                 self.successed_tx_list_per_batch.pop(batch_id, None)
                 self.repair_engine.clean_table_of_batch(batch_id)
                 self.container_port_per_batch.pop(batch_id, None)
-            log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+            #log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set

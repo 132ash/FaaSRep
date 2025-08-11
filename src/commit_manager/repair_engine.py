@@ -69,7 +69,7 @@ class RepairEngine:
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}
-        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Sending repair request for batch {batch_id}, cascaded ready transactions: {cascaded_ready_txs}")
+        #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Sending repair request for batch {batch_id}, cascaded ready transactions: {cascaded_ready_txs}")
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
         self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch, PESSI_REPAIR)
 
@@ -85,7 +85,7 @@ class RepairEngine:
         for tx_id in ready_transactions:
             if not FAST_PATH_ENABLED:
                 repair_metadata_no_fast = self.repair_info.get_repair_metadata(mode, batch_id, '', tx_id)
-            log_validator_message(self.logger, f"[REPAIR] repairing transaction {tx_id} in batch {batch_id}, repair_metadata_no_fast:{repair_metadata_no_fast}, mode: {mode}")
+            #log_validator_message(self.logger, f"[REPAIR] repairing transaction {tx_id} in batch {batch_id}, repair_metadata_no_fast:{repair_metadata_no_fast}, mode: {mode}")
             # trigger start functions
             for n in self.start_functions:
                 ip = self.function_pos[n]
@@ -112,7 +112,7 @@ class RepairEngine:
         requests.post(url, json=data)
 
     def finish_batch_skipping_repair(self, batch_id):
-        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR SKIP] Skipping repair for batch {batch_id}. finish on sink")
+        #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR SKIP] Skipping repair for batch {batch_id}. finish on sink")
         url = f'http://{self.tx_sink_addr}:6000/fin_repair'
         data = {
                 'batch_id': batch_id,
@@ -136,14 +136,14 @@ class RepairEngine:
         url = f'http://{ip}:6000/repair_pessi'
         data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
         res = requests.post(url, json=data).json()
-        log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
+        #log_validator_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
         return res['ready_txs'], res['opt_txs_become_pessi']
 
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}
     # send metadata to the proxy on worker node.
     # all functions' ip and port need to be sent(?)
     def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set):
-        log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
+        #log_validator_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
         if not repair_metadata and not expired_keys:
             return
         url = 'http://{}/prepare'.format(worker_ip)

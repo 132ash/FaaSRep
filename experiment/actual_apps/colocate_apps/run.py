@@ -43,7 +43,6 @@ parameters_inputs = {}
 all_workflows = ['travel_reservation', 'social_network', 'banking_system']
 result_dict = {}
 
-
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
     client_logs.setup_logging_for_process(script_dir, client_id)
@@ -51,12 +50,13 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']
-        logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
+        #logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}, txid: {txid}")
+            continue
+            #logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}, txid: {txid}")
         else:
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
+            #logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
             local_results.append(result)
     result_queue.put(local_results)
 
@@ -73,7 +73,7 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
             ]
         )
         
-        logging.info(f"开始处理工作流: {workflow}")
+        #logging.info(f"开始处理工作流: {workflow}")
         
         # 生成参数
         parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
@@ -91,7 +91,7 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
         # 启动所有客户端进程
         for i in range(CLIENT_CNT):
             processes[i].start()
-            logging.info(f"Started client process {processes[i].pid} for client {i}")
+            #logging.info(f"Started client process {processes[i].pid} for client {i}")
 
         # 等待所有客户端进程结束
         for process in processes:
@@ -121,9 +121,11 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
             "validator_overhead": latency.get("validate_time_inside_validator"),
             "overall_validate_latency": latency.get("validate_latency"),
             "e2e_latency": latency.get("e2e_latency"),
-            "workflow_run_latency": latency.get("first_run_latency")
+            "workflow_run_latency": latency.get("first_run_latency"),
+            'exec_latency': latency.get("exec_latency"),
+            'io_latency': latency.get("io_latency")
         }
-        logging.info(f"工作流 {workflow} 处理完成, {compute_mode} 结果: {summary}")
+        #logging.info(f"工作流 {workflow} 处理完成, {compute_mode} 结果: {summary}")
         workflow_result_queue.put((workflow, summary))
         
     except Exception as e:
@@ -140,18 +142,24 @@ def run_workflow(workflow_name, parameters):
     return rep.json()
 
 def get_function_latency(txid):
-    func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
-    exec_time = sum(func_exec_latency) 
-    io_time = sum(func_io_latency) 
+    exec_time, io_time = None, None
+    if txid:
+        func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
+        exec_time = sum(func_exec_latency) 
+        io_time = sum(func_io_latency) 
     return exec_time, io_time
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
-    return rep.get('transaction_id', ''), {
+    transaction_id = rep.get('transaction_id', '')
+    exec_latency, io_latency = get_function_latency(transaction_id)
+    return transaction_id, {
         "validate_time_inside_validator": rep.get('validate_time_inside_validator', 0),
         "validate_latency": rep.get('validate_latency', 0),
         "e2e_latency": rep.get('e2e_latency', 0),
         "first_run_latency": rep.get('first_run_latency', 0),
+        "exec_latency": exec_latency,
+        "io_latency": io_latency
     }, rep['status']
 
 def analyze_all_workflows(system_mode, opt, compute_mode):
@@ -201,7 +209,9 @@ def analyze_all_workflows(system_mode, opt, compute_mode):
             "validator_overhead", 
             "overall_validate_latency", 
             "e2e_latency", 
-            "workflow_run_latency"
+            "workflow_run_latency",
+            'exec_latency',
+            'io_latency'
         ]
         summary_df = summary_df[columns_order]
         
