@@ -3,6 +3,18 @@ import time
 from botocore.exceptions import ClientError
 from decimal import Decimal
 
+class ActiveAbortException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.abort_type = "ACTIVE"
+        self.message = message
+
+class PassiveAbortException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.abort_type = "PASSIVE"
+        self.message = message
+
 class BeldiStore:
     def __init__(self, db_server):
         self.db_server = db_server
@@ -62,7 +74,10 @@ class BeldiStore:
         if self.lock_set.get(key, False):
             return time.time() - start
         else:
-            while True:
+            max_wait_time = 6  # 最大等待6秒
+            lock_timeout = 5  # 锁的超时时间5s
+            
+            while time.time() - start < max_wait_time:
                 try:
                     # 尝试获取锁
                     self.data_db.update_item(
@@ -87,12 +102,11 @@ class BeldiStore:
                     if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                         # 获取锁失败，检查当前锁持有者的时间戳
                         response = self.data_db.get_item(
-                            Key={'key': key}
+                            Key={'key': key},
+                            ConsistentRead=True
                         )
                         item = response.get('Item')
                         if not item:
-                            # 没有找到记录，重试
-                            logging.info(f"No item found for key {key}, retrying...")
                             time.sleep(0.005)
                             continue
                             
@@ -100,26 +114,47 @@ class BeldiStore:
                         current_lock_timestamp = item.get('create_timestamp')
                         
                         if not locker_txid:
-                            # 没有锁持有者，重试
-                            logging.info(f"No lock holder for key {key}, retrying...")
                             time.sleep(0.005)
                             continue
                             
                         if current_lock_timestamp is None:
-                            # 有锁但没有时间戳，这是异常情况
-                            logging.error(f"Lock exists but no timestamp for key {key}, locker: {locker_txid}")
                             raise Exception(f"Lock exists but no timestamp. Key: {key}, locker_txid: {locker_txid}")
-                        elif self.create_timestamp < current_lock_timestamp:
-                            # 自己的时间戳更早，继续尝试
-                            # logging.info(f"Transaction {self.transaction_id} waiting for lock on key {key} (earlier timestamp)")
-                            time.sleep(0.005)  # 短暂等待后重试
+                        
+                        # 检查锁是否已经超时
+                        current_time = time.time()
+                        lock_age = current_time - float(current_lock_timestamp)
+                        
+                        if lock_age > lock_timeout:
+                            # 锁已超时，尝试清理
+                            logging.warning(f"Detected expired lock for key {key}, age: {lock_age}s, attempting cleanup")
+                            try:
+                                self.data_db.update_item(
+                                    Key={'key': key},
+                                    UpdateExpression="SET #l = :none, #ct = :none",
+                                    ConditionExpression="#l = :locker AND #ct = :old_time",
+                                    ExpressionAttributeNames={
+                                        '#l': 'lock',
+                                        '#ct': 'create_timestamp'
+                                    },
+                                    ExpressionAttributeValues={
+                                        ':none': None,
+                                        ':locker': locker_txid,
+                                        ':old_time': current_lock_timestamp
+                                    }
+                                )
+                                logging.info(f"Successfully cleaned expired lock for key {key}")
+                                continue  # 重试获取锁
+                            except ClientError:
+                                # 清理失败，可能锁已被其他事务更新
+                                logging.warning(f"Failed to clean expired lock for key {key}")
+                        
+                        if self.create_timestamp < current_lock_timestamp:
+                            time.sleep(0.005)
                             continue
                         else:
-                            # 自己的时间戳较晚，抛出异常
-                            logging.error(f"Transaction {self.transaction_id} aborted due to later timestamp on key {key}")
-                            raise Exception(f"Lock acquisition failed for key {key}: newer than holder {locker_txid}.")
+                            raise PassiveAbortException(f"Lock acquisition failed for key {key}: newer than holder {locker_txid}.")
                     else:
-                        # 其他错误，抛出异常
-                        logging.error(f"Error acquiring lock on key {key}: {e}")
-                        raise e
+                        raise Exception(f"Error acquiring lock on key {key}: {e}")
             
+            # 超时后仍未获取到锁
+            raise PassiveAbortException(f"Lock acquisition timeout for key {key} after {max_wait_time}s")

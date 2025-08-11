@@ -10,6 +10,7 @@ from flask import Flask, request
 from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
+from beldi_store import ActiveAbortException, PassiveAbortException
 
 # 配置日志记录
 logging.basicConfig(
@@ -88,9 +89,17 @@ class Runner:
             exec(self.code, self.ctx)
             # run function
             out = eval('main()', self.ctx)
-        except Exception as e:
+        except ActiveAbortException as e:
             aborted = True
-            msg = json.dumps({'Abort': True, 'error': str(e), 'lock_set': self.lock_set})       
+            print(f"Error executing function {self.function}: {e}", flush=True)
+            msg = json.dumps({'Abort': True, 'lock_set':self.lock_set, 'Abort_type':'ACTIVE', 'error': str(e)})
+        except PassiveAbortException as e:
+            aborted = True
+            print(f"Error executing function {self.function}: {e}", flush=True)
+            msg = json.dumps({'Abort': True, 'lock_set':self.lock_set,'Abort_type':'PASSIVE', 'error': str(e)})
+        except Exception as e:
+            print(f"Error executing function {self.function}: {e}", flush=True)
+            msg = json.dumps({'Abort': True, 'lock_set':self.lock_set, 'Abort_type':'ERROR', 'error': str(e)})
 
         io_latency = store.io_latency
         lock_latency = store.lock_latency

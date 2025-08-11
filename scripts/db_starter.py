@@ -1,14 +1,30 @@
 import couchdb
 import boto3
-import time
+import sys
 from datetime import datetime
 import yaml
 import string
 from pathlib import Path
 TEXT_SIZE = 4 * 1024  # 1MB / 4KB
 
-couch_db = couchdb.Server('http://faasnap:faasnap@10.2.27.22:5984')
-dynamo_db  = boto3.resource('dynamodb', endpoint_url='http://10.2.27.22:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+def get_root_dir(script_dir: Path) -> Path:
+    project_root = script_dir
+    while project_root != project_root.parent:
+        if (project_root / "README.md").exists():
+            break
+        project_root = project_root.parent
+    return project_root
+
+script_dir = Path(__file__).parent
+ROOT_DIR = get_root_dir(script_dir)
+sys.path.append(str(ROOT_DIR))
+
+import config.config as config
+
+STORAGE_NODE_IP = config.STOREGE_NODE_IP
+
+couch_db = couchdb.Server(f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984')
+dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STORAGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
 for d in ["workflow_latency", "common", "results", "log"]:
     if d in couch_db:

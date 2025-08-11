@@ -15,6 +15,9 @@ logging.basicConfig(
     ]
 )
 
+from beldi_store import ActiveAbortException, PassiveAbortException
+
+
 class Store:
     def __init__(self):
         self.fetch_dict = {}
@@ -47,7 +50,8 @@ class Store:
         return f"{mode}:{func}:{key}"
         
     def abort_tx(self, message):
-        raise Exception(f"Transaction abort triggered by itself. message: {message}")
+        raise ActiveAbortException(f"Transaction abort triggered by itself: {message}")
+
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
         value, _ = self.beldi_store.get(param_key, upstream)

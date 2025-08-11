@@ -121,7 +121,7 @@ class WorkerSPManager:
         if function_name == 'END':
             self.repo.beldi_commit(state.transaction_id, state.lock_set)
             self.abort_or_commit_tx(state.transaction_id, False)
-            # logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
+            logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -162,13 +162,14 @@ class WorkerSPManager:
         }
         requests.post(remote_url, json=data)
 
-    def abort_or_commit_tx(self, transaction_id, aborted):
+    def abort_or_commit_tx(self, transaction_id, aborted, Abort_type=''):
         # trigger next run of the transaction under pessimistic repair mode
         notify_url = "http://{}/notify".format(self.GATEWAY_ADDR)
         payload = {
             'transaction_id': transaction_id,
             'first_run_finish_time': time.time(),  # first_run_finish_time, start_time, validate_time_inside_validator
-            'abort': aborted
+            'abort': aborted,
+            'Abort_type':Abort_type
         }
         requests.post(notify_url, json=payload)
 
@@ -183,12 +184,13 @@ class WorkerSPManager:
     def run_function(self, state: TransactionState, function_name: str) -> None:
         # if function in repair mode and not dirty, skip running
         info = self.function_info[function_name]
-        successful, lock_set = self.run_normal(state, info)
+        successful, lock_set, Abort_type = self.run_normal(state, info)
+        # logging.info(f"function {function_name} run {'succeeded' if successful else 'failed'}, lock_set: {lock_set}, Abort_type:{Abort_type}")
         if not successful:
            # logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
             already_aborted = self.repo.release_lock(state.transaction_id, lock_set)
             if not already_aborted:
-                self.abort_or_commit_tx(state.transaction_id, True)
+                self.abort_or_commit_tx(state.transaction_id, True, Abort_type)
             return
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
@@ -207,7 +209,10 @@ class WorkerSPManager:
            # logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}, lock_set: {res['lock_set']}")
             if 'current_lock_timestamp' in res['error']:
                 raise ValueError(f"Function {name} failed due to lock acquisition error: {res['error']}")
-            return False, res['lock_set']
+            if res['Abort_type'] == 'ERROR':
+                raise Exception(f"Function {name} failed with error: {res['error']}")
+            logging.info(f"Function {name} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
+            return False, res['lock_set'], res['Abort_type']
             
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
@@ -221,7 +226,7 @@ class WorkerSPManager:
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         ## logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
-        return True, res['lock_set']
+        return True, res['lock_set'], ''
 
     def clear_db(self, transaction_id):
         self.repo.clear_db(transaction_id)

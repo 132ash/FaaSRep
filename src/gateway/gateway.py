@@ -92,7 +92,7 @@ def run():
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
-    create_timestamp = txTable.registerTX(workflow, transaction_id, parameters)
+    txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
     ## logging.info('processing request ' + transaction_id + '...')
     start = time.time()
@@ -102,7 +102,7 @@ def run():
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         # logging.info(f"running workflow {workflow}, transaction_id: {transaction_id}, retry: {retry}")
-        exec_first_latency = run_workflow(create_timestamp, workflow, workflow_metadata, transaction_id, parameters, retry)
+        exec_first_latency = run_workflow(time.time(), workflow, workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
             txTable.resetTX(transaction_id)

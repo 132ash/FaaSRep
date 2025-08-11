@@ -9,9 +9,7 @@ class RunningTXTable:
         self.repo:Repository = repo
     
     def registerTX(self, workflow, tx_id, tx_params):
-        create_timestamp = time.time()
-        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'create_timestamp': create_timestamp}
-        return create_timestamp
+        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event()}
 
     def finishTX(self, tx_id):
         validate_latency = self.running_txs[tx_id]["validate_latency"]

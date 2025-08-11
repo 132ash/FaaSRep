@@ -1,0 +1,18 @@
+[travel_reservation] 2025-08-10 21:08:05,242 - INFO - 开始处理工作流: travel_reservation
+[travel_reservation] 2025-08-10 21:08:05,274 - INFO - Started client process 3256638 for client 0
+[travel_reservation] 2025-08-10 21:08:05,276 - INFO - Started client process 3256639 for client 1
+[travel_reservation] 2025-08-10 21:08:05,279 - INFO - Started client process 3256640 for client 2
+[travel_reservation] 2025-08-10 21:08:05,281 - INFO - Started client process 3256641 for client 3
+[travel_reservation] 2025-08-10 21:08:05,283 - INFO - Started client process 3256642 for client 4
+[travel_reservation] 2025-08-10 21:08:05,285 - INFO - Started client process 3256643 for client 5
+[travel_reservation] 2025-08-10 21:08:05,288 - INFO - Started client process 3256644 for client 6
+[travel_reservation] 2025-08-10 21:08:05,290 - INFO - Started client process 3256645 for client 7
+[travel_reservation] 2025-08-10 21:08:05,292 - INFO - Started client process 3256646 for client 8
+[travel_reservation] 2025-08-10 21:08:05,294 - INFO - Started client process 3256647 for client 9
+[travel_reservation] 2025-08-10 21:08:05,297 - INFO - Started client process 3256648 for client 10
+[travel_reservation] 2025-08-10 21:08:05,299 - INFO - Started client process 3256649 for client 11
+[travel_reservation] 2025-08-10 21:08:05,302 - INFO - Started client process 3256650 for client 12
+[travel_reservation] 2025-08-10 21:08:05,304 - INFO - Started client process 3256651 for client 13
+[travel_reservation] 2025-08-10 21:08:05,308 - INFO - Started client process 3256652 for client 14
+[travel_reservation] 2025-08-10 21:08:05,311 - INFO - Started client process 3256653 for client 15
+[travel_reservation] 2025-08-10 21:08:44,388 - INFO - 工作流 travel_reservation 处理完成, 99%-ile 结果: {'workflow': 'travel_reservation', 'mode': 'Concord_99p', 'validator_overhead': np.float64(0.0), 'overall_validate_latency': np.float64(-0.005370202064514166), 'e2e_latency': np.float64(3.1261697864532447), 'workflow_run_latency': np.float64(3.1057873940467813)}

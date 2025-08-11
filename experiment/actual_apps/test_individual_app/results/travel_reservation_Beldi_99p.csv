@@ -1,2 +1,2 @@
 mode,validator overhead,overall validate latency,e2e latency,workflow run latency
-Beldi_99p,0.0,0.0,0.7623026204109191,0.7447725963592529
+Beldi_99p,0.0,0.0,3.103952422142029,3.060978565216064
