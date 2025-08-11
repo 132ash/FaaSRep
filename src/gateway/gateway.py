@@ -122,23 +122,29 @@ def run():
     start = time.time()
     repo.create_shadow_table(transaction_id)
     aborted = False
+    Abort_type = ''
     retry = False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         # logging.info(f"running workflow {workflow}, transaction_id: {transaction_id}, retry: {retry}")
         exec_first_latency = run_workflow(time.time(), workflow, workflow_metadata, transaction_id, parameters, retry)
-        aborted = txTable.waitTX(transaction_id)
+        aborted, Abort_type = txTable.waitTX(transaction_id)
         if aborted:
-            txTable.resetTX(transaction_id)
             clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
             gevent.joinall(clear_jobs)
+            if Abort_type == 'PASSIVE':
+                txTable.resetTX(transaction_id)           
+            else:
+                break
         retry = True
+    if aborted and Abort_type == 'ACTIVE':
+        return json.dumps({'status':'aborted', "res": {}})
     ## logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency, validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, res: {res}")
+    # log_message(f"transaction {transaction_id} finished. e2e_latency: {end-start}, res: {res}")
     #     # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]
@@ -156,8 +162,9 @@ def notify():
     first_run_finish_time = data['first_run_finish_time']
     
     if data.get('abort', False):
-        logging.info(f"transaction {transaction_id} aborted.")
-        txTable.notifyTX(transaction_id, 0, True)
+        Abort_type = data['Abort_type']
+        # log_message(f"transaction {transaction_id} aborted. Abort_type:{Abort_type}")
+        txTable.notifyTX(transaction_id, 0, True, Abort_type)
     else:
         first_run_finish_time = data['first_run_finish_time']
         txTable.notifyTX(transaction_id, first_run_finish_time)  
@@ -169,8 +176,6 @@ def clear_container():
     workflow = data['workflow']
     addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
     jobs = []
-    print("clearing containers...")
-    print(addrs)
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
         jobs.append(gevent.spawn(requests.get, clear_url))

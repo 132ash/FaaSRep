@@ -42,7 +42,7 @@ parameters_inputs = {}
 # all_workflows = ['banking_system']
 # all_workflows = ['travel_reservation']
 # all_workflows = ['social_network']
-all_workflows = ['banking_system']
+all_workflows = ['social_network']
 result_dict = {}
 
 
