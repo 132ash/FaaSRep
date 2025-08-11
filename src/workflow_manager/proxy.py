@@ -1,17 +1,41 @@
 import sys
 import logging
-# 配置日志记录
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    # 设置日志级别为 INFO
-    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
-    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ],
-    force=True 
-)
+import os
+# 配置日志记录 - 输出到文件并每次运行时刷新
+log_file = '../../logging/proxy.log'
 
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('proxy')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 from gevent import monkey
 monkey.patch_all()

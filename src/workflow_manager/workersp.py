@@ -8,6 +8,7 @@ from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
 import re
+import os
 
 sys.path.append('../../config')
 import config
@@ -18,6 +19,42 @@ from function_manager import FunctionManager
 
 REPAIRED = 1
 ABORTED = 2
+
+
+log_file = '../../logging/workersp.log'
+
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('workersp')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -100,7 +137,7 @@ class WorkerSPManager:
     def del_state(self, transaction_id: str):
         self.lock.acquire()
         if transaction_id in self.states:
-            ## logging.info('delete state of: %s', transaction_id)
+            ## log_message('delete state of: %s', transaction_id)
             del self.states[transaction_id]
         self.lock.release()
 
@@ -121,7 +158,7 @@ class WorkerSPManager:
         if function_name == 'END':
             self.repo.beldi_commit(state.transaction_id, state.lock_set)
             self.abort_or_commit_tx(state.transaction_id, False)
-            logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
+            log_message(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -148,7 +185,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        ## logging.info(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        ## log_message(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             'transaction_id': state.transaction_id,
@@ -185,7 +222,7 @@ class WorkerSPManager:
         # if function in repair mode and not dirty, skip running
         info = self.function_info[function_name]
         successful, lock_set, Abort_type = self.run_normal(state, info)
-        # logging.info(f"function {function_name} run {'succeeded' if successful else 'failed'}, lock_set: {lock_set}, Abort_type:{Abort_type}")
+        # log_message(f"function {function_name} run {'succeeded' if successful else 'failed'}, lock_set: {lock_set}, Abort_type:{Abort_type}")
         if not successful:
            # logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
             already_aborted = self.repo.release_lock(state.transaction_id, lock_set)
@@ -202,7 +239,7 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        ## logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
+        ## log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.lock_set)
         end = time.time()
         if res.get("Abort", False):
@@ -211,7 +248,7 @@ class WorkerSPManager:
                 raise ValueError(f"Function {name} failed due to lock acquisition error: {res['error']}")
             if res['Abort_type'] == 'ERROR':
                 raise Exception(f"Function {name} failed with error: {res['error']}")
-            logging.info(f"Function {name} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
+            log_message(f"Function {name} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
             return False, res['lock_set'], res['Abort_type']
             
         state.lock.acquire()
@@ -224,7 +261,7 @@ class WorkerSPManager:
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-        ## logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+        ## log_message(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
         return True, res['lock_set'], ''
 

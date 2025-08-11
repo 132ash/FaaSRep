@@ -3,18 +3,42 @@ import gevent
 from gevent import monkey
 import uuid
 import sys
+import os
 import logging
-# 配置日志记录
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    # 设置日志级别为 INFO
-    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
-    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ],
-    force=True 
-)
+log_file = '../../logging/gateway.log'
+
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('gateway')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 monkey.patch_all()
 from flask import Flask, request
@@ -114,7 +138,7 @@ def run():
     first_run_finish_time, validate_latency, validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    # logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, res: {res}")
+    logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, res: {res}")
     #     # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]
@@ -132,7 +156,7 @@ def notify():
     first_run_finish_time = data['first_run_finish_time']
     
     if data.get('abort', False):
-        # logging.info(f"transaction {transaction_id} aborted.")
+        logging.info(f"transaction {transaction_id} aborted.")
         txTable.notifyTX(transaction_id, 0, True)
     else:
         first_run_finish_time = data['first_run_finish_time']
