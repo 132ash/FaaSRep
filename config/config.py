@@ -61,7 +61,9 @@ PESSI_REPAIR = 2
 DEFAULT_CONTAINER_NUM = 16
 CLEAR_MEM = True
 
-# app configuration
+# microbenchmark configuration
+DB_SIZE = 10000
+DATA_ITEM_SIZE = 4 * 1024
 
 # travel reservation
 FLIGHT_IDS = 100

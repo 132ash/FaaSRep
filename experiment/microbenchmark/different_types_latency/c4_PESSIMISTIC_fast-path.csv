@@ -1,2 +1,0 @@
-mode,validator overhead,overall validate latency,e2e latency,workflow run latency
-PESSIMISTIC_fast-path,0.004075264930725098,0.16655149989657933,0.27523253228929306,0.09219596650865343

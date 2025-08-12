@@ -157,7 +157,7 @@ def generate_social_media_parameters(client_cnt, round_cnt):
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
-def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters):
+def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters, zipf_param):
     dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     workflow = workflow_parameters.get('workflow', {})
     text_size = workflow_parameters.get('text_size', 8)  # Default to 8B if not specified
@@ -169,7 +169,6 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_paramete
         for round_id in range(round_cnt):
             parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
             for func in all_func:
-                zipf_param = 1.1
                 dataset_len = len(dataset)
                 indices = set()
                 while len(indices) < 3:
