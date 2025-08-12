@@ -26,7 +26,7 @@ def setup_validator_logger(workflow_name, validator_id):
     
     return logger
 
-def log_validator_message(logger, message):
+def log_message(logger, message):
     logger.info(message)
     # 强制刷新缓冲区
     for handler in logger.handlers:

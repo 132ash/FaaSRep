@@ -23,22 +23,12 @@ def process_workflow_results(workflow, temp_file):
         # 按客户端数量排序
         df = df.sort_values('client_count')
         
-        # 添加额外的计算列
-        df['efficiency'] = df['avg_throughput'] / df['client_count']  # 每客户端吞吐量
-        df['latency_per_throughput'] = df['median_latency'] / df['avg_throughput']  # 延迟/吞吐量比
-        
+   
         # 生成最终结果文件
         output_file = results_dir / f"{workflow}_res.csv"
         df.to_csv(output_file, index=False)
         
         print(f"✅ {workflow} 结果已保存到: {output_file}")
-        
-        # 打印结果摘要
-        print(f"📊 {workflow} 结果摘要:")
-        print("-" * 60)
-        print(f"{'客户端数':<8} {'中位延迟(ms)':<12} {'吞吐量(RPS)':<12} {'效率':<10}")
-        print("-" * 60)
-        
         return True
         
     except Exception as e:

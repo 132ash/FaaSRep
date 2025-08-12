@@ -1,4 +1,4 @@
-STORAGE_NODE_IP = '10.2.64.4'
+STORAGE_NODE_IP = '10.2.27.22'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
 DATADB_URL = ""

@@ -6,11 +6,11 @@ import sys
 import gevent.lock
 import gevent.queue
 import logging
+from subprocess_log import log_message, setup_validator_logger
 import time
-from subprocess_log import setup_validator_logger, log_validator_message
 from serializer import SerializerProcess
 import requests
-from multiprocessing import Process, Queue, Pipe
+from multiprocessing import Process, Queue
 from repair_info import RepairInfo
 from repair_engine import RepairEngine
 from validator_repo import Repository
@@ -38,6 +38,7 @@ DISPATCH_INTERVAL = 0.005
 import re
 Serializer_timeout = 10  # seconds
 
+
 class ValidatorPool:
     def __init__(self, num_validators, workflow_name=None):
         self.num_validators = num_validators
@@ -47,7 +48,6 @@ class ValidatorPool:
         self.repo = Repository()
         self.handler_task_queues = []
         self.serializer_return_pipes = []
-        self.processor_id_to_assign = 0
         self.workflow_name = workflow_name
         self.batch_processor_table = {}  # {batch_id: processor_id}
         self.function_pos = {}
@@ -76,25 +76,14 @@ class ValidatorPool:
         gevent.spawn(self.dispatch)
     
     def dispatch(self):
-        self.assign_lock.acquire()
         while not self.pool_task_queue.empty():
             req = self.pool_task_queue.get()
             batch_id = req[0]
-            if batch_id in self.batch_processor_table:
-                processor_id = self.batch_processor_table[batch_id]
-                #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {processor_id} (previously assigned processor)")
-                self.handler_task_queues[processor_id].put(req)
-                break
-            target_processor_id = self.processor_id_to_assign
-            self.batch_processor_table[batch_id] = target_processor_id
-            #logging.info(f"[{self.workflow_name}] Dispatched batch {req[0]} to handler {target_processor_id} (newly assigned)")
-            self.handler_task_queues[target_processor_id].put(req)
-            self.processor_id_to_assign = (self.processor_id_to_assign+1) % self.num_validators
-        self.assign_lock.release()
-            
+            processor_id_to_assign = hash(batch_id) % self.num_validators
+            self.handler_task_queues[processor_id_to_assign].put(req)
 
     def submit(self, batch_id, op, data={}):
-        #logging.info(f"[{self.workflow_name}] submit batch {batch_id}.")
+        logging.info(f"[{self.workflow_name}] submit batch {batch_id}.")
         self.pool_task_queue.put((batch_id, op, data))
 
 class ValidatorProcess(Process):
@@ -198,6 +187,7 @@ class ValidatorProcess(Process):
                     for worker_ip in self.worker_ip_set
                     ]
                 gevent.joinall(jobs)
+            self.clean_batch_info(data)
             self.notify_gateway(txid_lists, True, timestamps)
 
                         
@@ -215,13 +205,24 @@ class ValidatorProcess(Process):
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
         batch_need_repair, expired_keys, subjection_set, commit_list_for_current_handler, commit_keys_on_worker, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
         if not batch_need_repair:
-            #log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} does not need repair. Commit list: {commit_list_for_current_handler}, commit keys on worker: {commit_keys_on_worker}")
+            log_message(self.logger, f"[VALIDATE] Batch {batch_id} does not need repair. Commit list: {commit_list_for_current_handler}, commit keys on worker: {commit_keys_on_worker}")
             expired_keys_per_ip = {}
         else:
             expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
-            #log_validator_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: need_repair={batch_need_repair}, expired_keys={expired_keys}, subjection_set={subjection_set}, commit_list_for_current_handler={commit_list_for_current_handler}, commit_keys_on_worker={commit_keys_on_worker}, pessi_sink_info={pessi_sink_info}")
+            log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: need_repair={batch_need_repair}, expired_keys={expired_keys}, subjection_set={subjection_set}, commit_list_for_current_handler={commit_list_for_current_handler}, commit_keys_on_worker={commit_keys_on_worker}, pessi_sink_info={pessi_sink_info}")
         return batch_need_repair, expired_keys_per_ip, commit_list_for_current_handler, commit_keys_on_worker, time.time() - start_time, pessi_sink_info
 
+    def clean_batch_info(self, batch_id_list):
+        log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
+        for batch_id in batch_id_list:
+            self.tx_list_per_batch.pop(batch_id, None)
+            self.time_tuple_per_batch.pop(batch_id, None)
+            self.read_set_per_batch.pop(batch_id, None)
+            self.write_set_per_batch.pop(batch_id, None)
+            self.aborted_tx_list_per_batch.pop(batch_id, None)
+            self.successed_tx_list_per_batch.pop(batch_id, None)
+            self.repair_engine.clean_table_of_batch(batch_id)
+            self.container_port_per_batch.pop(batch_id, None)
 
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
@@ -242,15 +243,8 @@ class ValidatorProcess(Process):
                 for worker_ip in self.worker_ip_set:
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
                     worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
-                self.tx_list_per_batch.pop(batch_id, None)
-                self.time_tuple_per_batch.pop(batch_id, None)
-                self.read_set_per_batch.pop(batch_id, None)
-                self.write_set_per_batch.pop(batch_id, None)
-                self.aborted_tx_list_per_batch.pop(batch_id, None)
-                self.successed_tx_list_per_batch.pop(batch_id, None)
-                self.repair_engine.clean_table_of_batch(batch_id)
-                self.container_port_per_batch.pop(batch_id, None)
-            #log_validator_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+            
+            log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set
@@ -258,6 +252,7 @@ class ValidatorProcess(Process):
             gevent.joinall(jobs)
             self.repair_engine.sink_release_optimistic_info(commit_batch_list)
             self.notify_gateway(txid_lists, True, timestamps, abort_txs)
+            self.clean_batch_info(commit_batch_list)
 
 
     def trigger_worker_commit(self, ip, commit_list):

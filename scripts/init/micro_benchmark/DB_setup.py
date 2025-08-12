@@ -75,6 +75,7 @@ def create_microbenchmark_dataset(flush=False):
                 'value': text
             }
         )
+        db_keys.append(key_name)
     json.dump(db_keys, open(ROOT_DIR /"experiment"/"microbenchmark"/ "db_keys.json", 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":

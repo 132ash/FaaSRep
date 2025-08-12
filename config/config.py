@@ -1,7 +1,7 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STOREGE_NODE_IP = '10.2.64.4'
+STOREGE_NODE_IP = '10.2.27.22'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984'
 DYNAMODB_URL = f'http://{STOREGE_NODE_IP}:4567'
@@ -22,16 +22,16 @@ WORKERSP_PORT = '7500'
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
                     # 'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                    # 'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                    'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
                     # 'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
                     # 'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
                     # 'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                    # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                    'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                     # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                     'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 # cache setting
 CLEAR_MEM = True
@@ -39,14 +39,14 @@ FILLUP_CACHE = False
 EXPIRED_CACHE = True
 
 # validator setting
-VALIDATORS_PER_POOL = 2
+VALIDATORS_PER_POOL = 4
 VALIDATE_INTERVAL = 0.01
 
 # batch setting
 BATCH_SIZE = 3
 
 # mode setting
-FAST_PATH = False
+FAST_PATH = True
 OPTIMISTIC_REPAIR = True
 
 
@@ -58,7 +58,7 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
-DEFAULT_CONTAINER_NUM = 16
+DEFAULT_CONTAINER_NUM = 4
 CLEAR_MEM = True
 
 # microbenchmark configuration

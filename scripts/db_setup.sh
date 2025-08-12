@@ -37,7 +37,7 @@ python $CURRENT_SH_DIR/db_starter.py
 
 # # install redis
 # # docker pull redis
-# docker run -itd -p 6379:6379 --name redis redis
+# docker run -itd -p 6379:6379 --memory 2048m --name redis redis
 
 declare -A WORKFLOWS_INIT
 # init: generate workflow yaml and node assign (if not exists), then build DB.

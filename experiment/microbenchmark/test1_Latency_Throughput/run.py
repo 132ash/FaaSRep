@@ -9,6 +9,7 @@ from numpy import random
 import requests
 import numpy as np
 from pathlib import Path
+import os
 
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -27,58 +28,44 @@ import config
 from repository import Repository
 repo = Repository()
 
-
-
 DB_NODE_IP = config.STOREGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
-# table_name = f"{transaction_id}_shadow_table"
 table_name = "data"
-# 创建名为data的表，以字符串key作为键，每个键对应version和value两个字段，都是字符串
 table = dynamodb.Table(table_name)
 
-ROUND = 1000
+ROUND = 50
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
-all_workflows = ['c4']
 result_dict = {}
 
-def setup_logging_for_process(client_id):
-    """为每个子进程配置独立的日志文件。"""
-    log_dir = script_dir / "logs"
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / f"client_{client_id}.log"
-    
-    # 移除旧的 handlers，为子进程设置新的
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-        
+def setup_logging():
+    """设置日志配置，确保实时输出到终端"""
     logging.basicConfig(
         level=logging.INFO,
-        format=f'%(asctime)s [Client-{client_id}] [%(levelname)s] %(message)s',
+        format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
-            logging.FileHandler(log_file, mode='w'),
-            logging.StreamHandler(sys.stdout) # 也可以同时输出到控制台
-        ]
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True
     )
+    # 确保立即刷新输出
+    logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
+
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程执行的任务。"""
-    setup_logging_for_process(client_id)
+    # setup_logging_for_process(client_id)
     local_results = []
     for i in range(ROUND):
-        start_time = pd.Timestamp.now()
         txid, result = analyze_workflow(workflow, parameters_all_round[i])
-        end_time = pd.Timestamp.now()
         
         # 计算实际测试时间
-        test_duration = (end_time - start_time).total_seconds()
-        result['test_duration'] = test_duration
         result['client_id'] = client_id
         result['round'] = i + 1
         
         local_results.append(result)
         if i % (ROUND // 10) == 0:
-            print(f"Client {client_id}: Round {i+1} completed")
+            print(f"Client {client_id}: Round {i+1} completed", flush=True)
     result_queue.put(local_results)
 
 def generate_workflow_inputs_for_clients(workflow, dataset_all, client_cnt):
@@ -118,14 +105,37 @@ def analyze_workflow(workflow, parameters_input):
         "first_run_latency": rep['first_run_latency'],
     }
 
+def write_result_to_file(workflow_name, client_cnt, median_latency, avg_throughput):
+    """将结果直接写入临时文件"""
+    results_dir = script_dir / "results"
+    results_dir.mkdir(exist_ok=True)
+    
+    temp_result_file = results_dir / f"{workflow_name}_temp.csv"
+    
+    # 检查文件是否存在，如果不存在则创建并写入表头
+    if not temp_result_file.exists():
+        with open(temp_result_file, 'w') as f:
+            f.write("workflow,client_count,median_latency,avg_throughput\n")
+        print(f"📝 创建结果文件: {temp_result_file}", flush=True)
+    
+    # 追加结果数据
+    with open(temp_result_file, 'a') as f:
+        f.write(f"{workflow_name},{client_cnt},{median_latency},{avg_throughput}\n")
+    
+    print(f"📊 结果已写入文件: {temp_result_file}", flush=True)
+    print(f"📊 数据: {workflow_name},{client_cnt},{median_latency},{avg_throughput}", flush=True)
+
 def analyze_all(workflow_name, system_mode, client_cnt):
-    print(f"开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}")
+    print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}", flush=True)
+    sys.stdout.flush()  # 强制刷新输出缓冲区
+    
     repo.flush_couchdb_workflow_latency()
     DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
     dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     parameters_all = generate_workflow_inputs_for_clients(workflow_name, dataset_all, client_cnt)
     result_queue = multiprocessing.Queue()
-    # 创建client_cnt个线程
+    
+    # 创建client_cnt个进程
     processes = []
     for i in range(client_cnt):
         process = multiprocessing.Process(
@@ -134,14 +144,18 @@ def analyze_all(workflow_name, system_mode, client_cnt):
         )
         processes.append(process)
     
+    print(f"📋 启动 {client_cnt} 个客户端进程...", flush=True)
     for i in range(client_cnt):
         processes[i].start()
-        print(f"Started process {processes[i].pid} for client {i}")
+        print(f"✅ 启动进程 {processes[i].pid} (客户端 {i})", flush=True)
 
+    print(f"⏳ 等待所有进程完成...", flush=True)
     # 等待所有子进程运行结束
-    for process in processes:
+    for i, process in enumerate(processes):
         process.join()
+        print(f"✅ 进程 {i} 完成", flush=True)
 
+    print(f"📊 收集测试结果...", flush=True)
     # 从队列中收集所有结果
     all_results = []
     while not result_queue.empty():
@@ -150,7 +164,8 @@ def analyze_all(workflow_name, system_mode, client_cnt):
 
     # 统计 result_dict 中的结果
     if not all_results:
-        raise Exception(f"No results collected for workflow {workflow_name}.")
+        print(f"❌ 错误: 工作流 {workflow_name} 没有收集到任何结果", flush=True)
+        sys.exit(1)
         
     df = pd.DataFrame(all_results)
     
@@ -158,24 +173,39 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     
     # 计算平均吞吐量: client_count / 平均延迟
     avg_e2e_latency = df['e2e_latency'].mean()
-    avg_throughput = (client_cnt * 1000) / avg_e2e_latency  # 转换为 RPS (延迟单位是ms)
+    avg_throughput = (client_cnt) / avg_e2e_latency  # 转换为 RPS (延迟单位是ms)
     
-    print(f"")
-    print(f"📊 {workflow_name} 测试结果:")
-    print(f"   总请求数: {len(all_results)}")
-    print(f"   中位数 E2E 延迟: {median_e2e_latency:.2f} ms")
-    print(f"   平均 E2E 延迟: {avg_e2e_latency:.2f} ms")
-    print(f"   平均吞吐量: {avg_throughput:.2f} RPS")
+    print(f"", flush=True)
+    print(f"📊 {workflow_name} 测试结果:", flush=True)
+    print(f"   总请求数: {len(all_results)}", flush=True)
+    print(f"   中位数 E2E 延迟: {median_e2e_latency:.2f} s", flush=True)
+    print(f"   平均 E2E 延迟: {avg_e2e_latency:.2f} s", flush=True)
+    print(f"   平均吞吐量: {avg_throughput:.2f} RPS", flush=True)
 
-    print(f"RESULT:{workflow_name},{client_cnt},{median_e2e_latency:.2f},{avg_throughput:.2f}")
+    # 直接写入结果文件
+    write_result_to_file(workflow_name, client_cnt, median_e2e_latency, avg_throughput)
+    
+    print(f"✅ {workflow_name} 测试完成 (客户端: {client_cnt})", flush=True)
+    sys.stdout.flush()  # 确保所有输出都被刷新
     
     return median_e2e_latency, avg_throughput
 
 if __name__ == '__main__':
+    # 设置日志配置
+    setup_logging()
+    
+    if len(sys.argv) != 4:
+        print("用法: python run.py <workflow_name> <system_mode> <client_count>", flush=True)
+        sys.exit(1)
+        
     workflow_name = sys.argv[1]
     system_mode = sys.argv[2]
     client_cnt = int(sys.argv[3])
-    analyze_all(workflow_name, system_mode, client_cnt)
-
-
-
+    
+    try:
+        analyze_all(workflow_name, system_mode, client_cnt)
+    except Exception as e:
+        print(f"❌ 测试过程中发生错误: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

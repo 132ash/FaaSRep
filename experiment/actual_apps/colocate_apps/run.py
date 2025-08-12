@@ -48,13 +48,13 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']
-        #logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
+        logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
             continue
-            #logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}, txid: {txid}")
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}, txid: {txid}")
         else:
-            #logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
             local_results.append(result)
     result_queue.put(local_results)
 
@@ -71,7 +71,7 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
             ]
         )
         
-        #logging.info(f"开始处理工作流: {workflow}")
+        logging.info(f"开始处理工作流: {workflow}")
         
         # 生成参数
         parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
@@ -89,7 +89,7 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
         # 启动所有客户端进程
         for i in range(CLIENT_CNT):
             processes[i].start()
-            #logging.info(f"Started client process {processes[i].pid} for client {i}")
+            logging.info(f"Started client process {processes[i].pid} for client {i}")
 
         # 等待所有客户端进程结束
         for process in processes:
@@ -124,7 +124,7 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
             'exec_latency': latency.get("exec_latency"),
             'io_latency': latency.get("io_latency")
         }
-        #logging.info(f"工作流 {workflow} 处理完成, {compute_mode} 结果: {summary}")
+        logging.info(f"工作流 {workflow} 处理完成, {compute_mode} 结果: {summary}")
         workflow_result_queue.put((workflow, summary))
         
     except Exception as e:
