@@ -1,6 +1,8 @@
 import couchdb
 import sys
 from pathlib import Path
+import time
+
 experiment_dir = Path(__file__).parent.parent
 sys.path.append(str(experiment_dir.parent))
 import config.config as config
@@ -13,15 +15,16 @@ class Repository:
         if 'workflow_latency' in self.couch:
             self.couch.delete('workflow_latency')
         db = self.couch.create('workflow_latency')
-        # 确保创建成功
-        assert db is not None
+        db = self.couch['workflow_latency']
+        time.sleep(1)
 
-    def get_latencies(self, txid, phase):
-        latencies = []
-        for _id in self.couch['workflow_latency']:
-            doc = self.couch['workflow_latency'][_id]
-            if doc['transaction_id'] == txid and doc['phase'] == phase:
-                latencies.append(doc['time'])
+    def get_latencies(self):
+        latencies = {}
+        # print(f"Fetching latencies for txid: {txid}, phase: {phase}")
+        db = self.couch['workflow_latency']
+        for _id in db:
+            doc = db[_id]
+            latencies.setdefault(doc['workflow_name'], {}).setdefault(doc['phase'], []).append(doc['time'])
         return latencies
     
     def get_all_addrs(self):

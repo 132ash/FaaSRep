@@ -379,8 +379,9 @@ class WorkerSPManager:
 
         if not state.repair:
             state.write_set.update(res["write_set"])
-            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
+            self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+            self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
+           # log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
             state.container_port[name] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
             state.RYW_subjection[name] = res["RYW_subjection"]

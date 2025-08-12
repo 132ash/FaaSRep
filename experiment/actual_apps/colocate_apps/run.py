@@ -22,7 +22,6 @@ import requests
 import config.config as config
 from experiment.common import repository, client_logs
 from experiment.common import generate_param
-repo = repository.Repository()
 
 
 DB_NODE_IP = config.STOREGE_NODE_IP
@@ -46,7 +45,6 @@ result_dict = {}
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
     client_logs.setup_logging_for_process(script_dir, client_id)
-    
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']
@@ -108,6 +106,7 @@ def workflow_process_task(workflow, workflow_result_queue, sys_mode, compute_mod
             workflow_result_queue.put((workflow, None))
             return
 
+
         df = pd.DataFrame(all_results)
         
         # 计算99%-ile延迟
@@ -141,30 +140,22 @@ def run_workflow(workflow_name, parameters):
     rep = requests.post(url, json = inputs)
     return rep.json()
 
-def get_function_latency(txid):
-    exec_time, io_time = None, None
-    if txid:
-        func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
-        exec_time = sum(func_exec_latency) 
-        io_time = sum(func_io_latency) 
-    return exec_time, io_time
+
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     transaction_id = rep.get('transaction_id', '')
-    exec_latency, io_latency = get_function_latency(transaction_id)
     return transaction_id, {
         "validate_time_inside_validator": rep.get('validate_time_inside_validator', 0),
         "validate_latency": rep.get('validate_latency', 0),
         "e2e_latency": rep.get('e2e_latency', 0),
-        "first_run_latency": rep.get('first_run_latency', 0),
-        "exec_latency": exec_latency,
-        "io_latency": io_latency
+        "first_run_latency": rep.get('first_run_latency', 0)
     }, rep['status']
 
 def analyze_all_workflows(system_mode, opt, compute_mode):
     """并行分析所有工作流"""
     # 清理之前的延迟数据
+    repo = repository.Repository()
     repo.flush_couchdb_workflow_latency()
     
     # 创建工作流结果队列
@@ -198,11 +189,54 @@ def analyze_all_workflows(system_mode, opt, compute_mode):
         else:
             print(f"Warning: No valid results for workflow {workflow}")
     
+    # 获取函数延迟数据
+    repo = repository.Repository()
+    try:
+        function_latencies = repo.get_latencies()
+        print(f"Function latencies collected: {function_latencies}")
+    except Exception as e:
+        print(f"Error getting function latencies: {e}")
+        function_latencies = {}
+    
+    # 将函数延迟数据整合到工作流结果中
+    for result in workflow_results:
+        workflow_name = result['workflow']
+        if workflow_name in function_latencies:
+            # 计算该工作流的平均执行和IO延迟
+            if compute_mode == 'p99':
+                if 'exec' in function_latencies[workflow_name]:
+                    exec_latencies = function_latencies[workflow_name]['exec']
+                    result['function_exec_latency'] = sorted(exec_latencies)[int(len(exec_latencies) * 0.99)] if exec_latencies else 0
+                else:
+                    result['function_exec_latency'] = 0
+                    
+                if 'io' in function_latencies[workflow_name]:
+                    io_latencies = function_latencies[workflow_name]['io']
+                    result['function_io_latency'] = sorted(io_latencies)[int(len(io_latencies) * 0.99)] if io_latencies else 0
+                else:
+                    result['function_io_latency'] = 0
+            else:  # avg
+                if 'exec' in function_latencies[workflow_name]:
+                    exec_latencies = function_latencies[workflow_name]['exec']
+                    result['function_exec_latency'] = sum(exec_latencies) / len(exec_latencies) if exec_latencies else 0
+                else:
+                    result['function_exec_latency'] = 0
+                    
+                if 'io' in function_latencies[workflow_name]:
+                    io_latencies = function_latencies[workflow_name]['io']
+                    result['function_io_latency'] = sum(io_latencies) / len(io_latencies) if io_latencies else 0
+                else:
+                    result['function_io_latency'] = 0
+        else:
+            # 如果没有找到对应工作流的函数延迟数据，设置为0
+            result['function_exec_latency'] = 0
+            result['function_io_latency'] = 0
+    
     # 创建汇总的 DataFrame
     if workflow_results:
         summary_df = pd.DataFrame(workflow_results)
         
-        # 重新排列列的顺序
+        # 重新排列列的顺序，包含新的函数延迟列
         columns_order = [
             "workflow", 
             "mode", 
@@ -211,16 +245,18 @@ def analyze_all_workflows(system_mode, opt, compute_mode):
             "e2e_latency", 
             "workflow_run_latency",
             'exec_latency',
-            'io_latency'
+            'io_latency',
+            'function_exec_latency',  # 新增：从CouchDB获取的函数执行延迟
+            'function_io_latency'     # 新增：从CouchDB获取的函数IO延迟
         ]
         summary_df = summary_df[columns_order]
         
         # 保存汇总结果
-        output_file = script_dir / 'results' / 'all_workflows_99p_summary.csv'
+        output_file = script_dir / 'results' / f'all_workflows_{compute_mode}_summary.csv'
         output_file.parent.mkdir(parents=True, exist_ok=True)
         summary_df.to_csv(output_file, index=False)
         
-        print(f"\n=== 所有工作流 99%-ile 延迟汇总结果 ===")
+        print(f"\n=== 所有工作流 {compute_mode} 延迟汇总结果 ===")
         print(summary_df.to_string(index=False))
         print(f"\n结果已保存到: {output_file}")
         
