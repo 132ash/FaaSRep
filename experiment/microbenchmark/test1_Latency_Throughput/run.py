@@ -23,8 +23,9 @@ def get_root_dir(script_dir: Path) -> Path:
 script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
-import config.config as config
-from experiment.common import repository
+
+from config import config
+from experiment.common import repository, generate_param
 repo = repository.Repository()
 
 DB_NODE_IP = config.STOREGE_NODE_IP
@@ -32,7 +33,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 10
+ROUND = 100
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
@@ -104,28 +105,6 @@ def result_collector_thread(result_queue, all_results, client_cnt, stop_event):
     
     print(f"📊 结果收集完成，共收集 {len(all_results)} 个结果", flush=True)
 
-def generate_workflow_inputs_for_clients(workflow, dataset_all, client_cnt):
-    all_func = repo.get_all_functions(workflow)
-    client_round_inputs = []
-    for client_id in range(client_cnt):
-        round_inputs = []
-        for round_id in range(ROUND):
-            parameters_input = {'f1': {'payload_size': TEXT_SIZE, 'keys': {func: {} for func in all_func}}}
-            for func in all_func:
-                zipf_param = 1.1
-                dataset_len = len(dataset_all)
-                indices = set()
-                while len(indices) < 3:
-                    idx = random.zipf(zipf_param) - 1
-                    if 0 <= idx < dataset_len:
-                        indices.add(idx)
-                keys = [dataset_all[i] for i in indices]
-                parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
-            parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
-            round_inputs.append(parameters_input)
-        client_round_inputs.append(round_inputs)
-    return client_round_inputs
-
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
     inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters)}
@@ -142,34 +121,31 @@ def analyze_workflow(workflow, parameters_input):
     }
 
 def write_result_to_file(workflow_name, client_cnt, median_latency, avg_throughput):
-    """将结果直接写入临时文件"""
+    """将结果直接追加到最终结果文件"""
     results_dir = script_dir / "results"
     results_dir.mkdir(exist_ok=True)
     
-    temp_result_file = results_dir / f"{workflow_name}_temp.csv"
+    result_file = results_dir / f"{workflow_name}_res.csv"
     
     # 检查文件是否存在，如果不存在则创建并写入表头
-    if not temp_result_file.exists():
-        with open(temp_result_file, 'w') as f:
+    if not result_file.exists():
+        with open(result_file, 'w') as f:
             f.write("workflow,client_count,median_latency,avg_throughput\n")
-        print(f"📝 创建结果文件: {temp_result_file}", flush=True)
+        print(f"📝 创建结果文件: {result_file}", flush=True)
     
     # 追加结果数据
-    with open(temp_result_file, 'a') as f:
+    with open(result_file, 'a') as f:
         f.write(f"{workflow_name},{client_cnt},{median_latency:.4f},{avg_throughput:.4f}\n")
     
-    print(f"📊 结果已写入文件: {temp_result_file}", flush=True)
+    print(f"📊 结果已写入文件: {result_file}", flush=True)
     print(f"📊 数据: {workflow_name},{client_cnt},{median_latency:.4f},{avg_throughput:.4f}", flush=True)
 
 def analyze_all(workflow_name, system_mode, client_cnt):
     print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}", flush=True)
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
-    repo.clear_all_memory_and_container()
-    DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
-    dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
-    parameters_all = generate_workflow_inputs_for_clients(workflow_name, dataset_all, client_cnt)
-    
+    #repo.clear_all_memory_and_container()
+    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, 1.01)
     # 使用更大的队列或无限大小队列
     result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
     

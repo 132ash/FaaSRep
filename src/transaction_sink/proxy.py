@@ -66,7 +66,7 @@ class Dispatcher:
     def _validate_loop(self):
         gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
         for sink in self.sinks.values():
-            gevent.spawn(sink.validate_batch)
+            gevent.spawn(sink.validate_batch_check)
 
 
 

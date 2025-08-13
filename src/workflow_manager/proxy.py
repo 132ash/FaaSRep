@@ -68,17 +68,30 @@ ABORTED = 2
 
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
-       print("Clearing previous containers.")
-       os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
-       self.host_addr = sys.argv[1] + ':' + sys.argv[2]
-       repo.shadowtable_init(sys.argv[1])
-       repo.clear_mem()
-       self.node_list = repo.get_all_addrs('common')
-       ##log_message(f"Node list: {self.node_list}")
-       self.all_workflows = info_addrs.keys()
-       self.reserve_pools =  {name: ReservePool() for name in info_addrs}
-       self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
-       log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
+        print("Clearing previous containers.")
+        os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
+    # Ensure no related containers exist before continuing
+        try:
+            containers = docker_client.containers.list(all=True, filters={'label': 'workflow'})
+            if containers:
+                for container in containers:
+                    try:
+                        container.remove(force=True)
+                    except Exception as e:
+                        log_message(f"Failed to remove container {container.id}: {e}")
+                time.sleep(1)  # Wait a moment for cleanup to complete
+            log_message("All workflow containers have been cleared.")
+        except Exception as e:
+            log_message(f"Error during container cleanup: {e}")
+        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
+        repo.shadowtable_init(sys.argv[1])
+        repo.clear_mem()
+        self.node_list = repo.get_all_addrs('common')
+        ##log_message(f"Node list: {self.node_list}")
+        self.all_workflows = info_addrs.keys()
+        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
+        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
+        log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
     def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states) -> TransactionState:
@@ -102,7 +115,7 @@ class Dispatcher:
     def del_state(self, workflow_name, transaction_id):
         self.managers[workflow_name].del_state(transaction_id)
 
-    def clear_containers(self, workflow_name):
+    def clear_containers(self):
         for workflow_name in self.all_workflows:
             self.managers[workflow_name].clear_containers()
     

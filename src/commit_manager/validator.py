@@ -152,6 +152,7 @@ class ValidatorProcess(Process):
             self.register_lock.acquire()
             first_run_finish_time = data['first_run_finish_time']
             self.tx_list_per_batch[batch_id] = batch['transaction_list']
+           # log_message(self.logger, f"[VALIDATE] Batch {batch_id} with batch size: {len(batch['transaction_list'])}")
             self.successed_tx_list_per_batch[batch_id] = {txid:True for txid in batch['transaction_list']}
             self.aborted_tx_list_per_batch[batch_id] = []
             self.read_set_per_batch[batch_id] = batch['read_set']

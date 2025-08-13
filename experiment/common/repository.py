@@ -53,7 +53,7 @@ class Repository:
             functions.append(db[item]['function_name'])
         return functions
 
-    def clear_all_memory_and_container(self, workflow_name):
+    def clear_all_memory_and_container(self):
         for shadow_table in self.shadowtable_redis_all_addr.values():
             shadow_table.flushall(True)
         for cache in self.cache_all_addrs.values():

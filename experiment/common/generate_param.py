@@ -157,11 +157,9 @@ def generate_social_media_parameters(client_cnt, round_cnt):
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
-def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters, zipf_param):
-    dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
-    workflow = workflow_parameters.get('workflow', {})
-    text_size = workflow_parameters.get('text_size', 8)  # Default to 8B if not specified
-    dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
+def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param):
+    text_size = 4 * 1024 # Default to 8B if not specified
+    dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)
     client_round_inputs = []
     for client_id in range(client_cnt):
@@ -172,7 +170,14 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_paramete
                 dataset_len = len(dataset)
                 indices = set()
                 while len(indices) < 3:
-                    idx = np.random.zipf(zipf_param) - 1
+                    if zipf_param is None:
+                        # 随机抽样
+                        idx = random.randint(0, dataset_len - 1)
+                    else:
+                        # 使用zipf分布抽样
+                        idx = np.random.zipf(zipf_param) - 1
+                        if idx >= dataset_len:
+                            continue
                     if 0 <= idx < dataset_len:
                         indices.add(idx)
                 keys = [dataset[i] for i in indices]
@@ -182,11 +187,11 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_paramete
         client_round_inputs.append(round_inputs)
     return client_round_inputs
 
-def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, workflow_parameters=None):
+def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, micro_workflow=None, zipf_param=None):
     if workflow == 'travel_reservation':
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
-        return generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters)
+        return generate_micro_benchmark_parameters(client_cnt, round_cnt, micro_workflow, zipf_param)
     elif workflow == 'banking_system':
         return generate_banking_system_parameters(client_cnt, round_cnt)
     elif workflow == 'social_network':
