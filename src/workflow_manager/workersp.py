@@ -85,9 +85,10 @@ class ReservePool:
         for transaction_id in fin_tx_list:
             if transaction_id in self.pool:
                 self.pool[transaction_id]["lock"].acquire()
-                for container in self.pool[transaction_id]["containers"]:
-                    container.return_to_pool()
+                containers_to_return = self.pool[transaction_id]["containers"]
                 self.pool[transaction_id]["lock"].release()
+                for container in containers_to_return:
+                    container.return_to_pool()
                 self.pool.pop(transaction_id, None)
 
 class TransactionState:
@@ -183,6 +184,7 @@ class WorkerSPManager:
         state = self.states[transaction_id]
         self.lock.release()
         return state
+
 
     # delete state
     def del_state(self, transaction_id: str):

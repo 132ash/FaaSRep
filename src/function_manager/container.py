@@ -46,6 +46,7 @@ class ContainerPool:
         self.lock.acquire()
         if self.num_exec + len(self.pool) > self.max_containers:
             # logging.info('hit container limit, function: %s', self.function_name)
+            self.lock.release()
             return False
         self.num_exec += 1
         self.lock.release()
@@ -68,7 +69,6 @@ class ContainerPool:
         self.lock.acquire()
         self.pool.append(container)
         self.num_exec -= 1
-        # logging.info(f"[{self.function_name}] container returned. Pool size:{len(self.pool)}")
         self.lock.release()
 
 class Container:

@@ -77,7 +77,9 @@ class Dispatcher:
        ##log_message(f"Node list: {self.node_list}")
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
-       
+       log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
+
+
     def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states) -> TransactionState:
         return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states)
 
@@ -95,7 +97,7 @@ class Dispatcher:
     
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
-    
+
     def del_state(self, workflow_name, transaction_id):
         self.managers[workflow_name].del_state(transaction_id)
     
@@ -175,7 +177,6 @@ def clear():
         dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
 
-
 @app.route('/prepare', methods = ['POST'])
 def prepare():
     data = request.get_json(force=True, silent=True)
@@ -197,10 +198,11 @@ def commit():
     if FAST_PATH:
         workflow_name = data['workflow_name']
         fin_tx_list = commit_list['txs']
-        ##log_message(f"transactions {fin_tx_list} commited, release containers.")
+        #log_message(f"transactions {fin_tx_list} committing, release containers.")
         dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
     repo.clear_aborted_txs(aborted_txs)
+    #log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")
     return json.dumps({'status': 'ok'})
 
 @app.route('/release', methods = ['POST'])

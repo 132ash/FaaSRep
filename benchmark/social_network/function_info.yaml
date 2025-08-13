@@ -7,4 +7,4 @@ functions:
 - {image: publish, name: publish}
 - {image: modify_timeline, name: modify_timeline}
 - {image: comment_user, name: comment_user}
-max_containers: 30
+max_containers: 64

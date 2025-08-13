@@ -15,5 +15,5 @@ functions:
   name: f7
 - image: micro_func
   name: f8
-max_containers: 30
+max_containers: 64
 workflow: c8

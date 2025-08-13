@@ -113,11 +113,9 @@ class Repository:
                     pipe.delete(key)
                 pipe.execute()
         else:
-            print("clearing all shadow tables and cache")
             self.shadowtable_redis_all_addr[self.ip].flushall(True)
             self.cache_redis.flushall(True)
             remain_keys_len = len(self.cache_redis.keys("*")) 
-            print(f"clearing caches, remaining:{remain_keys_len}")
 
     def clear_db(self, transaction_id):
         db = self.couch['results']

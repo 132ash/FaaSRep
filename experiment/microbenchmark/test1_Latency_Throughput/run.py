@@ -22,19 +22,17 @@ def get_root_dir(script_dir: Path) -> Path:
 
 script_dir = Path(__file__).parent
 ROOT_DIR = get_root_dir(script_dir)
-sys.path.append(str(ROOT_DIR / 'config'))
-sys.path.append(str(ROOT_DIR / 'experiment'))
-sys.path.append(str(ROOT_DIR / 'experiment' / 'microbenchmark'))
-import config
-from repository import Repository
-repo = Repository()
+sys.path.append(str(ROOT_DIR))
+import config.config as config
+from experiment.common import repository
+repo = repository.Repository()
 
 DB_NODE_IP = config.STOREGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 1000
+ROUND = 100
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
@@ -166,8 +164,8 @@ def write_result_to_file(workflow_name, client_cnt, median_latency, avg_throughp
 def analyze_all(workflow_name, system_mode, client_cnt):
     print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}", flush=True)
     sys.stdout.flush()  # 强制刷新输出缓冲区
-    
     repo.flush_couchdb_workflow_latency()
+    repo.clear_all_memory()
     DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
     dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     parameters_all = generate_workflow_inputs_for_clients(workflow_name, dataset_all, client_cnt)

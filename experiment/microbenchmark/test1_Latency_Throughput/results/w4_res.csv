@@ -1,0 +1,5 @@
+workflow,client_count,median_latency,avg_throughput
+w4,8,0.348,18.1525
+w4,12,0.3543,32.6221
+w4,16,0.3832,40.5542
+w4,24,0.4545,51.2825
