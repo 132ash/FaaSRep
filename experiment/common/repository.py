@@ -53,10 +53,13 @@ class Repository:
             functions.append(db[item]['function_name'])
         return functions
 
-    def clear_all_memory(self):
+    def clear_all_memory_and_container(self, workflow_name):
         for shadow_table in self.shadowtable_redis_all_addr.values():
             shadow_table.flushall(True)
         for cache in self.cache_all_addrs.values():
             cache.flushall(True)
-
-
+        clear_container_jobs = []
+        for worker_sp_ip in self.all_addrs:
+            url = f'http://{worker_sp_ip}:7500/clear_container'
+            clear_container_jobs.append(gevent.spawn(requests.post, url, json={}))
+        gevent.joinall(clear_container_jobs)

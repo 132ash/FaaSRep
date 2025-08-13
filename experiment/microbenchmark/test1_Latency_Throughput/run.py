@@ -32,7 +32,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 100
+ROUND = 10
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
@@ -165,7 +165,7 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}", flush=True)
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
-    repo.clear_all_memory()
+    repo.clear_all_memory_and_container()
     DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
     dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     parameters_all = generate_workflow_inputs_for_clients(workflow_name, dataset_all, client_cnt)

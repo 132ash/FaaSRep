@@ -23,8 +23,13 @@ class ContainerPool:
     # the pool list is in order:
     # - at the tail is the hottest containers (most recently used)
     # - at the head is the coldest containers (least recently used)
-    def clean_pool(self, lifetime, old_container, default_container_num):
+    def clean_pool(self, lifetime, old_container, default_container_num, all_pool=False):
         self.lock.acquire()
+        if all_pool:
+            old_container.extend(self.pool)
+            self.pool = []
+            self.lock.release()
+            return 
         cur_time = time.time()
         idx = -1
         for i, c in enumerate(self.pool):

@@ -185,6 +185,9 @@ class WorkerSPManager:
         self.lock.release()
         return state
 
+    def clear_containers(self):
+        self.function_manager.clear_containers()
+
 
     # delete state
     def del_state(self, transaction_id: str):

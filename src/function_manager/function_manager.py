@@ -68,3 +68,7 @@ class FunctionManager:
         if function_name not in self.functions:
             raise Exception(f"No such function! all functions: {self.functions}")
         return self.functions[function_name].send_request(transaction_id, write_set, is_repair,repair_mode,batch_id, repair_states)
+
+    def clear_containers(self):
+        for function in self.functions.values():
+            gevent.spawn(function.clear_containers_all_pool)

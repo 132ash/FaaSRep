@@ -39,7 +39,7 @@ def finish_repair():
         validator_pools[workflow_name].submit(batch_id, REPAIR_FINISH, batch_data)
     return json.dumps({'status': 'successed'})
 
-# python proxy.py  10.2.27.22  9000
+# python proxy.py  10.3.96.150  9000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

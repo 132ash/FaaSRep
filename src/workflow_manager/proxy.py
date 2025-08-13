@@ -75,6 +75,7 @@ class Dispatcher:
        repo.clear_mem()
        self.node_list = repo.get_all_addrs('common')
        ##log_message(f"Node list: {self.node_list}")
+       self.all_workflows = info_addrs.keys()
        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
        log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
@@ -100,6 +101,10 @@ class Dispatcher:
 
     def del_state(self, workflow_name, transaction_id):
         self.managers[workflow_name].del_state(transaction_id)
+
+    def clear_containers(self, workflow_name):
+        for workflow_name in self.all_workflows:
+            self.managers[workflow_name].clear_containers()
     
 
 
@@ -216,10 +221,9 @@ def release():
     return json.dumps({'status': 'ok'})
 
 
-@app.route('/clear_container', methods = ['GET'])
+@app.route('/clear_container', methods = ['POST'])
 def clear_container():
-    print('clearing containers')
-    os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
+    dispatcher.clear_containers() # and remove state for every node
     return json.dumps({'status': 'ok'})
 
 GET_NODE_INFO_INTERVAL = 0.1
@@ -230,6 +234,8 @@ GET_NODE_INFO_INTERVAL = 0.1
 
 # python3 proxy.py  10.2.30.50 7500
 # python3 proxy.py  10.2.27.22 7500
+# python3 proxy.py  10.2.30.62 7500
+
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

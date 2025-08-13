@@ -15,6 +15,7 @@ class RequestInfo:
         self.result = event.AsyncResult()
         self.arrival = time.time()
 
+exec_lifetime = 600
 
 # manage a function's container pool
 class Function:
@@ -127,20 +128,21 @@ class Function:
         container.init(self.host_addr, self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.validator_addr, self.node_list, self.input,self.output,self.parent_cnt, self.function_pos, container.port, self.FAST_PATH, self.OPTIMISTIC_REPAIR)
 
     # do the repack and cleaning work regularly
-    def repack_and_clean(self):
+    def repack_and_clean(self, all_pool=False):
         # find the old containers
         old_container = []
-        self.container_pool.clean_pool(exec_lifetime, old_container, self.default_container_num)
+        self.container_pool.clean_pool(exec_lifetime, old_container, self.default_container_num, all_pool)
 
         # time consuming work is put here
         for c in old_container:
             self.remove_container(c)
 
+    def clear_containers_all_pool(self):
+        self.repack_and_clean(True)
+
 def favg(a):
     return math.fsum(a) / len(a)
 
-# life time of three different kinds of containers
-exec_lifetime = 600
 
 
 
