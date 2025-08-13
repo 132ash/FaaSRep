@@ -29,17 +29,33 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # Default region name: us-west-2
 
 
+# ... (前面的内容保持不变) ...
+
 # install and initialize couchdb
 # docker pull couchdb
  #docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
 # pip install -r requirements.txt
 python $CURRENT_SH_DIR/db_starter.py
 
-# # install redis
-# # docker pull redis
-# docker run -itd -p 6379:6379 --memory 2048m --name redis redis
+# --- 新增：启动专用的 Redis 缓存实例 ---
+echo "Starting dedicated Redis cache instance..."
+docker stop redis-cache
+docker rm redis-cache
+docker run -itd \
+    -p 6380:6380 \
+    --name redis-cache \
+    -v $CURRENT_SH_DIR/../config/redis-cache.conf:/usr/local/etc/redis/redis.conf \
+    redis:latest redis-server /usr/local/etc/redis/redis.conf
+
+# --- 修改：为通用的 Redis 实例（例如用于 Shadow Table）重命名 ---
+echo "Starting general-purpose Redis instance..."
+docker stop redis-main
+docker rm redis-main
+docker run -itd -p 6379:6379 --memory 2048m --name redis-main redis
 
 declare -A WORKFLOWS_INIT
+# ... (后面的内容保持不变) ...
+
 # init: generate workflow yaml and node assign (if not exists), then build DB.
 WORKFLOWS_INIT=(
     ["microbenchmark"]="$CURRENT_SH_DIR/init/micro_benchmark/init.sh"

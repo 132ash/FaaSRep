@@ -19,7 +19,7 @@ class Repository:
                     for host in self.all_addrs
                     }
         self.cache_all_addrs = {
-            host:redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.CACHE_DB, decode_responses=True)
+            host:redis.StrictRedis(host=host, port=config.REDIS_CACHE_PORT, db=config.CACHE_DB, decode_responses=True)
             for host in self.all_addrs
         }
 

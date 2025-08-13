@@ -1,9 +1,9 @@
 from gevent import monkey
 monkey.patch_all()
-from typing import Dict, List, Any
 import couchdb
 import redis
 import boto3
+from typing import Dict, List, Any
 from datetime import datetime
 from subjection_collector import SubjectionCollector
 import sys
@@ -51,11 +51,14 @@ class DynamoDBClient:
 
 class Repository:
     def __init__(self):
-        self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.CACHE_DB)
+        # 连接到专用的缓存 Redis 实例
+        self.cache_redis = redis.StrictRedis(host=config.REDIS_CACHE_HOST, port=config.REDIS_CACHE_PORT, db=config.CACHE_DB)
+        
+        # 连接到通用的数据和 Shadow Table Redis 实例
         self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)
         self.couch = couchdb.Server(couchdb_url)
         self.shadowtable_redis_all_addr:Dict[str, redis.StrictRedis] =  {
-                    host:redis.StrictRedis(host=host, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
+                    host:redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
                     for host in self.get_all_addrs('common')
                     }
         self.subjection_collector:SubjectionCollector = None

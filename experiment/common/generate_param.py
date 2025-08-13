@@ -157,7 +157,7 @@ def generate_social_media_parameters(client_cnt, round_cnt):
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
-def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param):
+def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param, read_ratio):
     text_size = 4 * 1024 # Default to 8B if not specified
     dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)
@@ -166,6 +166,18 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
         round_inputs = []
         for round_id in range(round_cnt):
             parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
+            
+            # 根据read_ratio生成操作列表
+            if read_ratio is not None:
+                num_functions = len(all_func)
+                total_ops = num_functions * 3
+                num_reads = int(total_ops * read_ratio)
+                num_writes = total_ops - num_reads
+                
+                ops_list = ['R'] * num_reads + ['W'] * num_writes
+                random.shuffle(ops_list)
+            
+            op_idx_counter = 0
             for func in all_func:
                 dataset_len = len(dataset)
                 indices = set()
@@ -181,17 +193,28 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
                     if 0 <= idx < dataset_len:
                         indices.add(idx)
                 keys = [dataset[i] for i in indices]
-                parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
+                
+                if read_ratio is None:
+                    # 默认行为：R, R, W
+                    parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
+                else:
+                    # 根据read_ratio随机分配
+                    func_ops = {}
+                    for i in range(3):
+                        func_ops[keys[i]] = ops_list[op_idx_counter]
+                        op_idx_counter += 1
+                    parameters_input['f1']['keys'][func] = func_ops
+
             parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
             round_inputs.append(parameters_input)
         client_round_inputs.append(round_inputs)
     return client_round_inputs
 
-def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, micro_workflow=None, zipf_param=None):
+def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, micro_workflow=None, zipf_param=None, read_ratio=None):
     if workflow == 'travel_reservation':
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
-        return generate_micro_benchmark_parameters(client_cnt, round_cnt, micro_workflow, zipf_param)
+        return generate_micro_benchmark_parameters(client_cnt, round_cnt, micro_workflow, zipf_param, read_ratio)
     elif workflow == 'banking_system':
         return generate_banking_system_parameters(client_cnt, round_cnt)
     elif workflow == 'social_network':
