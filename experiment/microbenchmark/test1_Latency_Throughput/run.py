@@ -206,13 +206,8 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     
     # 等待所有子进程运行结束
     for i, process in enumerate(processes):
-        process.join(timeout=600)  # 最多等待10分钟
-        if process.is_alive():
-            print(f"⚠️  进程 {i} 超时，强制终止", flush=True)
-            process.terminate()
-            process.join()
-        else:
-            print(f"✅ 进程 {i} 完成", flush=True)
+        process.join() 
+        print(f"✅ 进程 {i} 完成", flush=True)
 
     # 等待结果收集完成
     print(f"📊 等待结果收集完成...", flush=True)
