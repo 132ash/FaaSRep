@@ -133,7 +133,7 @@ class Store:
                 print(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}", flush=True)
                 value = self.redis_shadow_table.self_get(self.param_wrapper(self.function_name, key, 'UPSTREAM'))
             else:
-                print(f"[REPAIR CACHE] Fetching from CACHE for key: {key}", flush=True)
+
                 value_version_pair =  self.redis_cache.cache_get(key)
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]

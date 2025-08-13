@@ -15,12 +15,12 @@ if os.path.exists(log_file):
 
 def setup_logger():
     logger = logging.getLogger('gateway')
-    logger.setLevel(log_message)
+    logger.setLevel(logging.INFO)
     # 创建文件处理器
     file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(log_message)
+    file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(log_message)
+    console_handler.setLevel(logging.INFO)
     
     # 创建格式化器
     formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
@@ -82,7 +82,7 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'repair': False,
         'retry': retry
     }
-    log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
+    #log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
     requests.post(url, json=data)
 
 def clear_mem(ip, transaction_id, workflow_name, abort=False):
@@ -118,7 +118,7 @@ def run():
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
+    #log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
     start = time.time()
     aborted = False
     retry = False
@@ -127,7 +127,7 @@ def run():
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
-            log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
+            #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
             clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
             gevent.joinall(clear_jobs)
             break
@@ -139,7 +139,7 @@ def run():
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
-    log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    #log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']

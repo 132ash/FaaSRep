@@ -31,7 +31,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 
 # install and initialize couchdb
 # docker pull couchdb
-# docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
+ #docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
 # pip install -r requirements.txt
 python $CURRENT_SH_DIR/db_starter.py
 

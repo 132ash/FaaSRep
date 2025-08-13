@@ -98,14 +98,12 @@ class SerializerProcess(Process):
             if op == VALIDATE:
                 self.batch_validator_assignment[batch_id] = handler_id
                 version = get_timestamp()
-                commit_list_for_current_handler = []
-                commit_keys_on_worker = {}
-                batch_need_repair, expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
-                #self.log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
-                if not batch_need_repair:
-                    self.commit_keys_per_batch[batch_id] = self.batch_write_info[batch_id]['writes'].copy()  # commit keys for this batch.
-                    commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
-                self.result_pipes[handler_id].put((batch_id, (batch_need_repair, expired_set, subjection_set, commit_list_for_current_handler, commit_keys_on_worker, pessi_sink_info)))
+                expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
+                #self.#log_message(f"[VALIDATE] {batch_id}: need_repair={batch_need_repair}, expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
+                # if not batch_need_repair:
+                #     self.commit_keys_per_batch[batch_id] = self.batch_write_info[batch_id]['writes'].copy()  # commit keys for this batch.
+                #     commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
+                self.result_pipes[handler_id].put((batch_id, (expired_set, subjection_set, pessi_sink_info)))
                 
             elif op == COMMIT:
                 self.commit_keys_per_batch[batch_id] = data['commit_keys']
@@ -117,7 +115,7 @@ class SerializerProcess(Process):
     # in pessimistic mode, the batch is ready for sure: only flush the ready writes.
     def commit_all_ready_batches(self, current_handler_id, current_batch_id):
         ready, commit_list_per_handler, commit_keys_on_worker = self.get_commitable_batches(current_batch_id)
-        #self.log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
+        #self.#log_message(f"[COMMIT] {current_batch_id} by handler {current_handler_id}: ready={ready}, commit_list_per_handler={commit_list_per_handler}, commit_keys_on_worker={commit_keys_on_worker}")
         commit_list_for_current_handler = commit_list_per_handler.pop(current_handler_id, [])
         if ready:
             for handler_id, commit_batch_list in commit_list_per_handler.items():
@@ -132,20 +130,16 @@ class SerializerProcess(Process):
         subjection_set = {}
         pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':{}, 'whole_tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
-        batch_need_repair = False
         tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)}
         for tx_id in transaction_list:
             expired_set[tx_id] = {}
             subjection_set[tx_id] = {}
             rs = read_set_per_batch[tx_id]
-            tx_need_repair = self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info, tx_index_inside_batch)
-            if tx_need_repair:
-                batch_need_repair = True
+            self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info, tx_index_inside_batch)
             self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id])
-        return batch_need_repair, expired_set, subjection_set, pessi_sink_info
+        return expired_set, subjection_set, pessi_sink_info
 
     def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info, tx_index_inside_batch:dict):
-        need_repair = False
         pessi_nearest_writer = {'batch':(None, None), 'tx':None, 'tx_cross':None} # nearest writer info for pessimistic repair.
         whole_tx_sub = pessi_sink_info['whole_tx_sub']
 
@@ -162,9 +156,7 @@ class SerializerProcess(Process):
                     if prev_version is not None and version < prev_version:
                         expired_set[tx_id][func][key] = True
                         subjection_set[tx_id][func]["dirty"] = True
-                        need_repair = True
                 else:
-                    need_repair = True
                     subjection_set[tx_id][func]["dirty"] = True
                     subjection_set[tx_id][func]["up_cnt"] += 1
                     prev_batch_id,  prev_tx_id,  prev_func = prev_writers[-1]
@@ -186,7 +178,6 @@ class SerializerProcess(Process):
         if nearest_tx:
             pessi_sink_info['tx_sub'].setdefault(nearest_tx, []).append(tx_id)
             pessi_sink_info['last_tx'][tx_id] = nearest_tx
-        return need_repair
 
     def update_key_writers(self, batch_id, tx_id, write_set):
         for key, writer_func in write_set.items():
@@ -210,7 +201,7 @@ class SerializerProcess(Process):
 
     def get_commitable_batches(self, target_batch_id):
         if not self.prev_batch_committed(target_batch_id):
-            #self.log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
+            #self.#log_message(f"[COMMIT] Batch {target_batch_id} is not ready to commit, waiting for ancestors to finish.")
             return False, {}, {}
         batches_ready_for_committing = [target_batch_id]
         commit_keys_on_worker = {} # {key: [(tx_id, func, version)]}
@@ -225,7 +216,7 @@ class SerializerProcess(Process):
             version =  current_batch_write_info['version']
             # check cascaded batches: the writes are all ready.
             for key in current_batch_write_info['writes'].keys():
-                #self.log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
+                #self.#log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
                 current_key_writers = self.key_writers[key]
                 _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
                 if current_batch_commit_keys.pop(key, False):

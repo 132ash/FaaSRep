@@ -45,7 +45,7 @@ class ContainerPool:
     def check_pool_full_and_occupy(self):
         self.lock.acquire()
         if self.num_exec + len(self.pool) > self.max_containers:
-            logging.info('hit container limit, function: %s', self.function_name)
+            # logging.info('hit container limit, function: %s', self.function_name)
             return False
         self.num_exec += 1
         self.lock.release()
@@ -60,7 +60,7 @@ class ContainerPool:
         if len(self.pool) != 0:
             res = self.pool.pop(-1)
             self.num_exec += 1
-            logging.info(f"[{self.function_name}] Pop container, pool size:{len(self.pool)}")
+            # logging.info(f"[{self.function_name}] Pop container, pool size:{len(self.pool)}")
         self.lock.release()  
         return res
     
@@ -68,7 +68,7 @@ class ContainerPool:
         self.lock.acquire()
         self.pool.append(container)
         self.num_exec -= 1
-        logging.info(f"[{self.function_name}] container returned. Pool size:{len(self.pool)}")
+        # logging.info(f"[{self.function_name}] container returned. Pool size:{len(self.pool)}")
         self.lock.release()
 
 class Container:
@@ -109,7 +109,7 @@ class Container:
 
     # send a request to container and wait for result
     def send_request(self, data = {}):
-        logging.info(f"Dispatching request data {data}, container port: {self.port}")
+        # logging.info(f"Dispatching request data {data}, container port: {self.port}")
         r = requests.post(base_url.format(self.port, 'run'), json=data)
         self.lasttime = time.time()
         return r.json()

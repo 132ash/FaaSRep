@@ -58,7 +58,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
             continue
         local_results.append(result)
-        # if i % 10 == 0:
+        if i % 10 == 0:
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
         # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 

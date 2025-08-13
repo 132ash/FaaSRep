@@ -10,6 +10,7 @@ import requests
 import numpy as np
 from pathlib import Path
 import os
+import time
 
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -33,7 +34,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 50
+ROUND = 1000
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
@@ -51,22 +52,59 @@ def setup_logging():
     # 确保立即刷新输出
     logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
 
-
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程执行的任务。"""
-    # setup_logging_for_process(client_id)
     local_results = []
+    batch_size = 50  # 每50个结果发送一次，避免队列阻塞
+    
     for i in range(ROUND):
         txid, result = analyze_workflow(workflow, parameters_all_round[i])
-        
-        # 计算实际测试时间
         result['client_id'] = client_id
         result['round'] = i + 1
         
         local_results.append(result)
-        if i % (ROUND // 10) == 0:
-            print(f"Client {client_id}: Round {i+1} completed", flush=True)
-    result_queue.put(local_results)
+        
+        # 每batch_size个结果或最后一轮时发送到队列
+        if (i + 1) % batch_size == 0 or i == ROUND - 1:
+            try:
+                # 发送当前批次的结果
+                result_queue.put((client_id, local_results), timeout=5)
+                local_results = []  # 清空本地结果列表
+                
+            except Exception as e:
+                print(f"Client {client_id}: Error putting results to queue: {e}", flush=True)
+                break
+        if i % (ROUND // 10) == 0 or i == ROUND - 1:
+            print(f"Client {client_id}: Round {i} completed, batch sent", flush=True)
+        
+    
+    # 发送结束信号
+    try:
+        result_queue.put((client_id, 'DONE'), timeout=5)
+        print(f"Client {client_id}: All tasks completed and results sent", flush=True)
+    except Exception as e:
+        print(f"Client {client_id}: Error sending completion signal: {e}", flush=True)
+
+def result_collector_thread(result_queue, all_results, client_cnt, stop_event):
+    """在单独线程中收集结果，避免队列阻塞"""
+    completed_clients = set()
+    
+    while len(completed_clients) < client_cnt and not stop_event.is_set():
+        try:
+            client_id, data = result_queue.get(timeout=1)
+            
+            if data == 'DONE':
+                completed_clients.add(client_id)
+                print(f"📦 客户端 {client_id} 完成所有任务", flush=True)
+            else:
+                # data 是结果列表
+                all_results.extend(data)
+                
+        except Exception as e:
+            # 超时或其他错误，继续等待
+            continue
+    
+    print(f"📊 结果收集完成，共收集 {len(all_results)} 个结果", flush=True)
 
 def generate_workflow_inputs_for_clients(workflow, dataset_all, client_cnt):
     all_func = repo.get_all_functions(workflow)
@@ -120,10 +158,10 @@ def write_result_to_file(workflow_name, client_cnt, median_latency, avg_throughp
     
     # 追加结果数据
     with open(temp_result_file, 'a') as f:
-        f.write(f"{workflow_name},{client_cnt},{median_latency},{avg_throughput}\n")
+        f.write(f"{workflow_name},{client_cnt},{median_latency:.4f},{avg_throughput:.4f}\n")
     
     print(f"📊 结果已写入文件: {temp_result_file}", flush=True)
-    print(f"📊 数据: {workflow_name},{client_cnt},{median_latency},{avg_throughput}", flush=True)
+    print(f"📊 数据: {workflow_name},{client_cnt},{median_latency:.4f},{avg_throughput:.4f}", flush=True)
 
 def analyze_all(workflow_name, system_mode, client_cnt):
     print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}", flush=True)
@@ -133,7 +171,21 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     DS_JSON_PATH  = ROOT_DIR / "experiment/microbenchmark/db_keys.json"
     dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     parameters_all = generate_workflow_inputs_for_clients(workflow_name, dataset_all, client_cnt)
-    result_queue = multiprocessing.Queue()
+    
+    # 使用更大的队列或无限大小队列
+    result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
+    
+    # 用于存储所有结果的列表（线程安全）
+    all_results = []
+    stop_event = threading.Event()
+    
+    # 启动结果收集线程
+    collector_thread = threading.Thread(
+        target=result_collector_thread,
+        args=(result_queue, all_results, client_cnt, stop_event)
+    )
+    collector_thread.daemon = True
+    collector_thread.start()
     
     # 创建client_cnt个进程
     processes = []
@@ -145,24 +197,34 @@ def analyze_all(workflow_name, system_mode, client_cnt):
         processes.append(process)
     
     print(f"📋 启动 {client_cnt} 个客户端进程...", flush=True)
+    start_time = time.time()
     for i in range(client_cnt):
         processes[i].start()
         print(f"✅ 启动进程 {processes[i].pid} (客户端 {i})", flush=True)
 
     print(f"⏳ 等待所有进程完成...", flush=True)
+    
     # 等待所有子进程运行结束
     for i, process in enumerate(processes):
-        process.join()
-        print(f"✅ 进程 {i} 完成", flush=True)
+        process.join(timeout=600)  # 最多等待10分钟
+        if process.is_alive():
+            print(f"⚠️  进程 {i} 超时，强制终止", flush=True)
+            process.terminate()
+            process.join()
+        else:
+            print(f"✅ 进程 {i} 完成", flush=True)
 
-    print(f"📊 收集测试结果...", flush=True)
-    # 从队列中收集所有结果
-    all_results = []
-    while not result_queue.empty():
-        client_results = result_queue.get()
-        all_results.extend(client_results)
+    # 等待结果收集完成
+    print(f"📊 等待结果收集完成...", flush=True)
+    collector_thread.join(timeout=30)  # 最多等待30秒收集结果
+    stop_event.set()
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    
+    print(f"📊 收集测试结果... 总计用时: {total_time:.2f} 秒", flush=True)
 
-    # 统计 result_dict 中的结果
+    # 统计结果
     if not all_results:
         print(f"❌ 错误: 工作流 {workflow_name} 没有收集到任何结果", flush=True)
         sys.exit(1)
@@ -173,14 +235,15 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     
     # 计算平均吞吐量: client_count / 平均延迟
     avg_e2e_latency = df['e2e_latency'].mean()
-    avg_throughput = (client_cnt) / avg_e2e_latency  # 转换为 RPS (延迟单位是ms)
+    avg_throughput = client_cnt / avg_e2e_latency  # 转换为 RPS (延迟单位是s)
     
     print(f"", flush=True)
     print(f"📊 {workflow_name} 测试结果:", flush=True)
     print(f"   总请求数: {len(all_results)}", flush=True)
-    print(f"   中位数 E2E 延迟: {median_e2e_latency:.2f} s", flush=True)
-    print(f"   平均 E2E 延迟: {avg_e2e_latency:.2f} s", flush=True)
-    print(f"   平均吞吐量: {avg_throughput:.2f} RPS", flush=True)
+    print(f"   总测试时间: {total_time:.2f} 秒", flush=True)
+    print(f"   中位数 E2E 延迟: {median_e2e_latency:.4f} s", flush=True)
+    print(f"   平均 E2E 延迟: {avg_e2e_latency:.4f} s", flush=True)
+    print(f"   平均吞吐量: {avg_throughput:.4f} RPS", flush=True)
 
     # 直接写入结果文件
     write_result_to_file(workflow_name, client_cnt, median_e2e_latency, avg_throughput)
