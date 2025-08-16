@@ -14,9 +14,8 @@ if [ -f "$RESULT_FILE" ]; then
     echo "🗑️ 已删除旧的结果文件: $RESULT_FILE"
 fi
 
-# 测试不同的读写比例 (0.0, 0.1, ..., 1.0)
-for i in $(seq 0 10); do
-    READ_RATIO=$(echo "scale=1; $i / 10" | bc)
+# 测试不同的读写比例 (0, 0.25, 0.5, 0.75, 1.0)
+for READ_RATIO in 0 0.25 0.5 0.75 1; do
     echo "📋 测试读比例: $READ_RATIO"
     python3 run.py $WORKFLOW $SYSTEM_MODE $CLIENT_CNT $READ_RATIO
     

@@ -38,7 +38,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 python $CURRENT_SH_DIR/db_starter.py
 
 # --- 新增：启动专用的 Redis 缓存实例 ---
-echo "Starting dedicated Redis cache instance..."
+# echo "Starting dedicated Redis cache instance..."
 docker stop redis-cache
 docker rm redis-cache
 docker run -itd \
@@ -47,11 +47,11 @@ docker run -itd \
     -v $CURRENT_SH_DIR/../config/redis-cache.conf:/usr/local/etc/redis/redis.conf \
     redis:latest redis-server /usr/local/etc/redis/redis.conf
 
-# --- 修改：为通用的 Redis 实例（例如用于 Shadow Table）重命名 ---
-echo "Starting general-purpose Redis instance..."
-docker stop redis-main
-docker rm redis-main
-docker run -itd -p 6379:6379 --memory 2048m --name redis-main redis
+# # --- 修改：为通用的 Redis 实例（例如用于 Shadow Table）重命名 ---
+# echo "Starting general-purpose Redis instance..."
+# docker stop redis-main
+# docker rm redis-main
+# docker run -itd -p 6379:6379 --memory 2048m --name redis-main redis
 
 declare -A WORKFLOWS_INIT
 # ... (后面的内容保持不变) ...
