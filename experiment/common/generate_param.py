@@ -162,6 +162,8 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
     dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)
     client_round_inputs = []
+    dataset_len = len(dataset)
+    weights_one = [1 / (i + 1) for i in range(dataset_len)]
     for client_id in range(client_cnt):
         round_inputs = []
         for round_id in range(round_cnt):
@@ -179,16 +181,8 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
             
             op_idx_counter = 0
             for func in all_func:
-                dataset_len = len(dataset)
                 indices = set()
 
-                # 当 zipf_param == 1.0 时，预先计算权重
-                weights = None
-                if zipf_param == 1.0:
-                    # 权重与排名的倒数成正比 (1/k)
-                    # k 从 1 到 dataset_len
-                    weights = [1 / (i + 1) for i in range(dataset_len)]
-                
                 population = list(range(dataset_len))
 
                 while len(indices) < 3:
@@ -198,7 +192,7 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
                     elif zipf_param == 1.0:
                         # 当 alpha=1 时，使用加权随机抽样
                         # random.choices 返回一个列表，我们取第一个元素
-                        idx = random.choices(population, weights=weights, k=1)[0]
+                        idx = random.choices(population, weights=weights_one, k=1)[0]
                     else: # zipf_param > 1.0
                         # 使用numpy的zipf分布抽样
                         # numpy.random.zipf 生成的样本从1开始，需要减1来匹配0-based的索引

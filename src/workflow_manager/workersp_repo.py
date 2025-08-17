@@ -52,7 +52,7 @@ class DynamoDBClient:
 class Repository:
     def __init__(self):
         # 连接到专用的缓存 Redis 实例
-        self.cache_redis = redis.StrictRedis(host=config.REDIS_CACHE_HOST, port=config.REDIS_CACHE_PORT, db=config.CACHE_DB)
+        self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_CACHE_PORT, db=config.CACHE_DB)
         
         # 连接到通用的数据和 Shadow Table Redis 实例
         self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)

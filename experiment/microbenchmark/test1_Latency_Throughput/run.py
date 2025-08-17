@@ -120,12 +120,12 @@ def analyze_workflow(workflow, parameters_input):
         "first_run_latency": rep['first_run_latency'],
     }
 
-def write_result_to_file(workflow_name, client_cnt, median_latency, avg_throughput):
+def write_result_to_file(system_mode, workflow_name, client_cnt, median_latency, avg_throughput):
     """将结果直接追加到最终结果文件"""
     results_dir = script_dir / "results"
     results_dir.mkdir(exist_ok=True)
     
-    result_file = results_dir / f"{workflow_name}_res.csv"
+    result_file = results_dir / f"{system_mode}_{workflow_name}_res.csv"
     
     # 检查文件是否存在，如果不存在则创建并写入表头
     if not result_file.exists():
@@ -145,7 +145,8 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
     #repo.clear_all_memory_and_container()
-    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, 1.01)
+    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, 1)
+    print("Parameters ready.")
     # 使用更大的队列或无限大小队列
     result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
     
@@ -215,7 +216,7 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     print(f"   平均吞吐量: {avg_throughput:.4f} RPS", flush=True)
 
     # 直接写入结果文件
-    write_result_to_file(workflow_name, client_cnt, median_e2e_latency, avg_throughput)
+    write_result_to_file(system_mode, workflow_name, client_cnt, median_e2e_latency, avg_throughput)
     
     print(f"✅ {workflow_name} 测试完成 (客户端: {client_cnt})", flush=True)
     sys.stdout.flush()  # 确保所有输出都被刷新

@@ -246,7 +246,7 @@ GET_NODE_INFO_INTERVAL = 0.1
 
 
 # python3 proxy.py  10.2.30.50 7500
-# python3 proxy.py  10.2.27.22 7500
+# python3 proxy.py  10.2.27.23 7500
 # python3 proxy.py  10.2.30.62 7500
 
 from gevent.pywsgi import WSGIServer
