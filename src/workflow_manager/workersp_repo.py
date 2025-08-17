@@ -49,7 +49,7 @@ class DynamoDBClient:
 
 class Repository:
     def __init__(self):
-        self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.CACHE_DB, decode_responses=True)
+        self.cache_redis = redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_CACHE_PORT, db=config.CACHE_DB, decode_responses=True)
         self.data_db = DynamoDBClient(dynamodb_url, dynamodb_access_key, dynamodb_key_id, dynamodb_area)
         self.couch = couchdb.Server(couchdb_url)
         self.shadowtable_redis_all_addr:Dict[str, redis.StrictRedis] =  {

@@ -65,7 +65,7 @@ class Runner:
         # shadow table on each host
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
         # local cache
-        self.cache = RedisCache(container_config.REDIS_PORT, container_config.REDIS_CACHE_DB, db_server)
+        self.cache = RedisCache(container_config.REDIS_CACHE_PORT, container_config.REDIS_CACHE_DB, db_server)
         # logging.info(f"Init function, input {self.input} and output {self.output}, function_pos {self.function_pos}, shadow table {self.shadow_table}, host_addr {self.host_addr}, node_list {self.node_list}")
         os.chdir(work_dir)
 
