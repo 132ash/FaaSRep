@@ -48,6 +48,7 @@ def generate_banking_system_parameters(client_cnt, round_cnt):
     for client_id in range(client_cnt):
         parameters_inputs[client_id] = []
         for round_id in range(round_cnt):
+            transaction_id =  str(uuid.uuid4())
             # 从account_1到account_BANKING_ACCOUNTS中采样src_account和dst_account
             # 确保两个账户不同
             src_account = random.choice(all_accounts)
@@ -75,7 +76,7 @@ def generate_banking_system_parameters(client_cnt, round_cnt):
                     'password': password,
                     'dst_account': dst_account,
                     'amount': amount
-                }
+                }, 'transaction_id': transaction_id,
             }
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
@@ -156,37 +157,74 @@ def generate_social_media_parameters(client_cnt, round_cnt):
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
-def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters):
-    dataset_all = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
-    workflow = workflow_parameters.get('workflow', {})
-    text_size = workflow_parameters.get('text_size', 8)  # Default to 8B if not specified
-    dataset = dataset_all['small'] if text_size == TEXT_SIZE_SMALL else dataset_all['large']
+def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param, read_ratio):
+    text_size = 4 * 1024 # Default to 8B if not specified
+    dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)
     client_round_inputs = []
+    dataset_len = len(dataset)
+    weights_one = [1 / (i + 1) for i in range(dataset_len)]
     for client_id in range(client_cnt):
         round_inputs = []
         for round_id in range(round_cnt):
             parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
+            
+            # 根据read_ratio生成操作列表
+            if read_ratio is not None:
+                num_functions = len(all_func)
+                total_ops = num_functions * 3
+                num_reads = int(total_ops * read_ratio)
+                num_writes = total_ops - num_reads
+                
+                ops_list = ['R'] * num_reads + ['W'] * num_writes
+                random.shuffle(ops_list)
+            
+            op_idx_counter = 0
             for func in all_func:
-                zipf_param = 1.1
-                dataset_len = len(dataset)
                 indices = set()
+
+                population = list(range(dataset_len))
+
                 while len(indices) < 3:
-                    idx = np.random.zipf(zipf_param) - 1
-                    if 0 <= idx < dataset_len:
-                        indices.add(idx)
+                    if zipf_param is None:
+                        # 随机抽样 (Uniform)
+                        idx = random.randint(0, dataset_len - 1)
+                    elif zipf_param == 1.0:
+                        # 当 alpha=1 时，使用加权随机抽样
+                        # random.choices 返回一个列表，我们取第一个元素
+                        idx = random.choices(population, weights=weights_one, k=1)[0]
+                    else: # zipf_param > 1.0
+                        # 使用numpy的zipf分布抽样
+                        # numpy.random.zipf 生成的样本从1开始，需要减1来匹配0-based的索引
+                        idx = np.random.zipf(zipf_param) - 1
+                        # 如果生成的索引超出范围，则重新采样
+                        if idx >= dataset_len:
+                            continue
+                    
+                    indices.add(idx)
                 keys = [dataset[i] for i in indices]
-                parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
+                
+                if read_ratio is None:
+                    # 默认行为：R, R, W
+                    parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
+                else:
+                    # 根据read_ratio随机分配
+                    func_ops = {}
+                    for i in range(3):
+                        func_ops[keys[i]] = ops_list[op_idx_counter]
+                        op_idx_counter += 1
+                    parameters_input['f1']['keys'][func] = func_ops
+
             parameters_input['f1']['keys'] = json.dumps(parameters_input['f1']['keys'])
             round_inputs.append(parameters_input)
         client_round_inputs.append(round_inputs)
     return client_round_inputs
 
-def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, workflow_parameters=None):
+def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, micro_workflow=None, zipf_param=None, read_ratio=None):
     if workflow == 'travel_reservation':
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
-        return generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow_parameters)
+        return generate_micro_benchmark_parameters(client_cnt, round_cnt, micro_workflow, zipf_param, read_ratio)
     elif workflow == 'banking_system':
         return generate_banking_system_parameters(client_cnt, round_cnt)
     elif workflow == 'social_network':

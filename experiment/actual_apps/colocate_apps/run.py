@@ -25,7 +25,7 @@ from experiment.common import generate_param
 repo = repository.Repository()
 
 
-DB_NODE_IP = config.STOREGE_NODE_IP
+DB_NODE_IP = config.STORAGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
 
@@ -36,32 +36,99 @@ RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
 
-CLIENT_CNT = 8
-ROUND = 2
+CLIENT_CNT = 16
+ROUND = 50
 parameters_inputs = {}
-# all_workflows = ['banking_system']
-all_workflows = ['social_network', 'banking_system', 'travel_reservation']
+# all_workflows = ['social_network', 'banking_system', 'travel_reservation']
+all_workflows = ['social_network']
 result_dict = {}
 
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
-    """子进程执行的任务。"""
+    """子进程中的客户端任务。"""
     client_logs.setup_logging_for_process(script_dir, client_id)
-    # logging.info(f"Process started for workflow: {workflow}")
     
     local_results = []
     for i in range(ROUND):
-        #logging.info(f"Starting round {i+1}/{ROUND}")
-        # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
-        # 这里假设 analyze_workflow 返回一个包含结果的字典
-        txid, result, tx_res = analyze_workflow(workflow, parameters_all_round[i])
+        txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
+        if tx_status == 'aborted':
+            # logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
+            continue
         local_results.append(result)
         if i % 10 == 0:
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
-        # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
-
     result_queue.put(local_results)
-    #logging.info("Process finished.")
+
+def workflow_process_task(workflow, workflow_result_queue):
+    """每个工作流的主进程任务。"""
+    try:
+        # 为每个工作流进程设置独立的日志
+        logging.basicConfig(
+            level=logging.INFO,
+            format=f'[{workflow}] %(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(script_dir / f'{workflow}_process.log', mode='w', encoding='utf-8')
+            ]
+        )
+        
+        logging.info(f"开始处理工作流: {workflow}")
+        
+        # 生成参数
+        parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
+        result_queue = multiprocessing.Queue()
+        
+        # 创建客户端子进程
+        processes = []
+        for i in range(CLIENT_CNT):
+            process = multiprocessing.Process(
+                target=worker_task, 
+                args=(i, workflow, parameters_all[i], result_queue)
+            )
+            processes.append(process)
+        
+        # 启动所有客户端进程
+        for i in range(CLIENT_CNT):
+            processes[i].start()
+            logging.info(f"Started client process {processes[i].pid} for client {i}")
+
+        # 等待所有客户端进程结束
+        for process in processes:
+            process.join()
+
+        # 从队列中收集所有结果
+        all_results = []
+        while not result_queue.empty():
+            all_results.extend(result_queue.get())
+
+        # 统计结果
+        if not all_results:
+            logging.warning(f"No results collected for workflow {workflow}")
+            workflow_result_queue.put((workflow, None))
+            return
+
+        df = pd.DataFrame(all_results)
+        
+        # 计算99%-ile延迟
+        p99_latency = df.quantile(0.99)
+
+        summary = {
+            "workflow": workflow,
+            "mode": "Concord_99p",
+            "validator_overhead": p99_latency.get("validate_time_inside_validator"),
+            "overall_validate_latency": p99_latency.get("validate_latency"),
+            "e2e_latency": p99_latency.get("e2e_latency"),
+            "workflow_run_latency": p99_latency.get("first_run_latency")
+        }
+
+        logging.info(f"工作流 {workflow} 处理完成, 99%-ile 结果: {summary}")
+        
+        # 将结果放入队列
+        workflow_result_queue.put((workflow, summary))
+        
+    except Exception as e:
+        logging.error(f"工作流 {workflow} 处理出错: {e}")
+        workflow_result_queue.put((workflow, None))
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
@@ -80,88 +147,97 @@ def get_function_latency(txid):
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
-    # func_exec_time_test, func_io_time_test = get_function_latency(rep['transaction_id'])
-    # func_io_time = func_io_time_test
-    # func_exec_time = func_exec_time_test 
-    # rep['func_io_time'] = func_io_time
-    # rep['func_exec_time'] = func_exec_time
-    return rep['transaction_id'], {
-        "validate_time_inside_validator": rep['validate_time_inside_validator'],
-        "validate_latency": rep['validate_latency'],
-        "e2e_latency": rep['e2e_latency'],
-        "first_run_latency": rep['first_run_latency'],
-    }, rep['res']
+    return rep.get('transaction_id', ''), {
+        "validate_time_inside_validator": rep.get('validate_time_inside_validator', 0),
+        "validate_latency": rep.get('validate_latency', 0),
+        "e2e_latency": rep.get('e2e_latency', 0),
+        "first_run_latency": rep.get('first_run_latency', 0),
+    }, rep['status']
 
-def analyze_all(compute_mode='avg'):
+def analyze_all_workflows():
+    """并行分析所有工作流"""
+    # 清理之前的延迟数据
     repo.flush_couchdb_workflow_latency()
+    
+    # 创建工作流结果队列
+    workflow_result_queue = multiprocessing.Queue()
+    
+    # 为每个工作流创建一个独立的进程
+    workflow_processes = []
     for workflow in all_workflows:
-        parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
-        result_queue = multiprocessing.Queue()
-        # 创建4个线程
-        processes = []
-        for i in range(CLIENT_CNT):
-            process = multiprocessing.Process(
-                target=worker_task, 
-                args=(i, workflow, parameters_all[i], result_queue)
-            )
-            processes.append(process)
+        process = multiprocessing.Process(
+            target=workflow_process_task,
+            args=(workflow, workflow_result_queue)
+        )
+        workflow_processes.append(process)
         
-        for i in range(CLIENT_CNT):
-            processes[i].start()
-            print(f"Started process {processes[i].pid} for client {i}")
-
-        # 等待所有子进程运行结束
-        for process in processes:
-            process.join()
-
-        # 从队列中收集所有结果
-        all_results = []
-        while not result_queue.empty():
-            all_results.extend(result_queue.get())
-
-        # 统计 result_dict 中的结果
-        if not all_results:
-            print(f"No results collected for workflow {workflow}. Skipping.")
-            continue
-
-        df = pd.DataFrame(all_results)
+    # 启动所有工作流进程
+    for i, process in enumerate(workflow_processes):
+        process.start()
+        print(f"Started workflow process {process.pid} for {all_workflows[i]}")
+    
+    # 等待所有工作流进程完成
+    for i, process in enumerate(workflow_processes):
+        process.join()
+        print(f"Workflow process for {all_workflows[i]} completed")
+    
+    # 收集所有工作流的结果
+    workflow_results = []
+    while not workflow_result_queue.empty():
+        workflow, result = workflow_result_queue.get()
+        if result is not None:
+            workflow_results.append(result)
+        else:
+            print(f"Warning: No valid results for workflow {workflow}")
+    
+    # 创建汇总的 DataFrame
+    if workflow_results:
+        summary_df = pd.DataFrame(workflow_results)
         
-        # 计算99%-ile延迟
-        if compute_mode == 'avg':
-            mode = f"Beldi_{compute_mode}"
-            avg_latency = df.mean()
-
-            summary = {
-                "mode": mode,
-                "validator overhead": avg_latency.get("validate_time_inside_validator"),
-                "overall validate latency": avg_latency.get("validate_latency"),
-                "e2e latency": avg_latency.get("e2e_latency"),
-                "workflow run latency": avg_latency.get("first_run_latency")
-            }
-
-            summary_df = pd.DataFrame([summary])
-            output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
-            summary_df.to_csv(output_file, index=False)
-        elif compute_mode == '99p':
-            mode = f"Beldi_{compute_mode}"
-            p99_latency = df.quantile(0.99)
-
-            summary = {
-                "mode": mode,
-                "validator overhead": p99_latency.get("validate_time_inside_validator"),
-                "overall validate latency": p99_latency.get("validate_latency"),
-                "e2e latency": p99_latency.get("e2e_latency"),
-                "workflow run latency": p99_latency.get("first_run_latency")
-            }
-
-            summary_df = pd.DataFrame([summary])
-            output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
-            summary_df.to_csv(output_file, index=False)
-        print(f"[{workflow}] Results summary saved to {output_file}")
+        # 重新排列列的顺序
+        columns_order = [
+            "workflow", 
+            "mode", 
+            "validator_overhead", 
+            "overall_validate_latency", 
+            "e2e_latency", 
+            "workflow_run_latency"
+        ]
+        summary_df = summary_df[columns_order]
+        
+        # 保存汇总结果
+        output_file = script_dir / 'results' / 'all_workflows_99p_summary.csv'
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        summary_df.to_csv(output_file, index=False)
+        
+        print(f"\n=== 所有工作流 99%-ile 延迟汇总结果 ===")
+        print(summary_df.to_string(index=False))
+        print(f"\n结果已保存到: {output_file}")
+        
+        # 同时保存每个工作流的单独结果
+        for result in workflow_results:
+            workflow_name = result['workflow']
+            single_workflow_df = pd.DataFrame([result])
+            single_output_file = script_dir / 'results' / f"{workflow_name}_Beldi_99p.csv"
+            single_workflow_df.to_csv(single_output_file, index=False)
+            print(f"单独结果已保存到: {single_output_file}")
+        
+        return summary_df
+    else:
+        print("Error: No valid results collected from any workflow")
+        return None
 
 if __name__ == '__main__':
-    compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
-    analyze_all(compute_mode=compute_mode)
-
-
-
+    # 确保 results 目录存在
+    results_dir = script_dir / 'results'
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 分析所有工作流
+    summary_df = analyze_all_workflows()
+    
+    if summary_df is not None:
+        print("\n=== 执行完成 ===")
+        print("所有工作流已并行处理完成，结果已保存")
+    else:
+        print("\n=== 执行失败 ===")
+        print("未能收集到有效结果")

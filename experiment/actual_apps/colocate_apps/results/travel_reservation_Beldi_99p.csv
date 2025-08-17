@@ -1,2 +1,2 @@
-mode,validator overhead,overall validate latency,e2e latency,workflow run latency
-Beldi_99p,0.0,0.0,0.7623026204109191,0.7447725963592529
+workflow,mode,validator_overhead,overall_validate_latency,e2e_latency,workflow_run_latency
+travel_reservation,Concord_99p,0.0,-0.005370202064514166,3.1261697864532447,3.1057873940467813

@@ -20,15 +20,20 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # install redis
 # docker pull redis
 
-# Stop and remove the container named redis if it exists
-# if [ "$(docker ps -aq -f name=redis)" ]; then
-#     docker stop redis
-#     docker rm redis
-# fi
-# docker run -itd -p 6379:6379 --name redis redis
+# echo "Starting dedicated Redis cache instance..."
+if [ "$(docker ps -aq -f name=redis-cache)" ]; then
+    docker stop redis-cache
+    docker rm redis-cache
+fi
+# echo "Starting general-purpose Redis instance..."
+if [ "$(docker ps -aq -f name=redis-main)" ]; then
+    docker stop redis-main
+    docker rm redis-main
+fi
+docker run -itd -p 6379:6379 --name redis-main redis
 
 echo "Docker running on worker. Initializing basic images"
-# docker build --no-cache -t workflow_sub $CURRENT_SH_DIR/workflow_sub
+#docker build --no-cache -t workflow_sub $CURRENT_SH_DIR/workflow_sub
 docker build --no-cache -t workflow_base $CURRENT_SH_DIR/../src/container
 
 # Define available workflows and their initialization scripts

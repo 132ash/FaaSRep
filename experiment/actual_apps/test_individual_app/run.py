@@ -25,7 +25,7 @@ from experiment.common import generate_param
 repo = repository.Repository()
 
 
-DB_NODE_IP = config.STOREGE_NODE_IP
+DB_NODE_IP = config.STORAGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # table_name = f"{transaction_id}_shadow_table"
 
@@ -40,9 +40,7 @@ CLIENT_CNT = 16
 ROUND = 50
 parameters_inputs = {}
 # all_workflows = ['banking_system']
-# all_workflows = ['travel_reservation']
-# all_workflows = ['social_network']
-all_workflows = ['social_network']
+all_workflows = ['travel_reservation']
 result_dict = {}
 
 
@@ -58,11 +56,11 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
         # 这里假设 analyze_workflow 返回一个包含结果的字典
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
-            # logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
             continue
         local_results.append(result)
         if i % 10 == 0:
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}")
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
         # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
     result_queue.put(local_results)
@@ -85,6 +83,11 @@ def get_function_latency(txid):
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
+    # func_exec_time_test, func_io_time_test = get_function_latency(rep['transaction_id'])
+    # func_io_time = func_io_time_test
+    # func_exec_time = func_exec_time_test 
+    # rep['func_io_time'] = func_io_time
+    # rep['func_exec_time'] = func_exec_time
     return rep.get('transaction_id', ''), {
         "validate_time_inside_validator": rep.get('validate_time_inside_validator', 0),
         "validate_latency": rep.get('validate_latency', 0),
@@ -128,7 +131,7 @@ def analyze_all(compute_mode='avg'):
         
         # 计算99%-ile延迟
         if compute_mode == 'avg':
-            mode = f"Beldi_{compute_mode}"
+            mode = f"Concord_{compute_mode}"
             avg_latency = df.mean()
 
             summary = {
@@ -142,7 +145,6 @@ def analyze_all(compute_mode='avg'):
             summary_df = pd.DataFrame([summary])
             output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
             summary_df.to_csv(output_file, index=False)
-            print(f"[{workflow}] Results summary saved to {output_file}")
         elif compute_mode == '99p':
             mode = f"Beldi_{compute_mode}"
             p99_latency = df.quantile(0.99)
@@ -158,10 +160,10 @@ def analyze_all(compute_mode='avg'):
             summary_df = pd.DataFrame([summary])
             output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
             summary_df.to_csv(output_file, index=False)
-            print(f"[{workflow}] Results summary saved to {output_file}")
+        print(f"[{workflow}] Results summary saved to {output_file}")
 
 if __name__ == '__main__':
-    compute_mode = sys.argv[1] if len(sys.argv) > 1 else '99p'
+    compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
     analyze_all(compute_mode=compute_mode)
 
 

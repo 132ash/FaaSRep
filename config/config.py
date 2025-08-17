@@ -1,10 +1,10 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STOREGE_NODE_IP =  '10.2.64.4'
+STORAGE_NODE_IP =  '10.3.96.150'
 
-COUCHDB_URL = f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984'
-DYNAMODB_URL = f'http://{STOREGE_NODE_IP}:4567'
+COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
+DYNAMODB_URL = f'http://{STORAGE_NODE_IP}:4567'
 DYNAMODB_KEY_ID = 'FAASNAPDYNAMODB'
 DYNAMODB_ACCESS_KEY = 'FAASNAPDYNAMODBKEY'
 DYNAMODB_AREA = 'us-west-2'
@@ -12,8 +12,8 @@ REDIS_HOST = '127.0.0.1' # it serves to connect with the local redis, so it shou
 REDIS_PORT = 6379 # it follows the same configuration as created redis by docker (e.g., -p 6379:6379)
 SHADOWTABLE_DB = 0
 CACHE_DB = 1
-GATEWAY_ADDR = f'{STOREGE_NODE_IP}:8000' # need to update as your private_ip
-VALIDATOR_ADDR = f'{STOREGE_NODE_IP}:9000'
+GATEWAY_ADDR = f'{STORAGE_NODE_IP}:8000' # need to update as your private_ip
+VALIDATOR_ADDR = f'{STORAGE_NODE_IP}:9000'
 WORKERSP_PORT = '7500'
 
 
