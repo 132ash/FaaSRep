@@ -1,0 +1,136 @@
+🚀 开始测试 - 工作流: c4, 模式: Beldi, 客户端: 8
+Parameters ready.
+📋 启动 8 个客户端进程...
+✅ 启动进程 3931415 (客户端 0)
+✅ 启动进程 3931416 (客户端 1)
+✅ 启动进程 3931417 (客户端 2)
+✅ 启动进程 3931418 (客户端 3)
+✅ 启动进程 3931419 (客户端 4)
+✅ 启动进程 3931420 (客户端 5)
+✅ 启动进程 3931421 (客户端 6)
+✅ 启动进程 3931422 (客户端 7)
+⏳ 等待所有进程完成...
+Client 7: Round 0 completed, batch sent
+Client 3: Round 0 completed, batch sent
+Client 0: Round 0 completed, batch sent
+Client 1: Round 0 completed, batch sent
+Client 6: Round 0 completed, batch sent
+Client 2: Round 0 completed, batch sent
+Client 4: Round 0 completed, batch sent
+Client 5: Round 0 completed, batch sent
+Client 1: Round 10 completed, batch sent
+Client 4: Round 10 completed, batch sent
+Client 5: Round 10 completed, batch sent
+Client 0: Round 10 completed, batch sent
+Client 6: Round 10 completed, batch sent
+Client 2: Round 10 completed, batch sent
+Client 7: Round 10 completed, batch sent
+Client 1: Round 20 completed, batch sent
+Client 4: Round 20 completed, batch sent
+Client 3: Round 10 completed, batch sent
+Client 5: Round 20 completed, batch sent
+Client 2: Round 20 completed, batch sent
+Client 4: Round 30 completed, batch sent
+Client 6: Round 20 completed, batch sent
+Client 7: Round 20 completed, batch sent
+Client 0: Round 20 completed, batch sent
+Client 1: Round 30 completed, batch sent
+Client 2: Round 30 completed, batch sent
+Client 7: Round 30 completed, batch sent
+Client 3: Round 20 completed, batch sent
+Client 0: Round 30 completed, batch sent
+Client 4: Round 40 completed, batch sent
+Client 6: Round 30 completed, batch sent
+Client 5: Round 30 completed, batch sent
+Client 2: Round 40 completed, batch sent
+Client 1: Round 40 completed, batch sent
+Client 7: Round 40 completed, batch sent
+Client 6: Round 40 completed, batch sent
+Client 4: Round 50 completed, batch sent
+Client 7: Round 50 completed, batch sent
+Client 2: Round 50 completed, batch sent
+Client 1: Round 50 completed, batch sent
+Client 0: Round 40 completed, batch sent
+Client 5: Round 40 completed, batch sent
+Client 6: Round 50 completed, batch sent
+Client 3: Round 30 completed, batch sent
+Client 7: Round 60 completed, batch sent
+Client 2: Round 60 completed, batch sent
+Client 1: Round 60 completed, batch sent
+Client 4: Round 60 completed, batch sent
+Client 5: Round 50 completed, batch sent
+Client 0: Round 50 completed, batch sent
+Client 3: Round 40 completed, batch sent
+Client 1: Round 70 completed, batch sent
+Client 5: Round 60 completed, batch sent
+Client 4: Round 70 completed, batch sent
+Client 2: Round 70 completed, batch sent
+Client 6: Round 60 completed, batch sent
+Client 1: Round 80 completed, batch sent
+Client 0: Round 60 completed, batch sent
+Client 3: Round 50 completed, batch sent
+Client 6: Round 70 completed, batch sent
+Client 4: Round 80 completed, batch sent
+Client 7: Round 70 completed, batch sent
+Client 5: Round 70 completed, batch sent
+Client 2: Round 80 completed, batch sent
+Client 3: Round 60 completed, batch sent
+Client 1: Round 90 completed, batch sent
+Client 0: Round 70 completed, batch sent
+Client 4: Round 90 completed, batch sent
+Client 7: Round 80 completed, batch sent
+Client 2: Round 90 completed, batch sent
+Client 3: Round 70 completed, batch sent
+Client 1: Round 99 completed, batch sent
+Client 1: All tasks completed and results sent
+📦 客户端 1 完成所有任务
+Client 5: Round 80 completed, batch sent
+Client 6: Round 80 completed, batch sent
+Client 4: Round 99 completed, batch sent
+Client 4: All tasks completed and results sent
+📦 客户端 4 完成所有任务
+Client 7: Round 90 completed, batch sent
+Client 6: Round 90 completed, batch sent
+Client 2: Round 99 completed, batch sent
+Client 2: All tasks completed and results sent
+📦 客户端 2 完成所有任务
+Client 0: Round 80 completed, batch sent
+Client 3: Round 80 completed, batch sent
+Client 5: Round 90 completed, batch sent
+Client 7: Round 99 completed, batch sent
+Client 7: All tasks completed and results sent
+📦 客户端 7 完成所有任务
+Client 6: Round 99 completed, batch sent
+Client 6: All tasks completed and results sent
+📦 客户端 6 完成所有任务
+Client 5: Round 99 completed, batch sent
+Client 5: All tasks completed and results sent
+📦 客户端 5 完成所有任务
+Client 3: Round 90 completed, batch sent
+Client 0: Round 90 completed, batch sent
+Client 0: Round 99 completed, batch sent
+Client 0: All tasks completed and results sent
+📦 客户端 0 完成所有任务
+✅ 进程 0 完成
+✅ 进程 1 完成
+✅ 进程 2 完成
+Client 3: Round 99 completed, batch sent
+Client 3: All tasks completed and results sent
+📦 客户端 3 完成所有任务
+📊 结果收集完成，共收集 800 个结果
+✅ 进程 3 完成
+✅ 进程 4 完成
+✅ 进程 5 完成
+✅ 进程 6 完成
+✅ 进程 7 完成
+📊 等待结果收集完成...
+📊 收集测试结果... 总计用时: 103.49 秒
+📝 原始结果已保存到: /home/shao/FaaSnap/experiment/microbenchmark/test1_Latency_Throughput/results/Beldi/raw_results/c4_8_raw.csv
+   总测试时间: 103.49 秒
+   中位数 E2E 延迟: 0.6131 s
+   P99 E2E 延迟: 4.4788 s
+   平均 E2E 延迟: 0.9461 s
+   平均吞吐量: 8.4554 RPS
+📊 汇总结果已写入文件: /home/shao/FaaSnap/experiment/microbenchmark/test1_Latency_Throughput/results/Beldi/summary_results.csv
+📊 数据: c4,8,0.6131,4.4788,8.4554
+✅ c4 测试完成 (客户端: 8)

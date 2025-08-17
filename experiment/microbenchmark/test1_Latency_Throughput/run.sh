@@ -6,9 +6,9 @@ cd "$CURRENT_SH_DIR"
 WORKFLOWS=(c4)
 # WORKFLOWS=(c2 c4 c8 c16 w2 w4 w8 w16)
 # CLIENT_COUNTS=(4 8 12 16 24 32 40 48 56 64)
-CLIENT_COUNTS=(40)
+CLIENT_COUNTS=(24)
 TEXT_SIZE=4096  # 固定为 4KB
-SYSTEM_MODE="Concord"
+SYSTEM_MODE="Beldi"
 
 echo "=== 开始微基准测试 ==="
 echo "测试时间: $(date)"

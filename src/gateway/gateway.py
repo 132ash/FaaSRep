@@ -48,6 +48,8 @@ import requests
 import time
 import gevent.lock
 
+session = requests.Session()
+
 sys.path.append('../../config')
 import config
 
@@ -83,13 +85,13 @@ def trigger_function(workflow_name, transaction_id, create_timestamp, function_n
         'repair': False,
         'retry': retry
     }
-    requests.post(url, json=data)
+    session.post(url, json=data)
 
 def clear_mem(ip, transaction_id, workflow_name, abort=False):
     if not ip.endswith(':7500'):
         ip += ':7500'
     clear_url = 'http://{}/clear'.format(ip)
-    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'abort': abort})
+    session.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'abort': abort})
 
 def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
     if not retry:
@@ -178,7 +180,7 @@ def clear_container():
     jobs = []
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
-        jobs.append(gevent.spawn(requests.get, clear_url))
+        jobs.append(gevent.spawn(session.get, clear_url))
     gevent.joinall(jobs)
     return json.dumps({'status': 'ok'})
 
