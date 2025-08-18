@@ -1,0 +1,4 @@
+batch_size,median_latency,p99_latency,avg_throughput
+1,0.9805,1.0174,64.5890
+4,0.6985,0.8803,87.4305
+8,0.6970,1.0007,86.9630

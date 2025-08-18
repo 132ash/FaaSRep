@@ -27,10 +27,10 @@ import config
 BANKING_ACCOUNTS = config.BANKING_ACCOUNTS
 BANKING_ORIGINAL_BALANCE = config.BANKING_ORIGINAL_BALANCE
 
-STOREGE_NODE_IP = config.STOREGE_NODE_IP
+STORAGE_NODE_IP = config.STORAGE_NODE_IP
 
-couch_db = couchdb.Server(f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984')
-dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STOREGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+couch_db = couchdb.Server(f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984')
+dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STORAGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 startup_version = datetime(2025, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
 
 def generate_random_text(size):

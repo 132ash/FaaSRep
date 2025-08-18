@@ -1,0 +1,3 @@
+read_ratio,median_latency,p99_latency,avg_throughput
+0.50,4.4878,5.4344,7.2087
+1.00,1.5595,3.2033,19.7144

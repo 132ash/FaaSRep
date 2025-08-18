@@ -1,0 +1,2 @@
+workflow,mode,validator_overhead,overall_validate_latency,e2e_latency,workflow_run_latency,exec_latency,io_latency,function_exec_latency,function_io_latency
+banking_system,OPTIMISTIC_fast-path,0.0038512555075301985,0.09553389270301275,0.5992058360816356,0.47002862576374843,,,0,0

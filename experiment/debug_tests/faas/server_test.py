@@ -1,8 +1,8 @@
 import requests
 import couchdb
-STOREGE_NODE_IP = '10.2.64.4'
+STORAGE_NODE_IP = '10.2.64.4'
 
-COUCHDB_URL = f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984'
+COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
 
 class Repository:
     def __init__(self):

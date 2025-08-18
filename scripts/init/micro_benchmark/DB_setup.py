@@ -26,9 +26,9 @@ import config
 
 DB_SIZE = config.DB_SIZE
 DATA_ITEM_SIZE = config.DATA_ITEM_SIZE  
-STOREGE_NODE_IP = config.STOREGE_NODE_IP
-couch_db = couchdb.Server(f'http://faasnap:faasnap@{STOREGE_NODE_IP}:5984')
-dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STOREGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+STORAGE_NODE_IP = config.STORAGE_NODE_IP
+couch_db = couchdb.Server(f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984')
+dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STORAGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
 def flush_data_db():
     try:
