@@ -1,2 +1,0 @@
-workflow,mode,validator_overhead,overall_validate_latency,e2e_latency,workflow_run_latency,exec_latency,io_latency,function_exec_latency,function_io_latency
-social_network,OPTIMISTIC_fast-path,0.003986735641956329,0.10322196930646896,1.0220374593138695,0.8925062984228134,,,0,0

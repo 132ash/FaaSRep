@@ -2,6 +2,7 @@ import logging
 from gevent import monkey
 monkey.patch_all()
 import sys
+sys.path.append('../../config')
 import os
 import time
 import gevent.lock
@@ -9,8 +10,8 @@ from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
 import re
-import config.config as config
-from function_manager.function_manager import FunctionManager
+from src.function_manager.function_manager import FunctionManager
+import config
 
 log_file = '../../logging/workersp.log'
 
@@ -46,13 +47,6 @@ def log_message(message):
     logger.info(message)
     for handler in logger.handlers:
         handler.flush()
-
-RUNNING = config.RUNNING
-ABORTED = config.ABORTED
-REPAIRED = config.REPAIRED
-
-OPT_REPAIR = config.OPT_REPAIR
-PESSI_REPAIR = config.PESSI_REPAIR
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -104,7 +98,7 @@ class WorkerSPManager:
         self.transaction_sink_addr = self.function_pos[self.repo.get_end_function(self.meta_db)] + ':6000'
 
         self.node_list = node_list
-        self.function_manager = FunctionManager(extract_ip(self.host_addr), self.workflow_name, function_info_addr, self.transaction_sink_addr, min_port, self.node_list, self.function_pos)
+        self.function_manager = FunctionManager(extract_ip(self.host_addr), self.workflow_name, function_info_addr, min_port, self.node_list, self.function_pos)
         # repairing batches and finished transactions
         min_port += 5000
 
@@ -153,6 +147,7 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             self.validate_tx(state.transaction_id, state.read_set, state.write_set)
+            return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
             self.trigger_function_local(state, function_name, no_parent_execution)

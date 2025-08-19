@@ -1,7 +1,9 @@
 import requests
+import sys
+sys.path.append('../../config')
 import docker
 import time
-import config.config as config
+import config
 import gevent
 import redis
 import os

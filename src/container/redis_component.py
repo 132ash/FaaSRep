@@ -3,10 +3,6 @@ monkey.patch_all()
 import redis
 import container_config
 import json
-import threading
-RUNNING = container_config.RUNNING
-ABORTED = container_config.ABORTED
-REPAIRED = container_config.REPAIRED
 
 class RedisShadowTable:
     def __init__(self, host_list, port, db, ip):

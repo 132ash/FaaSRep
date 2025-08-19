@@ -1,9 +1,11 @@
 import time
 import math
 from gevent import event
-from function_info import FunctionInfo
-from  function_manager.container import Container, ContainerPool
-import config.config as config
+from src.function_manager.function_info import FunctionInfo
+from  src.function_manager.container import Container, ContainerPool
+import sys
+sys.path.append('../../config')
+import config
 # data structure for request info
 class RequestInfo:
     def __init__(self, transaction_id, data):
@@ -16,12 +18,10 @@ exec_lifetime = 600
 
 # manage a function's container pool
 class Function:
-    def __init__(self, host_addr, client, transaction_sink_addr, function_info:FunctionInfo, port_controller, node_list, default_container_num, input, output, function_pos):
+    def __init__(self, host_addr, client, function_info:FunctionInfo, port_controller, node_list, default_container_num, input, output, function_pos):
         self.host_addr = host_addr
         self.client = client
         self.info:FunctionInfo = function_info
-        self.transaction_sink_addr = transaction_sink_addr
-        self.validator_addr = config.VALIDATOR_ADDR
         self.port_controller = port_controller
         self.node_list = node_list
         self.default_container_num = default_container_num

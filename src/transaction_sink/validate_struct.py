@@ -11,11 +11,6 @@ import gevent.queue  # 添加 gevent 队列导入
 sys.path.append('../../config')
 import config
 
-REPAIRED = config.REPAIRED
-ABORTED = config.ABORTED    
-WAITING = config.RUNNING
-
-PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
 VALIDATE_INTERVAL = config.VALIDATE_INTERVAL
 BATCH_TIMEOUT = config.BATCH_TIMEOUT # 50ms
@@ -65,12 +60,6 @@ class TransactionSink:
         self.batch_size = batch_size
         self.last_batch_time = time.time()
 
-    def init_batch_processor(self):
-        """初始化批处理器，类似 function_manager 的 init 方法"""
-        # 立即启动第一次批处理检查
-        gevent.spawn_later(VALIDATE_INTERVAL, self._batch_processor_loop)
-        # log_message(f"[BATCH PROCESSOR INIT] workflow: {self.workflow_name}, interval: {VALIDATE_INTERVAL}s")
-
     def validate_batch_check(self):
         """检查队列并进行批处理验证，无论是否达到 batch_size"""
         queue_size = self.queue.qsize()
@@ -110,31 +99,19 @@ class TransactionSink:
 
 
     def process_batch(self, batch, first_run_finish_time):
-  
         # 转换批次格式
         transformed_batch = self.transform_batch(batch)
-        
-        # 注册批次
-        self.repairing_batch_state.register_batch(
-            transformed_batch['batch_id'], 
-            transformed_batch['transaction_list'],  
-            len(batch)
-        )
-        
         # 发送验证请求
         self.send_validate_request(transformed_batch, first_run_finish_time)
-        
         # log_message(f"[PROCESS BATCH] workflow: {self.workflow_name}, batch_id: {transformed_batch['batch_id']}, size: {len(batch)}, queue remaining: {self.queue.qsize()}")
         
    
-    def append(self, transaction_id: str, read_set: Dict[str, Dict], write_set: Dict[str, int], container_port: Dict[str, str], RYW_subjection:Dict[str, dict]):
+    def append(self, transaction_id: str, read_set: Dict[str, Dict], write_set: Dict[str, int]):
         """将事务添加到队列中"""
         transaction_data = {
             'transaction_id': transaction_id,
             'read_set': read_set, 
-            'write_set': write_set, 
-            'container_port': container_port, 
-            'RYW_subjection': RYW_subjection
+            'write_set': write_set
         }
         
         try:
@@ -154,8 +131,6 @@ class TransactionSink:
             "batch_id": batch[0]["transaction_id"],
             "read_set": {},
             "write_set": {},
-            "RYW_subjection": {},
-            "container_port": {},
             "transaction_list":[]
         }
 
@@ -163,8 +138,6 @@ class TransactionSink:
             tx_id = tx["transaction_id"]
             transformed_batch["read_set"][tx_id]= tx["read_set"]
             transformed_batch["write_set"][tx_id]=tx["write_set"]
-            transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
-            transformed_batch["container_port"][tx_id] = tx["container_port"]
             transformed_batch["transaction_list"].append(tx_id)
         return transformed_batch
 

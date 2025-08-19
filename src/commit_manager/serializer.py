@@ -90,8 +90,7 @@ class SerializerProcess(Process):
             # find dirty set, and subjection set send to the validator to repair.
             # if the batch is ready to commit, send the commit list to the handler.
             if op == VALIDATE:
-                version = get_timestamp()
-                commitable_keys, expired_set, succeed_txs, abort_txs = self.accessed_set_validate(version, data['transaction_list'], data['read_set'], data['write_set'])
+                commitable_keys, expired_set, succeed_txs, abort_txs = self.accessed_set_validate(data['transaction_list'], data['read_set'], data['write_set'])
                 version = get_timestamp()
                 for key in commitable_keys:
                     self.key_version_table[key] = version
@@ -111,7 +110,7 @@ class SerializerProcess(Process):
                 abort_txs[tx_id] = True
             else:
                 succeed_txs[tx_id] = True
-            for key, func in ws.keys():
+            for key, func in ws.items():
                 batch_write_info[key] = tx_id
                 if commitable:
                     commitable_keys[key] = [tx_id, func]

@@ -1,6 +1,6 @@
 from gevent import event
 import sys
-import requests
+import logging
 sys.path.append('../../config')
 import config
 

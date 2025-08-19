@@ -34,25 +34,15 @@ import config
 
 VALIDATE_INTERVAL = config.VALIDATE_INTERVAL
 
-FAST_PATH = config.FAST_PATH
-PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
-
-OPT_REPAIR = config.OPT_REPAIR
-PESSI_REPAIR = config.PESSI_REPAIR
-
-REPAIRED = config.REPAIRED
-ABORTED = config.ABORTED    
-WAITING = config.RUNNING
-
 
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
        gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
-    
-    def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection):
-        self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection)
+
+    def validate_transaction(self, workflow_name, transaction_id, read_set, write_set):
+        self.sinks[workflow_name].append(transaction_id, read_set, write_set)
 
 
     def _validate_loop(self):
@@ -70,13 +60,12 @@ def validate():
     transaction_id = data['transaction_id']
     read_set = data['read_set']
     write_set = data['write_set']
-    container_port = data['container_port']
-    RYW_subjection = data.get('RYW_subjection', {})
-    dispatcher.validate_transaction(workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection)
+    dispatcher.validate_transaction(workflow_name, transaction_id, read_set, write_set)
     return json.dumps({'status': 'ok'})
 
 # python3 proxy.py  10.2.30.50 6000
 # python3 proxy.py  10.2.27.23 6000
+# python3 proxy.py  10.2.30.62 6000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

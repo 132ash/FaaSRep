@@ -1,14 +1,15 @@
 import sys
 import logging
-
+import sys
+sys.path.append('../..')
 import gevent
 import docker
 from typing import Dict
-from function_info import parse
-from port_controller import PortController
-from function import Function
-import config.config as config
-from workflow_manager.workersp_repo import Repository
+from src.function_manager.function_info import parse
+from src.function_manager.port_controller import PortController
+from src.function_manager.function import Function
+import config
+from src.workflow_manager.workersp_repo import Repository
 
 
 logging.basicConfig(
@@ -27,7 +28,7 @@ dispatch_interval = 0.005 # 200 qps at most
 
 # the class for scheduling functions' inter-operations
 class FunctionManager:
-    def __init__(self, host_addr, workflow_name, config_path, transaction_sink_addr, min_port, node_list, function_pos):
+    def __init__(self, host_addr, workflow_name, config_path, min_port, node_list, function_pos):
         self.function_info = parse(config_path)
         self.workflow_name = workflow_name
 
@@ -39,7 +40,7 @@ class FunctionManager:
 
         for x in self.function_info:
             graph_info = repo.get_function_info(x.function_name, workflow_name+'_function_info')
-            self.functions[x.function_name] = Function(host_addr, self.client,transaction_sink_addr, x, self.port_controller, node_list, self.default_container_num, graph_info['input'], graph_info['output'], graph_info['parent_cnt'], self.function_pos)
+            self.functions[x.function_name] = Function(host_addr, self.client, x, self.port_controller, node_list, self.default_container_num, graph_info['input'], graph_info['output'],self.function_pos)
         self.init()
        
     def init(self):

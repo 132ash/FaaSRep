@@ -16,9 +16,6 @@ from validator_repo import Repository
 sys.path.append('../../config')
 import config
 
-PESSIMISTIC_REPAIR_ENABLED = not config.OPTIMISTIC_REPAIR
-FAST_PATH_ENABLED = config.FAST_PATH
-
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
     match = re.match(r'^(.*?)(:\d+)?$', address)
@@ -140,7 +137,7 @@ class ValidatorProcess(Process):
             inside_validator_time, version, commitable_keys, expired_set, succeeded_txs, abort_txs = self.validate(batch_id, batch, last_task_time)
             validate_time_tuple = (first_run_finish_time, last_task_time, inside_validator_time)
             self.commit_tx_list(version, commitable_keys, expired_set)
-            self.notify_gateway(commitable_keys, True, succeeded_txs, validate_time_tuple, abort_txs)
+            self.notify_gateway(succeeded_txs, validate_time_tuple, abort_txs)
 
                         
     def serializer_request(self, batch_id, op, data):

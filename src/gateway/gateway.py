@@ -128,23 +128,25 @@ def run():
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted, active_abort = txTable.waitTX(transaction_id)
         if aborted:
-            #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
+            #log_message(f"[ABORT] transaction {transaction_id} aborted, active_abort: {active_abort}")
             if not active_abort:
                 txTable.resetTX(transaction_id)   
             else:
                 break
         retry = True
     end = time.time()
+    if aborted and active_abort: 
+        message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
+    else:
+        #log_message(f"[FINISH] transaction {transaction_id} finished, e2e latency: {end-start}, exec_first_latency: {exec_first_latency}")
+        res = repo.get_result(transaction_id, workflow)
+        first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
+        first_run_latency = first_run_finish_time - start
+        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
         gevent.joinall(clear_jobs)
-    if aborted and active_abort: 
-        return json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
-    res = repo.get_result(transaction_id, workflow)
-    first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
-    first_run_latency = first_run_finish_time - start
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
-
+    return message
 
 @app.route('/notify', methods = ['POST'])
 def notify():
@@ -166,8 +168,8 @@ def clear_container():
     workflow = data['workflow']
     addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
     jobs = []
-    print("clearing containers...")
-    print(addrs)
+    # print("clearing containers...")
+    # print(addrs)
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
         jobs.append(gevent.spawn(requests.get, clear_url))

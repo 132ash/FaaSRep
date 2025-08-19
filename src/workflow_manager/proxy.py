@@ -1,9 +1,21 @@
 import sys
 import logging
 import os
+from pathlib import Path
 # 配置日志记录 - 输出到文件并每次运行时刷新
 log_file = '../../logging/proxy.log'
+script_dir = Path(__file__).parent
+def get_root_dir(script_dir: Path) -> Path:
+    project_root = script_dir
+    while project_root != project_root.parent:
+        if (project_root / "README.md").exists():
+            break
+        project_root = project_root.parent
+    return project_root
 
+ROOT_DIR = get_root_dir(script_dir)
+sys.path.append(str(ROOT_DIR))
+sys.path.append('../../config')
 # 删除旧的日志文件（如果存在）
 if os.path.exists(log_file):
     os.remove(log_file)
@@ -47,21 +59,14 @@ from datetime import datetime
 import workersp_repo
 from workersp import WorkerSPManager, TransactionState
 import docker
-from workersp import ReservePool
 from flask import Flask, request
 app = Flask(__name__)
 docker_client = docker.from_env()
 repo = workersp_repo.Repository()
-
-sys.path.append('../../config')
 import config
 
 validate_interval = 0.005 # 200 qps at most
 default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
-
-
-FAST_PATH = config.FAST_PATH
-PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 
 REPAIRED = 1
 ABORTED = 2
@@ -89,8 +94,7 @@ class Dispatcher:
         self.node_list = repo.get_all_addrs('common')
         ##log_message(f"Node list: {self.node_list}")
         self.all_workflows = info_addrs.keys()
-        self.reserve_pools =  {name: ReservePool() for name in info_addrs}
-        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
+        self.managers = {name: WorkerSPManager(self.host_addr, name, addr, repo, self.node_list) for name, addr in info_addrs.items()}
         log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 

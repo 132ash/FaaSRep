@@ -44,8 +44,6 @@ class Runner:
 
         # infomation saved in first run
         self.transaction_id = None
-        self.input = {}
-        self.output = {}
         self.write_set = {}
 
     def init(self, host_addr, workflow, function, node_list,input,output,function_pos, cache_enable):
@@ -67,6 +65,10 @@ class Runner:
         with open(filename, 'r') as f:
             self.code = compile(f.read(), filename, mode='exec')
         store.init(self.function, self.shadow_table, self.cache, db_server, function_pos, self.input, self.output)
+
+    def save(self, transaction_id, write_set):  
+        self.transaction_id = transaction_id
+        self.write_set = write_set
 
     def run(self, transaction_id):
         # in first run, collect read/write set, and RYW subjection
@@ -94,7 +96,7 @@ class Runner:
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         io_latency = store.io_latency
 
-        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency
+        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"], io_latency
 
 
 proxy = Flask(__name__)

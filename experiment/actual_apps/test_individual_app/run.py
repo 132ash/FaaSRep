@@ -37,10 +37,10 @@ RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
 
 CLIENT_CNT = 16
-ROUND = 50
+ROUND = 5
 parameters_inputs = {}
 # all_workflows = ['banking_system']
-all_workflows = ['social_network']
+all_workflows = ['travel_reservation']
 result_dict = {}
 
 
@@ -94,7 +94,7 @@ def analyze_workflow(workflow, parameters_input):
         "first_run_latency": rep.get('first_run_latency', 0),
     }, rep['status']
 
-def analyze_all(system_mode,opt, compute_mode='avg'):
+def analyze_all(compute_mode='avg'):
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
         parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
@@ -129,7 +129,7 @@ def analyze_all(system_mode,opt, compute_mode='avg'):
         df = pd.DataFrame(all_results)
         
         # 计算99%-ile延迟
-        mode = f"{system_mode}_{opt}_{compute_mode}"
+        mode = f"OCC_{compute_mode}"
         if compute_mode == 'avg':
             avg_latency = df.mean()
 
@@ -144,7 +144,7 @@ def analyze_all(system_mode,opt, compute_mode='avg'):
             summary_df = pd.DataFrame([summary])
             output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
             summary_df.to_csv(output_file, index=False)
-        elif compute_mode == '99p':
+        elif compute_mode == 'p99':
             p99_latency = df.quantile(0.99)
 
             summary = {
@@ -160,14 +160,9 @@ def analyze_all(system_mode,opt, compute_mode='avg'):
             summary_df.to_csv(output_file, index=False)
         print(f"[{workflow}] Results summary saved to {output_file}")
 
-system_mode = ["PESSIMISTIC", "OPTIMISTIC"]
-opt = ['basic', 'fast-path']
-
 if __name__ == '__main__':
-    _system_mode= system_mode[1]
-    _opt = opt[0] 
     compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
-    analyze_all(_system_mode, _opt, compute_mode=compute_mode)
+    analyze_all(compute_mode=compute_mode)
 
 
 
