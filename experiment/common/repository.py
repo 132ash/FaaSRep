@@ -4,6 +4,7 @@ import redis
 import sys
 import requests
 from pathlib import Path
+from collections import defaultdict
 import time
 
 experiment_dir = Path(__file__).parent.parent
@@ -30,14 +31,31 @@ class Repository:
         db = self.couch['workflow_latency']
         time.sleep(1)
 
-    def get_io_latency_for_tx(self, tx_id):
-        db = self.couch['workflow_latency']
-        io_latencies = []
-        for item in db:
-            doc = db[item]
-            if doc['transaction_id'] == tx_id and doc['phase'] == 'io':
-                io_latencies.append(doc['time'])
-        return sum(io_latencies) if io_latencies else 0
+    def get_io_latencies_for_txs(self, txids: list) -> dict:
+        if not txids:
+            return {}
+
+        io_latencies = defaultdict(float)
+        print("getting io latency")
+        try:
+            db = self.couch['workflow_latency']
+            # 使用 $in 操作符进行批量查询
+            query = {
+                'selector': {
+                    'transaction_id': {'$in': txids},
+                    'phase': 'io'
+                },
+                'fields': ['transaction_id', 'time'],
+                'limit': len(txids) * 100 # 设置一个足够大的限制以获取所有相关文档
+            }
+            results = db.find(query)
+            for doc in results:
+                tx_id = doc.get('transaction_id')
+                if tx_id:
+                    io_latencies[tx_id] += doc.get('time', 0)
+        except Exception as e:
+            print(f"Error during bulk fetching IO latencies: {e}", file=sys.stderr)
+        return dict(io_latencies)
 
     def get_latencies(self):
         latencies = {}

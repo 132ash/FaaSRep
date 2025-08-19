@@ -72,7 +72,7 @@ class RepairInfo:
                     # this key is RYW, remove from expired keys.
                     expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
                 expired_keys_per_ip[func_ip] = expired_keys_per_ip[func_ip].union(expired_keys.get(tx_id, {}).get(func, {}))
-                #log_message(self.logger, f"[VALIDATE OPTIMISTIC METADATA] Constructing repair metadata for batch {batch_id}, tx {tx_id}, func {func}, opt_func_info: {opt_func_info}, expired_keys_per_ip: {expired_keys_per_ip}")    
+                log_message(self.logger, f"[VALIDATE OPTIMISTIC METADATA] Constructing repair metadata for batch {batch_id}, tx {tx_id}, func {func}, opt_func_info: {opt_func_info}, expired_keys_per_ip: {expired_keys_per_ip}")    
         return expired_keys_per_ip
 
 
@@ -102,7 +102,7 @@ class RepairInfo:
                 else:
                     pessi_func_info['upstream_keys'][key] = dependency
                     pessi_func_info['up_cnt'] += 1 
-            #log_message(self.logger, f"[PESSIMISTIC METADATA] Updated repair metadata for batch {batch_id}, tx {tx_id}, func {func}, pessi_func_info: {pessi_func_info}, expired_keys: {expired_keys}")
+            log_message(self.logger, f"[PESSIMISTIC METADATA] Updated repair metadata for batch {batch_id}, tx {tx_id}, func {func}, pessi_func_info: {pessi_func_info}, expired_keys: {expired_keys}")
     
     def get_func_basic_info_dict(self, batch_id, tx_id, func):
         return self.repair_basic_info_dict[batch_id].setdefault(tx_id, {}).setdefault(func, {})

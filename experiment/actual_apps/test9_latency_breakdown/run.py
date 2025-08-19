@@ -21,7 +21,7 @@ ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
 
 import config.config as config
-from experiment.common import repository
+from experiment.common import repository, client_logs
 from experiment.common import generate_param
 
 DB_NODE_IP = config.STORAGE_NODE_IP
@@ -33,21 +33,26 @@ ROUND = 100
 # 只测试 travel_reservation
 workflow_to_test = 'travel_reservation'
 
-# 在进程启动时初始化 repo
-repo = repository.Repository()
+# 将 repo 定义为全局变量，但初始为 None
+repo = None
+def init_repo():
+    """为每个进程初始化独立的 repo 实例。"""
+    global repo
+    if repo is None:
+        repo = repository.Repository()
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
+    client_logs.setup_logging_for_process(script_dir, client_id)
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']
-        logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
             continue
         else:
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
             local_results.append(result)
+    logging.info(f"[{client_id}] Completed {len(local_results)} valid transactions for workflow {workflow}.")
     result_queue.put(local_results)
 
 def run_workflow(workflow_name, parameters):
@@ -68,20 +73,15 @@ def analyze_workflow(workflow, parameters_input):
         return None, None, tx_status
 
     txid = rep.get('transaction_id', '')
-    first_run_latency = rep.get('first_run_latency', 0)
     
-    # 使用 repository 获取该事务的IO延迟总和
-    io_latency = repo.get_io_latency_for_tx(txid)
-    exec_latency = first_run_latency - io_latency
+    # 注意：这里不再获取IO延迟
     result_details = {
         "transaction_id": txid,
         "e2e_latency": rep.get('e2e_latency', 0),
-        "first_run_latency": first_run_latency,
+        "first_run_latency": rep.get('first_run_latency', 0),
         "time_inside_validator": rep.get('time_inside_validator', 0),
         "time_repair": rep.get('time_repair', 0),
         "time_commit": rep.get('time_commit', 0),
-        "io_latency": io_latency,
-        "exec_latency": exec_latency
     }
     return txid, result_details, tx_status
 
@@ -110,6 +110,7 @@ def analyze_workflow_performance(system_mode, workflow, client_cnt):
     """分析单个工作流的性能，并保存包含所有延迟分量的结果。"""
     logging.info(f"--- Starting analysis for {workflow} in {system_mode} mode with {client_cnt} clients ---")
     
+    init_repo() # 在主进程中初始化 repo
     repo.flush_couchdb_workflow_latency()
     
     parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, client_cnt, ROUND)
@@ -120,18 +121,44 @@ def analyze_workflow_performance(system_mode, workflow, client_cnt):
     start_time = time.time()
     for p in processes:
         p.start()
+
+    # --- 正确的执行顺序 ---
+    # 1. 先从队列中获取所有子进程的结果
+    all_results = []
+    for _ in range(client_cnt):
+        # get() 会阻塞，直到从队列中获取到一个项目
+        # 这确保了我们能拿到所有 client 的结果
+        all_results.extend(result_queue.get())
+
+    # 2. 现在所有子进程都已经将数据放入队列并可以安全终止，我们再 join 它们
     for p in processes:
         p.join()
+        
     end_time = time.time()
     total_time = end_time - start_time
-    
-    all_results = []
-    while not result_queue.empty():
-        all_results.extend(result_queue.get())
+    logging.info(f"All processes completed and results collected in {total_time:.2f} seconds.")
         
     if not all_results:
         logging.error(f"No valid results collected for {workflow} in {system_mode} mode.")
         return
+
+    # --- 批量获取IO延迟并后处理 ---
+    logging.info(f"所有工作进程已完成。开始批量获取 {len(all_results)} 条记录的IO延迟...")
+    
+    # 1. 从所有结果中提取 transaction_id
+    tx_ids = [res['transaction_id'] for res in all_results]
+    
+    # 2. 使用新的批量方法一次性获取所有IO延迟数据
+    io_latencies = repo.get_io_latencies_for_txs(tx_ids)
+    
+    # 3. 将IO延迟合并回结果列表，并计算exec_latency
+    for res in all_results:
+        tx_id = res['transaction_id']
+        io_latency = io_latencies.get(tx_id, 0)
+        res['io_latency'] = io_latency
+        res['exec_latency'] = res['first_run_latency'] - io_latency 
+
+    logging.info("IO延迟数据获取和处理完成。")
 
     df = pd.DataFrame(all_results)
     
@@ -139,7 +166,6 @@ def analyze_workflow_performance(system_mode, workflow, client_cnt):
     results_dir = script_dir / 'results'
     results_dir.mkdir(parents=True, exist_ok=True)
     raw_output_file = results_dir / f"{system_mode}_raw_details.csv"
-    # 如果文件已存在，则追加；否则创建新文件
     df.to_csv(raw_output_file, mode='a', header=not raw_output_file.exists(), index=False)
     logging.info(f"Saved/Appended raw results for {system_mode} to {raw_output_file}")
     
@@ -174,21 +200,18 @@ if __name__ == '__main__':
     results_dir = script_dir / 'results'
     results_dir.mkdir(exist_ok=True)
     
-    system_modes_to_test = ["PESSIMISTIC", "OPTIMISTIC"]
+    system_modes_to_test = "OPTIMISTIC"
     
     # 在开始新的一轮测试前，可以选择性地清空旧的汇总文件
     summary_file_to_clear = results_dir / "summary_results.csv"
     if summary_file_to_clear.exists():
         summary_file_to_clear.unlink()
         logging.info(f"Cleared old summary file: {summary_file_to_clear}")
-
-    for mode in system_modes_to_test:
-        # 清理特定模式的原始数据文件
-        raw_file_to_clear = results_dir / f"{mode}_raw_details.csv"
-        if raw_file_to_clear.exists():
-            raw_file_to_clear.unlink()
-            logging.info(f"Cleared old raw details file for {mode}: {raw_file_to_clear}")
-            
-        analyze_workflow_performance(mode, workflow_to_test, CLIENT_CNT)
+        
+    raw_file_to_clear = results_dir / f"{system_modes_to_test}_raw_details.csv"
+    if raw_file_to_clear.exists():
+        raw_file_to_clear.unlink()
+        logging.info(f"Cleared old raw details file for {system_modes_to_test}: {raw_file_to_clear}")
+    analyze_workflow_performance(system_modes_to_test, workflow_to_test, CLIENT_CNT)
 
     logging.info("\n=== Execution Complete ===")

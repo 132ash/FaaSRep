@@ -82,7 +82,7 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'repair': False,
         'retry': retry
     }
-    #log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
+    log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
     requests.post(url, json=data)
 
 def clear_mem(ip, transaction_id, workflow_name, abort=False):
@@ -118,7 +118,7 @@ def run():
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    #log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
+    log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
     start = time.time()
     aborted = False
     retry = False
@@ -127,32 +127,28 @@ def run():
         exec_first_run_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
-            #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
+            log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
             clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
             gevent.joinall(clear_jobs)
             break
         #     txTable.resetTX(transaction_id)
         # retry = True
     if aborted:
-        return json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
-    res = repo.get_result(transaction_id, workflow)
-    first_run_finish_time, repair_start_time, repair_finish_time = txTable.finishTX(transaction_id)
-    end = time.time()
-    first_run_latency = first_run_finish_time - start
-    time_inside_validator = repair_start_time - first_run_finish_time
-    time_repair = repair_finish_time - repair_start_time
-    time_commit = end - repair_finish_time
-    #log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
-        # clear memory and other stuff
+        message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
+    else:
+        res = repo.get_result(transaction_id, workflow)
+        first_run_finish_time, repair_start_time, repair_finish_time = txTable.finishTX(transaction_id)
+        end = time.time()
+        first_run_latency = first_run_finish_time - start
+        time_inside_validator = repair_start_time - first_run_finish_time
+        time_repair = repair_finish_time - repair_start_time
+        time_commit = end - repair_finish_time
+        log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}")
+        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit})
     if config.CLEAR_MEM:
-        worker_addrs = workflow_metadata['all_addrs']
-        jobs = []
-        for ip in worker_addrs:
-            jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
-        gevent.joinall(jobs)
-
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit})
-
+        clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
+        gevent.joinall(clear_jobs)
+    return message
 
 @app.route('/notify', methods = ['POST'])
 def notify():

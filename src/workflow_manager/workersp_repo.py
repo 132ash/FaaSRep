@@ -41,6 +41,7 @@ class DynamoDBClient:
             return None, None
 
     def store_data_to_db(self, key, version, value):
+        print(f"Storing key: {key}, version: {version}, value: {value} to DynamoDB")
         self.table.put_item(
             Item={
                 'key': key,
