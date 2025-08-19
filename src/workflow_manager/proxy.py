@@ -94,17 +94,11 @@ class Dispatcher:
         log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states)
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set) -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
-
-    def trigger_crosstx_function(self, workflow_name, function_name, transaction_id):
-        self.managers[workflow_name].crosstx_trigger_function(transaction_id, function_name)
-
-    def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode):
-        self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode)
 
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
@@ -126,32 +120,6 @@ dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 if config.FILLUP_CACHE:
     repo.fillup_cache()
 
-
-# trigger a reserved container. If fail, run another container.
-@app.route('/repair', methods = ['POST'])
-def repair():
-    data = request.get_json(force=True, silent=True)
-    batch_id = data['batch_id']
-    transaction_id = data['transaction_id']
-    workflow_name = data['workflow_name']
-    function_name = data['function_name']
-    repair_mode = data['repair_mode']
-    no_parent_execution = data['no_parent_execution']
-    port = data['port']
-    ##log_message(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
-    dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
-    return json.dumps({'status': 'ok'})
-
-
-@app.route('/crosstx_req', methods = ['POST'])
-def crosstx_req():
-    data = request.get_json(force=True, silent=True)
-    function_name = data['function_name']
-    transaction_id = data['transaction_id']
-    workflow_name = data['workflow_name']
-    dispatcher.trigger_crosstx_function(workflow_name, function_name, transaction_id)
-    return json.dumps({'status': 'ok'})
-
 # a new request from outside
 # the previous function was done
 @app.route('/request', methods = ['POST'])
@@ -164,18 +132,13 @@ def req():
     no_parent_execution = data['no_parent_execution']
     retry_after_abort = data.get('retry', False)
     # collected repair metadata, transported between functions. 
-    container_port = data.get('container_port', {})
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
-    RYW_subjection = data.get('RYW_subjection', {})
     # data for repair
     batch_id = data.get('batch_id', "")
-    repair = data.get('repair', False)
-    repair_mode = data.get('repair_mode', "")
-    repair_states = data.get('repair_states', {})
     # if repair:
         ##log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
+    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, read_set, write_set)
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -185,52 +148,18 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    abort_clear = data.get('abort', False)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
-    if abort_clear:
-        if FAST_PATH:
-            ##log_message(f"transaction {transaction_id} abort, return its containers to pool.")
-            dispatcher.reserve_pools[workflow_name].release([transaction_id])
-    else:
-        dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
+    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
 
-@app.route('/prepare', methods = ['POST'])
-def prepare():
-    data = request.get_json(force=True, silent=True)
-    repair_metadata = data['repair_metadata'] # {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
-    
-    # update cache on this node.
-    repo.update_cache(data['expired_keys'])
-    if repair_metadata:
-        repo.fillup_repair_matadata(repair_metadata)
-
-    return json.dumps({'status': 'ok'})
-
-# commit data on this node, and return the containers to the pool
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
-    commit_list = data['commit_list']
-    aborted_txs = commit_list['aborted_txs']
-    if FAST_PATH:
-        workflow_name = data['workflow_name']
-        fin_tx_list = commit_list['txs']
-        #log_message(f"transactions {fin_tx_list} committing, release containers.")
-        dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
-    repo.commit_tx_writes(commit_list['keys'])
-    repo.clear_aborted_txs(aborted_txs)
+    commit_keys = data['commit_keys']
+    expired_keys = data['expired_keys']
+    repo.update_cache(expired_keys)
+    repo.commit_tx_writes(commit_keys)
     #log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")
-    return json.dumps({'status': 'ok'})
-
-@app.route('/release', methods = ['POST'])
-def release():
-    data = request.get_json(force=True, silent=True)
-    tx_lists = data['tx_lists']
-    workflow_name = data['workflow_name']
-    for fin_tx_list in tx_lists:
-        ##log_message(f"transactions {fin_tx_list} commited, release containers.")
-        dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     return json.dumps({'status': 'ok'})
 
 

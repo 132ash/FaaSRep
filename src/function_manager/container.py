@@ -1,7 +1,7 @@
 import requests
 import docker
 import time
-import logging
+import config.config as config
 import gevent
 import redis
 import os
@@ -120,10 +120,9 @@ class Container:
         return r.json()
 
     # initialize the container
-    def init(self, host_addr, workflow_name, function_name, transaction_sink_addr,validator_addr, node_list, input,output,parent_cnt, function_pos, port, fast_path_enabled=False, optimistic_repair=False):
-        data = { 'host_addr':host_addr, 'workflow': workflow_name, 'function': function_name , 'sink':transaction_sink_addr, 'validator':validator_addr,
-                "node_list": node_list, "fast_path_enabled":fast_path_enabled, 'optimistic_repair':optimistic_repair,
-                "input": input, "output": output, 'parent_cnt':parent_cnt, "function_pos": function_pos, 'port':port}
+    def init(self, host_addr, workflow_name, function_name, node_list, input,output, function_pos):
+        data = { 'host_addr':host_addr, 'workflow': workflow_name, 'function': function_name,
+                "node_list": node_list,"input": input, "output": output, "function_pos": function_pos, 'cache_enable':config.CACHE_ENABLED}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

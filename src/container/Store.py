@@ -29,25 +29,19 @@ class Store:
             os.system('rm -rf work')
         os.mkdir('work')
 
-    def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, function_pos,validator_addr):
+    def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, function_pos,input, output):
         self.function_name = function_name
         self.redis_shadow_table = shadow_table
         self.redis_cache = cache
         self.function_pos = function_pos
-        self.fast_path_enabled = fast_path_enabled
         self.db_server = db_server
-        self.validator_addr = validator_addr
-
-    def runtime_init(self, input, output, is_repair, transaction_id, metadata):
-        self.transaction_id = transaction_id
         self.input = input
         self.output = output
+
+    def runtime_init(self, transaction_id, metadata):
+        self.transaction_id = transaction_id
         self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
-        self.RYW_subjection_collect = metadata['RYW_subjection']
-        self.keys_from_RYW = metadata['keys_from_RYW']
-        self.keys_from_upstream = metadata['keys_from_upstream']
-        self.is_repair = is_repair
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode, txid=None):
@@ -112,31 +106,14 @@ class Store:
         value = None
         start = time.time()
         # first run, check RYW subjection.
-        if not self.is_repair:
-            upstream_func = self.write_set.get(key, "")
-            if upstream_func:
-                upstream_ip = self.function_pos[upstream_func]
-                value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                self.RYW_subjection_collect[key] = upstream_func
-            else:
-                value_version_pair =  self.redis_cache.cache_get(key)
-                self.read_set[key] = value_version_pair["version"]
-                value = value_version_pair["value"]
-        # SECOND run or not RYW, read from cache or shadow table.
+        upstream_func = self.write_set.get(key, "")
+        if upstream_func:
+            upstream_ip = self.function_pos[upstream_func]
+            value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
         else:
-            if self.keys_from_RYW.get(key, None):
-                print(f"[REPAIR RYW] Fetching from RYW for key: {key}, keys_from_RYW:{self.keys_from_RYW}", flush=True)
-                upstream_func = self.keys_from_RYW[key]
-                upstream_ip = self.function_pos[upstream_func]
-                value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-            elif self.keys_from_upstream.get(key, None):
-                print(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}", flush=True)
-                value = self.redis_shadow_table.self_get(self.param_wrapper(self.function_name, key, 'UPSTREAM'))
-            else:
-
-                value_version_pair =  self.redis_cache.cache_get(key)
-                self.read_set[key] = value_version_pair["version"]
-                value = value_version_pair["value"]
+            value_version_pair =  self.redis_cache.cache_get(key)
+            self.read_set[key] = value_version_pair["version"]
+            value = value_version_pair["value"]
         end = time.time()
         self.io_latency += (end - start)
         return value

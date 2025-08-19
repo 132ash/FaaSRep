@@ -11,8 +11,6 @@ import time
 from serializer import SerializerProcess
 import requests
 from multiprocessing import Process, Queue
-from repair_info import RepairInfo
-from repair_engine import RepairEngine
 from validator_repo import Repository
 
 sys.path.append('../../config')
@@ -49,7 +47,6 @@ class ValidatorPool:
         self.handler_task_queues = []
         self.serializer_return_pipes = []
         self.workflow_name = workflow_name
-        self.batch_processor_table = {}  # {batch_id: processor_id}
         self.function_pos = {}
         function_info = self.repo.get_function_info(self.repo.get_all_functions(self.workflow_name), self.workflow_name)
         for func, info in function_info.items():
@@ -121,19 +118,9 @@ class ValidatorProcess(Process):
             self.workflow_graph_topo[func] = info['next']
             self.worker_ip_set.add(info['ip'])
         self.worker_ip_set = list(self.worker_ip_set)
-        self.tx_sink_addr = extract_ip(self.function_pos[self.repo.get_end_function(self.workflow_name)])
-        self.repair_info = RepairInfo(self.logger, self.workflow_graph_topo,  self.function_pos)
-        self.repair_engine = RepairEngine(self.logger, self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
         self.response_events = {} 
         self.register_lock = gevent.lock.BoundedSemaphore()
         self.response_lock = gevent.lock.BoundedSemaphore()
-        self.tx_list_per_batch = {}
-        self.container_port_per_batch = {} 
-        self.read_set_per_batch = {}
-        self.write_set_per_batch = {}
-        self.successed_tx_list_per_batch = {}  # {batch_id: [tx_id1, tx_id2, ...]}
-        self.aborted_tx_list_per_batch = {}
-        self.time_tuple_per_batch = {}  # {batch_id: (first_run_finish_time, last_task_time)} 
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
         last_task_time = time.time()
         while True:
@@ -149,44 +136,11 @@ class ValidatorProcess(Process):
         last_task_time = time.time()
         if op == VALIDATE:
             batch = data['batch'] 
-            self.register_lock.acquire()
             first_run_finish_time = data['first_run_finish_time']
-            self.tx_list_per_batch[batch_id] = batch['transaction_list']
-           # log_message(self.logger, f"[VALIDATE] Batch {batch_id} with batch size: {len(batch['transaction_list'])}")
-            self.successed_tx_list_per_batch[batch_id] = {txid:True for txid in batch['transaction_list']}
-            self.aborted_tx_list_per_batch[batch_id] = []
-            self.read_set_per_batch[batch_id] = batch['read_set']
-            self.write_set_per_batch[batch_id] = batch['write_set']
-            self.container_port_per_batch[batch_id] = batch['container_port']
-            expired_keys_per_ip, inside_validator_time, pessi_sink_info = self.validate(batch_id, batch, last_task_time)
-            self.time_tuple_per_batch[batch_id] = (first_run_finish_time, last_task_time, inside_validator_time)
-            self.register_lock.release()
-            self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
-
-        elif op == REPAIR_FINISH:
-            batch_finished = data['batch_finished']
-            pessi_repair_txs = data['pessi_repair_txs']
-            aborted_txs = data['aborted_txs']
-            # {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}
-            self.aborted_tx_list_per_batch[batch_id].extend(aborted_txs)
-            self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, aborted_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
-            if batch_finished:
-                commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
-                ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
-                self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
-            else:
-                self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
-        elif op == CASCADED_COMMIT:
-            txid_lists = [self.successed_tx_list_per_batch[batch_id] for batch_id in data]
-            timestamps = [self.time_tuple_per_batch[batch_id] for batch_id in data]
-            if FAST_PATH_ENABLED:
-                jobs = [
-                    gevent.spawn(requests.post, url=f"http://{worker_ip}/release", json={"tx_lists":txid_lists, 'workflow_name':self.workflow_name})
-                    for worker_ip in self.worker_ip_set
-                    ]
-                gevent.joinall(jobs)
-            self.clean_batch_info(data)
-            self.notify_gateway(txid_lists, True, timestamps)
+            inside_validator_time, version, commitable_keys, expired_set, succeeded_txs, abort_txs = self.validate(batch_id, batch, last_task_time)
+            validate_time_tuple = (first_run_finish_time, last_task_time, inside_validator_time)
+            self.commit_tx_list(version, commitable_keys, expired_set)
+            self.notify_gateway(commitable_keys, True, succeeded_txs, validate_time_tuple, abort_txs)
 
                         
     def serializer_request(self, batch_id, op, data):
@@ -199,57 +153,27 @@ class ValidatorProcess(Process):
         return serilizer_res
 
     def validate(self, batch_id, batch, start_time):
-        self.repair_info.batch_init(batch_id)
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
-        expired_keys, subjection_set, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
-        expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
-        #log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
-        return expired_keys_per_ip, time.time() - start_time, pessi_sink_info
+        version, commitable_keys,expired_set, succeeded_txs, abort_txs = self.serializer_request(batch_id, VALIDATE, serializer_input)
+        return time.time() - start_time,  version, commitable_keys, expired_set, succeeded_txs, abort_txs
 
-    def clean_batch_info(self, batch_id_list):
-        #log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
-        for batch_id in batch_id_list:
-            self.tx_list_per_batch.pop(batch_id, None)
-            self.time_tuple_per_batch.pop(batch_id, None)
-            self.read_set_per_batch.pop(batch_id, None)
-            self.write_set_per_batch.pop(batch_id, None)
-            self.aborted_tx_list_per_batch.pop(batch_id, None)
-            self.successed_tx_list_per_batch.pop(batch_id, None)
-            self.repair_engine.clean_table_of_batch(batch_id)
-            self.container_port_per_batch.pop(batch_id, None)
+    def commit_tx_list(self, version, commitable_keys, expired_set):
+        worker_commit_set = {worker_ip:{'commit_keys':[], 'expired_keys':[]} for worker_ip in self.worker_ip_set}
+        for key, expired_func_info in expired_set.items():
+            for expired_func in expired_func_info:
+                worker_commit_set[self.function_pos[expired_func]]['expired_keys'].append(key)
+        for key, key_info in commitable_keys.items():
+            txid = key_info[0]
+            func = key_info[1]
+            worker_commit_set[self.function_pos[func]]['commit_keys'].append([f'{txid}:PUT:{func}:{key}', version])
+        #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+        jobs = [
+            gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
+            for ip in worker_commit_set
+        ]
+        gevent.joinall(jobs)
 
-    # commit_batch_list : [(batch_id, version), ...]
-    def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
-        if commit_batch_list:
-            txid_lists, timestamps, abort_txs = [], [], []
-            worker_commit_set = {worker_ip:{'keys':[], 'txs':[], 'aborted_txs': []} for worker_ip in self.worker_ip_set}
-            for key, commit_key_info in keys_for_commit_per_ip.items():
-                writer_tx_id, writer_func, version = commit_key_info
-                target_ip = self.function_pos[writer_func]
-                worker_commit_set[target_ip]['keys'].append([f'{writer_tx_id}:PUT:{writer_func}:{key}', version])
-
-            for batch_id in commit_batch_list:
-                timestamps.append(self.time_tuple_per_batch[batch_id])
-                successed_tx_list = self.successed_tx_list_per_batch[batch_id]
-                txid_lists.append(successed_tx_list)
-                aborted_txs_this_batch = self.aborted_tx_list_per_batch.get(batch_id, [])
-                abort_txs.extend(aborted_txs_this_batch)
-                for worker_ip in self.worker_ip_set:
-                    worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
-                    worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
-            
-            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
-            jobs = [
-                gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
-                for ip in worker_commit_set
-            ]
-            gevent.joinall(jobs)
-            self.repair_engine.sink_release_optimistic_info(commit_batch_list)
-            self.notify_gateway(txid_lists, True, timestamps, abort_txs)
-            self.clean_batch_info(commit_batch_list)
-
-
-    def trigger_worker_commit(self, ip, commit_list):
+    def trigger_worker_commit(self, ip, worker_commit_set):
         if not ip.endswith(":7500"):
             url = f"http://{ip}:7500/commit"
         else:
@@ -257,18 +181,19 @@ class ValidatorProcess(Process):
         
         data = {
             'workflow_name': self.workflow_name,
-            "commit_list": commit_list
+            "commit_keys": worker_commit_set['commit_keys'],
+            'expired_keys': worker_commit_set['expired_keys']
         }
 
         requests.post(url, json=data)
 
-    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs=[]):
+    def notify_gateway(self, commited_txs, timestamps, aborted_txs):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
         data = {
-            'transaction_id_lists': txid_lists,
-            'success': success,
+            'commited_txs': commited_txs,
             'timestamps':timestamps,
-            'aborted_txs': aborted_txs
+            'aborted_txs': aborted_txs,
+            'from_validator': True
         }
         r = requests.post(url, json=data)
         return r.json() 

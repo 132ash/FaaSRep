@@ -42,9 +42,11 @@ WORKFLOW_YAML_ADDR = {
                     #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 # cache setting
+CACHE_ENABLED = True
 CLEAR_MEM = True
 FILLUP_CACHE = False
 EXPIRED_CACHE = True
+
 
 # validator setting
 VALIDATORS_PER_POOL = 4
@@ -53,19 +55,6 @@ BATCH_TIMEOUT = 0.045
 
 # batch setting
 BATCH_SIZE = 1
-
-# mode setting
-FAST_PATH = True
-OPTIMISTIC_REPAIR = True
-
-
-# repair setting
-RUNNING = '1'
-REPAIRED = '2'
-ABORTED = '3'
-
-OPT_REPAIR = 1
-PESSI_REPAIR = 2
 
 DEFAULT_CONTAINER_NUM = 4
 CLEAR_MEM = True

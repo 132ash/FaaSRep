@@ -1,12 +1,9 @@
-import logging
 import time
 import math
 from gevent import event
-import sys
 from function_info import FunctionInfo
-from container import Container, ContainerPool
-sys.path.append('../../config')
-import config
+from  function_manager.container import Container, ContainerPool
+import config.config as config
 # data structure for request info
 class RequestInfo:
     def __init__(self, transaction_id, data):
@@ -19,7 +16,7 @@ exec_lifetime = 600
 
 # manage a function's container pool
 class Function:
-    def __init__(self, host_addr, client, transaction_sink_addr, function_info:FunctionInfo, port_controller, node_list, default_container_num, reserve_pool, input, output, parent_cnt, function_pos):
+    def __init__(self, host_addr, client, transaction_sink_addr, function_info:FunctionInfo, port_controller, node_list, default_container_num, input, output, function_pos):
         self.host_addr = host_addr
         self.client = client
         self.info:FunctionInfo = function_info
@@ -28,17 +25,12 @@ class Function:
         self.port_controller = port_controller
         self.node_list = node_list
         self.default_container_num = default_container_num
-        self.reserve_pool = reserve_pool
         self.input = input
         self.output = output    
-        self.parent_cnt = parent_cnt
         self.function_pos = function_pos
         
         self.num_processing = 0
         self.rq = []
-        self.FAST_PATH = config.FAST_PATH
-        self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
-
 
 
         # container pool
@@ -53,9 +45,8 @@ class Function:
             print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
         
     # put the request into request queue
-    def send_request(self, transaction_id, write_set, is_repair,repair_mode,batch_id, repair_states):
-        data = {'transaction_id': transaction_id, 'repair': is_repair, 'batch_id':batch_id, 'repair_mode':repair_mode,
-                 'write_set':write_set, 'repair_states':repair_states}
+    def send_request(self, transaction_id, write_set):
+        data = {'transaction_id': transaction_id,'write_set':write_set}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()
@@ -89,13 +80,7 @@ class Function:
         res['port'] = container.port
         req.result.set(res)
         
-        # 3. in fastpath, reserve the container into reserve pool
-        # else, return the container to pool
-        if self.FAST_PATH:
-            # if the container is not used in fast path, reserve it into reserve pool
-            self.reserve_pool.reserve(req.transaction_id, container)
-        else:
-            self.container_pool.put(container)
+        self.container_pool.put(container)
 
 
     # create a new container
@@ -125,7 +110,7 @@ class Function:
 
     # do the function specific initialization work
     def init_container(self, container: Container):
-        container.init(self.host_addr, self.info.workflow_name, self.info.function_name, self.transaction_sink_addr, self.validator_addr, self.node_list, self.input,self.output,self.parent_cnt, self.function_pos, container.port, self.FAST_PATH, self.OPTIMISTIC_REPAIR)
+        container.init(self.host_addr, self.info.workflow_name, self.info.function_name, self.node_list, self.input,self.output, self.function_pos)
 
     # do the repack and cleaning work regularly
     def repack_and_clean(self, all_pool=False):

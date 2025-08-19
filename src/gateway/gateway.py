@@ -122,50 +122,42 @@ def run():
     start = time.time()
     aborted = False
     retry = False
+    active_abort=False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
-        aborted = txTable.waitTX(transaction_id)
+        aborted, active_abort = txTable.waitTX(transaction_id)
         if aborted:
             #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
-            clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
-            gevent.joinall(clear_jobs)
-            break
-        #     txTable.resetTX(transaction_id)
-        # retry = True
-    if aborted:
+            if not active_abort:
+                txTable.resetTX(transaction_id)   
+            else:
+                break
+        retry = True
+    end = time.time()
+    if config.CLEAR_MEM:
+        clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
+        gevent.joinall(clear_jobs)
+    if aborted and active_abort: 
         return json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
     res = repo.get_result(transaction_id, workflow)
     first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
-    end = time.time()
     first_run_latency = first_run_finish_time - start
-    #log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
-        # clear memory and other stuff
-    if config.CLEAR_MEM:
-        worker_addrs = workflow_metadata['all_addrs']
-        jobs = []
-        for ip in worker_addrs:
-            jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
-        gevent.joinall(jobs)
-    
     return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
 
 
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id_lists = data['transaction_id_lists']
-    timestamps = data['timestamps']
-    aborted_txs_from_validator = data.get('aborted_txs', [])
-    if aborted_txs_from_validator:
-        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True)
-    for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
-        if data.get('abort', False):
-            txTable.notifyTX(transaction_id_list, 0,0, 0, True)
-        else:
-            first_run_finish_time, validate_start_time, validate_time_inside_validator = timestamp_per_batch
-            end_time = time.time()
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - validate_start_time, validate_time_inside_validator)  
+    from_validator = data.get('from_validator', False)
+    # abort or commited from validator
+    if from_validator:
+        aborted_txs_from_validator = data.get('aborted_txs', [])
+        commited_txs_from_validator = data.get('commited_txs', [])
+        first_run_finish_time, validate_start_time, validate_time_inside_validator = data.get('timestamps', [])
+        txTable.notifyTX(commited_txs_from_validator, aborted_txs_from_validator, first_run_finish_time, time.time() - validate_start_time, validate_time_inside_validator, False)
+    else:
+        txTable.notifyTX([], data.get('aborted_txs', []), 0, 0, 0, True)  # this is for the case when the transaction is aborted by the app itself.
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

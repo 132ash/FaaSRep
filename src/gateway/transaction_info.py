@@ -12,7 +12,7 @@ class RunningTXTable:
         self.running_txs = {}
     
     def registerTX(self, workflow, tx_id, tx_params):
-        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'concord':False}
+        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False,'active_abort':False,"cond":event.Event(), 'concord':False}
 
     def finishTX(self, tx_id):
         validate_latency = self.running_txs[tx_id]["validate_latency"]
@@ -27,9 +27,8 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
         if self.running_txs[tx_id]['abort']:
-            print(f"transaction {tx_id} aborted")
-            return True
-        return False
+            return True, self.running_txs[tx_id]['active_abort']
+        return False, False
     
     def resetTX(self, tx_id):
         self.running_txs[tx_id]['abort'] = False
@@ -40,17 +39,15 @@ class RunningTXTable:
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
 
-    def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
-        if abort:
-            for tx_id in transaction_id_list:
-                self.running_txs[tx_id]['abort'] = True
-                self.running_txs[tx_id]['finished'] = True
-                self.running_txs[tx_id]['cond'].set()
-        else:
-            for tx_id in transaction_id_list:
-                condition = self.running_txs[tx_id]['cond']
-                self.running_txs[tx_id]['finished'] = True
-                self.running_txs[tx_id]["first_run_finish_time"] = first_run_finish_time
-                self.running_txs[tx_id]["validate_latency"] = validate_latency
-                self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
-                condition.set()
+    def notifyTX(self, commited_txs, aborted_txs, first_run_finish_time, validate_latency, validate_time_inside_validator, self_abort = False):
+        for tx_id in aborted_txs:
+            self.running_txs[tx_id]['abort'] = True
+            self.running_txs[tx_id]['finished'] = True
+            self.running_txs[tx_id]['active_abort'] = self_abort
+            self.running_txs[tx_id]['cond'].set()
+        for tx_id in commited_txs:
+            self.running_txs[tx_id]['finished'] = True
+            self.running_txs[tx_id]["first_run_finish_time"] = first_run_finish_time
+            self.running_txs[tx_id]["validate_latency"] = validate_latency
+            self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
+            self.running_txs[tx_id]['cond'].set()

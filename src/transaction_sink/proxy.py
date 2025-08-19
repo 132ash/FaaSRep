@@ -50,57 +50,18 @@ class Dispatcher:
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
        gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
-
-    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair=False):
-        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state, skip_repair)
-
-    def register_repair_info_after_validate(self, workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx):
-        return self.sinks[workflow_name].register_repair_info_after_validate(batch_id, batch_sub, tx_sub, sub_per_tx)
     
     def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection):
         self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection)
 
-    def sink_release_optimistic_info(self, workflow_name, batch_list):
-        self.sinks[workflow_name].clear_opt_table_after_finish(batch_list)
 
     def _validate_loop(self):
         gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
         for sink in self.sinks.values():
             gevent.spawn(sink.validate_batch_check)
 
-
-
 dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 
-@app.route('/fin_repair', methods = ['POST'])
-def fin_repair():
-    data = request.get_json(force=True, silent=True)
-    batch_id = data['batch_id']
-    workflow_name = data['workflow_name']
-    transaction_id = data['transaction_id']
-    repair_mode = data['repair_mode']
-    skip_repair = data.get('skip_repair', False)
-    # logging.info(f"[FIN REPAIR] workflow: {workflow_name}, batch_id: {batch_id}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
-    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED, skip_repair)
-    return json.dumps({'status': 'ok'})
-
-@app.route('/abort', methods = ['POST'])
-def abort():
-    data = request.get_json(force=True, silent=True)
-    workflow_name = data['workflow_name']
-    transaction_id = data['transaction_id']
-    # logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}")
-    if data.get('repair', False):
-        dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED)
-    else:
-        notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
-        payload = {
-            'transaction_id_lists': [[transaction_id]],
-            'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
-            'abort': True
-        }
-        requests.post(notify_url, json=payload)
-    return json.dumps({'status': 'ok'})
 
 @app.route('/validate', methods = ['POST'])
 def validate():
@@ -112,25 +73,6 @@ def validate():
     container_port = data['container_port']
     RYW_subjection = data.get('RYW_subjection', {})
     dispatcher.validate_transaction(workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection)
-    return json.dumps({'status': 'ok'})
-
-@app.route('/repair_pessi', methods = ['POST'])
-def repair_pessimistic():
-    data = request.get_json(force=True, silent=True)
-    workflow_name = data['workflow_name']
-    batch_id = data['batch_id']
-    batch_sub =  data['batch_sub']
-    tx_sub =  data['tx_sub']  
-    sub_per_tx = data.get('whole_tx_sub', {})
-    res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
-    return res
-
-@app.route('/release_opt', methods = ['POST'])
-def release_opt_table():
-    data = request.get_json(force=True, silent=True)
-    batch_list = data['batch_list']
-    workflow_name = data['workflow_name']
-    dispatcher.sink_release_optimistic_info(workflow_name, batch_list)
     return json.dumps({'status': 'ok'})
 
 # python3 proxy.py  10.2.30.50 6000

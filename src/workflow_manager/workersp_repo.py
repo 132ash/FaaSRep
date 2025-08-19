@@ -5,7 +5,6 @@ import redis
 import boto3
 from typing import Dict, List, Any
 from datetime import datetime
-from subjection_collector import SubjectionCollector
 import sys
 import json
 
@@ -61,17 +60,10 @@ class Repository:
                     host:redis.StrictRedis(host=config.REDIS_HOST, port=config.REDIS_PORT, db=config.SHADOWTABLE_DB, decode_responses=True)
                     for host in self.get_all_addrs('common')
                     }
-        self.subjection_collector:SubjectionCollector = None
 
     def shadowtable_init(self, ip):
         self.ip = ip
-        self.subjection_collector = SubjectionCollector(
-            shadow_table=self.shadowtable_redis_all_addr, 
-            ip=self.ip,
-            cache_redis = self.cache_redis,
-            db_server = self.data_db
-        )
-        
+
     # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
     def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
         db = self.couch[mode]
@@ -118,7 +110,6 @@ class Repository:
         else:
             self.shadowtable_redis_all_addr[self.ip].flushall(True)
             self.cache_redis.flushall(True)
-            remain_keys_len = len(self.cache_redis.keys("*")) 
 
     def clear_db(self, transaction_id):
         db = self.couch['results']
