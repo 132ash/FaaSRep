@@ -130,11 +130,12 @@ class WorkerSPManager:
         self.lock.release()
     
     def commit_writes(self, transaction_id, write_set) -> None:
+        WORKERSP_PORT = config.WORKERSP_PORT
         commit_keys = {ip: {"transaction_id": transaction_id, "keys": []} for ip in self.node_list}
         for key, func in write_set.items():
             func_ip = self.function_pos[func]
             commit_keys[func_ip]["keys"].append([func, key])
-        commit_jobs = [gevent.spawn(requests.post, f'http://{ip}/commit', json=job) for ip, job in commit_keys.items() if job["keys"]]
+        commit_jobs = [gevent.spawn(requests.post, f'http://{ip}:{WORKERSP_PORT}/commit', json=job) for ip, job in commit_keys.items() if job["keys"]]
         gevent.joinall(commit_jobs)
         notify_url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
         data = {"transaction_id": transaction_id, "aborted": False, 'timestamps':[time.time(), time.time(), 0]}
