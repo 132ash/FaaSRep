@@ -129,24 +129,25 @@ class WorkerSPManager:
             del self.states[transaction_id]
         self.lock.release()
     
-    def validate_tx(self, transaction_id, read_set, write_set) -> None:
-        url = 'http://{}/validate'.format(self.transaction_sink_addr)
-        data = {
-            'transaction_id': transaction_id,
-            'workflow_name': self.workflow_name,
-            'read_set': read_set,
-            'write_set': write_set
-        }
-        requests.post(url, json=data)
+    def commit_writes(self, transaction_id, write_set) -> None:
+        commit_keys = {ip: {"transaction_id": transaction_id, "keys": []} for ip in self.node_list}
+        for key, func in write_set.items():
+            func_ip = self.function_pos[func]
+            commit_keys[func_ip]["keys"].append([func, key])
+        commit_jobs = [gevent.spawn(requests.post, f'http://{ip}/commit', json=job) for ip, job in commit_keys.items() if job["keys"]]
+        gevent.joinall(commit_jobs)
+        notify_url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
+        data = {"transaction_id": transaction_id, "aborted": False, 'timestamps':[time.time(), time.time(), 0]}
+        requests.post(notify_url, json=data)
 
-    def active_abort_tx(self,transaction_id):
+    def abort_tx(self, transaction_id):
         url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        data = {"aborted_txs":[transaction_id]}
+        data = {"transaction_id": transaction_id, "aborted": True}
         requests.post(url, json=data)
 
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
-            self.validate_tx(state.transaction_id, state.read_set, state.write_set)
+            self.commit_writes(state.transaction_id, state.write_set)
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -180,7 +181,6 @@ class WorkerSPManager:
             'function_name': function_name,
             'no_parent_execution': no_parent_execution,
             # collected for validation. updated only in first run. 
-            'read_set': state.read_set,
             'write_set': state.write_set
         }
         requests.post(remote_url, json=data)
@@ -199,7 +199,7 @@ class WorkerSPManager:
         # if function in repair mode and not dirty, skip running
         successful = self.run_normal(state, info)
         if not successful:
-            self.active_abort_tx(state.transaction_id)
+            self.abort_tx(state.transaction_id)
             return
         state.lock.acquire()
         state.parent_executed[function_name] = 0
@@ -229,7 +229,6 @@ class WorkerSPManager:
         self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
         self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         # #log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
-        state.read_set[info["function_name"]] = res["read_set"]
         state.lock.release()
         return True
 

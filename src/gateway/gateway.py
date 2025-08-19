@@ -122,20 +122,12 @@ def run():
     start = time.time()
     aborted = False
     retry = False
-    active_abort=False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
-        aborted, active_abort = txTable.waitTX(transaction_id)
-        if aborted:
-            #log_message(f"[ABORT] transaction {transaction_id} aborted, active_abort: {active_abort}")
-            if not active_abort:
-                txTable.resetTX(transaction_id)   
-            else:
-                break
-        retry = True
+        aborted = txTable.waitTX(transaction_id)
     end = time.time()
-    if aborted and active_abort: 
+    if aborted:
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
     else:
         #log_message(f"[FINISH] transaction {transaction_id} finished, e2e latency: {end-start}, exec_first_latency: {exec_first_latency}")
@@ -151,15 +143,14 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    from_validator = data.get('from_validator', False)
+    transaction_id = data['transaction_id']
+    aborted = data['aborted']
     # abort or commited from validator
-    if from_validator:
-        aborted_txs_from_validator = data.get('aborted_txs', [])
-        commited_txs_from_validator = data.get('commited_txs', [])
+    if not aborted:
         first_run_finish_time, validate_start_time, validate_time_inside_validator = data.get('timestamps', [])
-        txTable.notifyTX(commited_txs_from_validator, aborted_txs_from_validator, first_run_finish_time, time.time() - validate_start_time, validate_time_inside_validator, False)
+        txTable.notifyTX(transaction_id, first_run_finish_time, time.time() - validate_start_time, validate_time_inside_validator, False)
     else:
-        txTable.notifyTX([], data.get('aborted_txs', []), 0, 0, 0, True)  # this is for the case when the transaction is aborted by the app itself.
+        txTable.notifyTX(transaction_id, 0, 0, 0, True)  # this is for the case when the transaction is aborted by the app itself.
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

@@ -159,10 +159,9 @@ def clear():
 @app.route('/commit', methods = ['POST'])
 def commit():
     data = request.get_json(force=True, silent=True)
-    commit_keys = data['commit_keys']
-    expired_keys = data['expired_keys']
-    repo.update_cache(expired_keys)
-    repo.commit_tx_writes(commit_keys)
+    commit_keys = data['keys']
+    transaction_id = data['transaction_id']
+    repo.commit_tx_writes(transaction_id, commit_keys)
     #log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")
     return json.dumps({'status': 'ok'})
 

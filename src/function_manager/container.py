@@ -124,7 +124,7 @@ class Container:
     # initialize the container
     def init(self, host_addr, workflow_name, function_name, node_list, input,output, function_pos):
         data = { 'host_addr':host_addr, 'workflow': workflow_name, 'function': function_name,
-                "node_list": node_list,"input": input, "output": output, "function_pos": function_pos, 'cache_enable':config.CACHE_ENABLED}
+                "node_list": node_list,"input": input, "output": output, "function_pos": function_pos}
         r = requests.post(base_url.format(self.port, 'init'), json=data)
         self.lasttime = time.time()
         return r.status_code == 200

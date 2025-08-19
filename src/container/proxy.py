@@ -46,19 +46,18 @@ class Runner:
         self.transaction_id = None
         self.write_set = {}
 
-    def init(self, host_addr, workflow, function, node_list,input,output,function_pos, cache_enable):
+    def init(self, host_addr, workflow, function, node_list,input,output,function_pos):
         # update function status
         self.host_addr = host_addr
         self.workflow = workflow
         self.function = function
         self.input = input
-        self.cache_enable = cache_enable
         self.output = output
         self.function_pos = function_pos
         # shadow table on each host
         self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
         # local cache
-        self.cache = RedisCache(container_config.REDIS_CACHE_PORT, container_config.REDIS_CACHE_DB, db_server, cache_enable)
+        self.cache = RedisCache(container_config.REDIS_CACHE_PORT, container_config.REDIS_CACHE_DB, db_server)
         os.chdir(work_dir)
         # compile first
         filename = os.path.join(work_dir, default_file)
@@ -122,7 +121,7 @@ def init():
 
     inp = request.get_json(force=True, silent=True)
     runner.init(inp['host_addr'], inp['workflow'], inp['function'], 
-                inp['node_list'], inp['input'],inp['output'],inp['function_pos'],inp.get('cache_enable', False))
+                inp['node_list'], inp['input'],inp['output'],inp['function_pos'])
 
     proxy.status = 'ok'
     return ('OK', 200)

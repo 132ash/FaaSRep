@@ -27,38 +27,15 @@ class RedisShadowTable:
             
 # data in cache: value and version 
 class RedisCache:
-    def __init__(self, port, db, db_server, cache_enable):
+    def __init__(self, port, db, db_server):
         self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db)
-        self.cache_enable = cache_enable
         self.data_db = db_server.Table('data')
 
     def cache_get(self, key):
-        if not self.cache_enable:
-            version, value = self.db_get(key)
-            return  {"value": value, "version": version}
-        value_tuple = self.redis.get(key)
-        if value_tuple == None:
-            value_tuple = self.update_and_fetch(key)
-        else:
-            value_tuple = json.loads(value_tuple.decode('utf-8'))
-        return value_tuple
-    
-    
-    def db_get(self, key):
-        # 从dynamodb中获取数据
         response = self.data_db.get_item(
             Key={
                 'key': key
             }
         )
         item = response.get('Item')
-        if item:
-            return item['version'], item['value']
-        else:
-            return None, None
-    
-    def update_and_fetch(self, key):
-        version, value = self.db_get(key)
-        data = {"value": value, "version": version}
-        self.redis[key] = json.dumps(data)
-        return data
+        return  {"value": item['value'], "version": item['version']}

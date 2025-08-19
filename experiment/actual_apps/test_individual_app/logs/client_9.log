@@ -1,2 +1,2 @@
-2025-08-19 14:54:48,602 [Client-9] [INFO] [9] Round 1/5 completed for workflow travel_reservation, txid: eb60c0e0-937e-4a84-8495-341c0ec22978, e2e_latency: 0.5853118896484375
-2025-08-19 14:54:49,624 [Client-9] [INFO] Process finished.
+2025-08-19 15:06:13,797 [Client-9] [INFO] [9] Round 1/5 completed for workflow travel_reservation, txid: 8eb3ad06-abe1-4412-9d64-cca7999f7351, e2e_latency: 0.20952558517456055
+2025-08-19 15:06:16,482 [Client-9] [INFO] Process finished.
