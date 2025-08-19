@@ -6,7 +6,7 @@ cd "$CURRENT_SH_DIR"
 WORKFLOW="c16"
 CLIENT_CNT=32
 SYSTEM_MODE="optimistic" # 或者 "pessimistic"
-# READ_RATIO=(0 0.25 0.5 0.75 1)\
+# READ_RATIO=(1 0.75 0.5 0.25 0)\
 READ_RATIOS=(1)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的吞吐量"

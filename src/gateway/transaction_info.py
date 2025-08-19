@@ -15,11 +15,11 @@ class RunningTXTable:
         self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'concord':False}
 
     def finishTX(self, tx_id):
-        validate_latency = self.running_txs[tx_id]["validate_latency"]
         first_run_finish_time = self.running_txs[tx_id]["first_run_finish_time"]
-        validate_time_inside_validator = self.running_txs[tx_id]["validate_time_inside_validator"]
+        repair_start_time = self.running_txs[tx_id]["repair_start_time"]
+        repair_finish_time = self.running_txs[tx_id]["repair_finish_time"]
         self.running_txs.pop(tx_id)
-        return first_run_finish_time, validate_latency, validate_time_inside_validator
+        return first_run_finish_time, repair_start_time, repair_finish_time
 
     def waitTX(self, tx_id):
         condition = self.running_txs[tx_id]['cond']
@@ -40,7 +40,7 @@ class RunningTXTable:
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
 
-    def notifyTX(self, transaction_id_list, first_run_finish_time, validate_latency, validate_time_inside_validator, abort = False):
+    def notifyTX(self, transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, abort = False):
         if abort:
             for tx_id in transaction_id_list:
                 self.running_txs[tx_id]['abort'] = True
@@ -51,6 +51,6 @@ class RunningTXTable:
                 condition = self.running_txs[tx_id]['cond']
                 self.running_txs[tx_id]['finished'] = True
                 self.running_txs[tx_id]["first_run_finish_time"] = first_run_finish_time
-                self.running_txs[tx_id]["validate_latency"] = validate_latency
-                self.running_txs[tx_id]['validate_time_inside_validator']=validate_time_inside_validator
+                self.running_txs[tx_id]["repair_start_time"] = repair_start_time
+                self.running_txs[tx_id]['repair_finish_time']=repair_finish_time
                 condition.set()

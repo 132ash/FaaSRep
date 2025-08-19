@@ -158,8 +158,9 @@ class ValidatorProcess(Process):
             self.read_set_per_batch[batch_id] = batch['read_set']
             self.write_set_per_batch[batch_id] = batch['write_set']
             self.container_port_per_batch[batch_id] = batch['container_port']
-            expired_keys_per_ip, inside_validator_time, pessi_sink_info = self.validate(batch_id, batch, last_task_time)
-            self.time_tuple_per_batch[batch_id] = (first_run_finish_time, last_task_time, inside_validator_time)
+            expired_keys_per_ip, pessi_sink_info = self.validate(batch_id, batch, last_task_time)
+            repair_start_time = time.time()
+            self.time_tuple_per_batch[batch_id] = [first_run_finish_time, repair_start_time, 0]
             self.register_lock.release()
             self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
 
@@ -173,6 +174,7 @@ class ValidatorProcess(Process):
             if batch_finished:
                 commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
                 ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
+                self.time_tuple_per_batch[batch_id][2] = time.time()
                 self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
@@ -198,13 +200,13 @@ class ValidatorProcess(Process):
         serilizer_res = res_event.get(timeout=Serializer_timeout)
         return serilizer_res
 
-    def validate(self, batch_id, batch, start_time):
+    def validate(self, batch_id, batch):
         self.repair_info.batch_init(batch_id)
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
         expired_keys, subjection_set, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
         expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
         #log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
-        return expired_keys_per_ip, time.time() - start_time, pessi_sink_info
+        return expired_keys_per_ip, pessi_sink_info
 
     def clean_batch_info(self, batch_id_list):
         #log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")

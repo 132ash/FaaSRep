@@ -30,6 +30,15 @@ class Repository:
         db = self.couch['workflow_latency']
         time.sleep(1)
 
+    def get_io_latency_for_tx(self, tx_id):
+        db = self.couch['workflow_latency']
+        io_latencies = []
+        for item in db:
+            doc = db[item]
+            if doc['transaction_id'] == tx_id and doc['phase'] == 'io':
+                io_latencies.append(doc['time'])
+        return sum(io_latencies) if io_latencies else 0
+
     def get_latencies(self):
         latencies = {}
         # print(f"Fetching latencies for txid: {txid}, phase: {phase}")

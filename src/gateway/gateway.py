@@ -124,7 +124,7 @@ def run():
     retry = False
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
-        exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
+        exec_first_run_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         if aborted:
             #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
@@ -136,9 +136,12 @@ def run():
     if aborted:
         return json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
     res = repo.get_result(transaction_id, workflow)
-    first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
+    first_run_finish_time, repair_start_time, repair_finish_time = txTable.finishTX(transaction_id)
     end = time.time()
     first_run_latency = first_run_finish_time - start
+    time_inside_validator = repair_start_time - first_run_finish_time
+    time_repair = repair_finish_time - repair_start_time
+    time_commit = end - repair_finish_time
     #log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
         # clear memory and other stuff
     if config.CLEAR_MEM:
@@ -147,8 +150,8 @@ def run():
         for ip in worker_addrs:
             jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
         gevent.joinall(jobs)
-    
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
+
+    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit})
 
 
 @app.route('/notify', methods = ['POST'])
@@ -163,9 +166,8 @@ def notify():
         if data.get('abort', False):
             txTable.notifyTX(transaction_id_list, 0,0, 0, True)
         else:
-            first_run_finish_time, validate_start_time, validate_time_inside_validator = timestamp_per_batch
-            end_time = time.time()
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - validate_start_time, validate_time_inside_validator)  
+            first_run_finish_time, repair_start_time, repair_finish_time = timestamp_per_batch
+            txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

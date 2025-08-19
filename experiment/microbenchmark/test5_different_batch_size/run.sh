@@ -8,7 +8,7 @@ CLIENT_CNT=64
 SYSTEM_MODE="optimistic" # 或者 "pessimistic"
 
 # 定义要测试的批处理大小
-# BATCH_SIZES=(1 2 4 8 10)
+# BATCH_SIZES=(1 2 4 6 8 10)
 BATCH_SIZES=(8)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的批处理大小影响"
