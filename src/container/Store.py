@@ -89,7 +89,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
-        # print(f"fetch input from mem: {self.fetch_dict}")
+        # #print(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
 
     # return to local redis.
@@ -117,11 +117,11 @@ class Store:
             if upstream_func:
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
+                #print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
                 self.RYW_subjection_collect[key] = upstream_func
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
-                print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}")
+                #print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}")
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]
         # SECOND run or not RYW, read from cache or shadow table.
@@ -130,22 +130,22 @@ class Store:
                 upstream_func = self.keys_from_RYW[key]
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                print(f"[REPAIR RYW] Fetching from RYW for key: {key}, keys_from_RYW:{self.keys_from_RYW}, value:{value}", flush=True)
+                #print(f"[REPAIR RYW] Fetching from RYW for key: {key}, keys_from_RYW:{self.keys_from_RYW}, value:{value}", flush=True)
             elif self.keys_from_upstream.get(key, None):
                 value = self.redis_shadow_table.self_get(self.param_wrapper(self.function_name, key, 'UPSTREAM'))
-                print(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}, value:{value}", flush=True)
+                #print(f"[REPAIR UPSTREAM] Fetching from UPSTREAM for key: {key}, value:{value}", flush=True)
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]
-                print(f"[CACHE GET] key:{key}, value:{value}", flush=True)
+                #print(f"[CACHE GET] key:{key}, value:{value}", flush=True)
         end = time.time()
         self.io_latency += (end - start)
         return value
     
     def put(self, key, value):
         start = time.time()
-        print(f"{self.transaction_id}, func {self.function_name} Putting key: {key}, value: {value}", flush=True)
+        #print(f"{self.transaction_id}, func {self.function_name} Putting key: {key}, value: {value}", flush=True)
         self.put_to_mem(key, self.function_name, 'PUT', value)
         self.write_set[key] = self.function_name
         end = time.time()

@@ -145,7 +145,7 @@ class Runner:
                 self.keys_from_upstream = metadata_nofast['upstream_keys']
                 self.keys_from_RYW = metadata_nofast['RYW_keys']
                 self.dirty = metadata_nofast['dirty']
-                print(f"NOFAST Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt}", flush=True)
+                #print(f"NOFAST Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt}", flush=True)
             else:
                 metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
                 if metadata_string:
@@ -156,20 +156,20 @@ class Runner:
                     self.dirty = repair_metadata['dirty']
                     # besides metadata, the subjection from upstream should be prepared by container itself.
                     self.subjection_waiting_cnt = self.prepair_subjection_before_repair(transaction_id)
-                    print(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt}", flush=True)
+                    #print(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt}", flush=True)
         self.repair_metadata_lock.release()
 
     def check_runnable(self, is_repair, no_parent_execution):
         # not in repair mode, check is finished outside the container.
         if not is_repair or not self.fast_path_enabled:
-            print(f"Check runnable: not in repair mode or not fast-path enabled, is_repair: {is_repair}, fast_path_enabled: {self.fast_path_enabled}", flush=True)
+            #print(f"Check runnable: not in repair mode or not fast-path enabled, is_repair: {is_repair}, fast_path_enabled: {self.fast_path_enabled}", flush=True)
             return True
         else:
             if not no_parent_execution:
                 self.repair_metadata_lock.acquire()
                 self.parent_executed += 1
                 self.repair_metadata_lock.release()
-            print(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}, waiting_cnt: {self.subjection_waiting_cnt}", flush=True)
+            #print(f"Parent executed: {self.parent_executed}, parent_cnt: {self.parent_cnt}, waiting_cnt: {self.subjection_waiting_cnt}", flush=True)
             return self.parent_executed == self.parent_cnt + self.subjection_waiting_cnt
         
     def trigger_next_function(self, transaction_id, ip, port ,dirty=False, batch_id="", repair_mode=''):
@@ -180,23 +180,23 @@ class Runner:
             'repair': True,
             'repair_mode':repair_mode
             }
-        print(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}", flush=True)
+        #print(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}", flush=True)
         requests.post(url, json=data)
 
     def fin_repair(self, batch_id, transaction_id, repair_mode):
         url = f'http://{self.sink_addr}/fin_repair'
-        print(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}", flush=True)
+        #print(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}", flush=True)
         data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id, 'repair_mode':repair_mode}
         requests.post(url, json=data)
 
     def abort_transaction(self, batch_id, transaction_id, repair_mode):
-        print(f"abort transaction: {self.function}", flush=True)
+        #print(f"abort transaction: {self.function}", flush=True)
         url = f'http://{self.sink_addr}/abort'
         data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True, 'repair_mode':repair_mode}
         requests.post(url, json=data)
 
     def trigger_downstream_functions(self, batch_id, aborted, downstream_funcs, repair_mode):
-        print(f"Trigger waiting functions in opt: {downstream_funcs}", flush=True)
+        #print(f"Trigger waiting functions in opt: {downstream_funcs}", flush=True)
         next_trigger_tasks = []
         # Trigger all waiting downstream functions
         for func_info in downstream_funcs:
@@ -216,7 +216,7 @@ class Runner:
                     )
                     break
                 next_ip = self.function_pos[next_func]
-                print(f"Trigger Next functions: {next_ip}:{self.successor_port}", flush=True)
+                #print(f"Trigger Next functions: {next_ip}:{self.successor_port}", flush=True)
                 next_trigger_tasks.append(
                     gevent.spawn(
                     self.trigger_next_function,
@@ -240,7 +240,7 @@ class Runner:
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        print(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled},write_set: {self.write_set}, parent_cnt: {self.parent_cnt}, repair_metadata:{TxMetaData_thisFunc}", flush=True)
+        #print(f"Running function: {self.function}, transaction_id: {transaction_id}, is_repair: {is_repair}, dirty: {self.dirty}, fast_path_enabled: {self.fast_path_enabled},write_set: {self.write_set}, parent_cnt: {self.parent_cnt}, repair_metadata:{TxMetaData_thisFunc}", flush=True)
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         if not is_repair or not self.fast_path_enabled or self.dirty:
             store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
@@ -330,7 +330,7 @@ def run():
         runner.repair_mode = None
         runner.save(transaction_id, inp['write_set'])
     else:
-        print(f"Running in repair mode: {is_repair}, batch_id:{inp['batch_id']}, transaction_id: {transaction_id}, repair_mode: {repair_mode}", flush=True)
+        #print(f"Running in repair mode: {is_repair}, batch_id:{inp['batch_id']}, transaction_id: {transaction_id}, repair_mode: {repair_mode}", flush=True)
         batch_id = inp['batch_id']
         if batch_id:
             # send from funcs in the same tx.

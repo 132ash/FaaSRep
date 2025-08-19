@@ -52,6 +52,8 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
             continue
         else:
             local_results.append(result)
+        if i % (ROUND // 10) == 0:
+            logging.info(f"[{client_id}] Completed {i} / {ROUND} of transactions for workflow {workflow}.")
     logging.info(f"[{client_id}] Completed {len(local_results)} valid transactions for workflow {workflow}.")
     result_queue.put(local_results)
 

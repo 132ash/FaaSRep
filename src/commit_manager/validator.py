@@ -151,7 +151,7 @@ class ValidatorProcess(Process):
             batch = data['batch'] 
             self.register_lock.acquire()
             self.tx_list_per_batch[batch_id] = batch['transaction_list']
-            log_message(self.logger, f"[VALIDATE] Batch {batch_id} with batch size: {len(batch['transaction_list'])}, write_set:{batch["write_set"]}")
+            #log_message(self.logger, f"[VALIDATE] Batch {batch_id} with batch size: {len(batch['transaction_list'])}, write_set:{batch["write_set"]}")
             self.successed_tx_list_per_batch[batch_id] = {txid:True for txid in batch['transaction_list']}
             self.aborted_tx_list_per_batch[batch_id] = []
             self.read_set_per_batch[batch_id] = batch['read_set']
@@ -204,11 +204,11 @@ class ValidatorProcess(Process):
         serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
         expired_keys, subjection_set, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
         expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
-        log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
+        #log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
         return expired_keys_per_ip, pessi_sink_info
 
     def clean_batch_info(self, batch_id_list):
-        log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
+        #log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
         for batch_id in batch_id_list:
             self.tx_list_per_batch.pop(batch_id, None)
             self.time_tuple_per_batch.pop(batch_id, None)
@@ -239,7 +239,7 @@ class ValidatorProcess(Process):
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
                     worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
             
-            log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set
