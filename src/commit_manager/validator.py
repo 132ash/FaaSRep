@@ -171,9 +171,10 @@ class ValidatorProcess(Process):
             self.aborted_tx_list_per_batch[batch_id].extend(aborted_txs)
             self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, aborted_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
             if batch_finished:
+                #log_message(self.logger, f"[COMMIT] Batch {batch_id} repair finish, txlist:{self.tx_list_per_batch[batch_id]}")
                 commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
-                ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
                 self.time_tuple_per_batch[batch_id][2] = time.time()
+                ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
                 self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
@@ -189,15 +190,22 @@ class ValidatorProcess(Process):
             self.clean_batch_info(data)
             self.notify_gateway(txid_lists, True, timestamps)
 
-                        
     def serializer_request(self, batch_id, op, data):
         res_event = event.AsyncResult()
         self.response_lock.acquire()
         self.response_events[batch_id] = res_event
         self.response_lock.release()
         self.serializer_req_queue.put((self.validator_id, batch_id, op, data))
-        serilizer_res = res_event.get(timeout=Serializer_timeout)
-        return serilizer_res
+        try:
+            serilizer_res = res_event.get(timeout=Serializer_timeout)
+            return serilizer_res
+        except gevent.timeout.Timeout:
+            #log_message(self.logger, f"[FATAL] Timeout waiting for Serializer response for batch {batch_id}, op {op}. This is a critical error. Terminating program.")
+            # 在多进程的子进程中，使用 os._exit() 是最安全的退出方式，
+            # 它可以防止因清理资源而导致的死锁。
+            import os
+            os._exit(1) # 使用非零状态码退出，表示异常终止。
+
 
     def validate(self, batch_id, batch):
         self.repair_info.batch_init(batch_id)
@@ -238,8 +246,8 @@ class ValidatorProcess(Process):
                 for worker_ip in self.worker_ip_set:
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
                     worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
-            
-            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+
+            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}, timestamps:{timestamps}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set
@@ -265,6 +273,7 @@ class ValidatorProcess(Process):
 
     def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs=[]):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
+        #log_message(self.logger, f"[NOTIFY] Notify gateway: {url}, transaction_id_lists: {txid_lists}, timestamps:{timestamps}")
         data = {
             'transaction_id_lists': txid_lists,
             'success': success,

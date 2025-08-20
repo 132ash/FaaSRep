@@ -42,6 +42,7 @@ WORKFLOW_YAML_ADDR = {
                     #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 # cache setting
+CACHE_ENABLED = True
 CLEAR_MEM = True
 FILLUP_CACHE = False
 EXPIRED_CACHE = True

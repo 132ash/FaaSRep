@@ -135,6 +135,8 @@ def release_opt_table():
 
 # python3 proxy.py  10.2.30.50 6000
 # python3 proxy.py  10.2.27.23 6000
+# python3 proxy.py  10.2.30.62 6000
+
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

@@ -1,2 +1,2 @@
-system_mode,client_count,avg_throughput,avg_e2e_latency,avg_first_run_latency,avg_exec_latency,avg_io_latency,avg_time_inside_validator,avg_time_repair,avg_time_commit
-OPTIMISTIC,16,35.6129,0.3263,0.1415,-0.0042,0.1457,0.0039,-2067865.3146,2067865.4955
+system_mode,client_count,avg_throughput,avg_e2e_latency,avg_scheduling_latency,avg_func_exec_latency,avg_io_latency,avg_time_inside_validator,avg_time_repair,avg_time_commit
+OPTIMISTIC,16,36.2346,0.3337,0.1115,0.0490,0.0026,0.0037,0.0904,0.0766

@@ -31,39 +31,70 @@ class Repository:
         db = self.couch['workflow_latency']
         time.sleep(1)
 
-    def get_io_latencies_for_txs(self, txids: list) -> dict:
+    def get_latencies_for_txs_by_phase(self, txids: list, phase: str) -> dict:
+        """
+        根据一个事务ID列表和指定的阶段(phase)，使用单次高效的Mango查询批量获取并加总延迟。
+        返回一个字典，键是 transaction_id，值是对应的总延迟。
+        """
         if not txids:
             return {}
-
-        io_latencies = defaultdict(float)
-        print("getting io latency")
+            
+        latencies = defaultdict(float)
         try:
             db = self.couch['workflow_latency']
             # 使用 $in 操作符进行批量查询
             query = {
                 'selector': {
                     'transaction_id': {'$in': txids},
-                    'phase': 'io'
+                    'phase': phase
                 },
                 'fields': ['transaction_id', 'time'],
-                'limit': len(txids) * 100 # 设置一个足够大的限制以获取所有相关文档
+                'limit': len(txids) * 10 # 设置一个足够大的限制以获取所有相关文档
             }
             results = db.find(query)
             for doc in results:
                 tx_id = doc.get('transaction_id')
                 if tx_id:
-                    io_latencies[tx_id] += doc.get('time', 0)
+                    latencies[tx_id] += doc.get('time', 0)
         except Exception as e:
-            print(f"Error during bulk fetching IO latencies: {e}", file=sys.stderr)
-        return dict(io_latencies)
+            print(f"Error during bulk fetching {phase.upper()} latencies: {e}", file=sys.stderr)
+        return dict(latencies)
 
     def get_latencies(self):
-        latencies = {}
-        # print(f"Fetching latencies for txid: {txid}, phase: {phase}")
         db = self.couch['workflow_latency']
-        for _id in db:
-            doc = db[_id]
-            latencies.setdefault(doc['workflow_name'], {}).setdefault(doc['phase'], []).append(doc['time'])
+        map_fun = '''function(doc) {
+            if (doc.phase === 'io' || doc.phase === 'exec') {
+                emit(doc.transaction_id, {time: doc.time, phase: doc.phase});
+            }
+        }'''
+        
+        reduce_fun = '''function(keys, values, rereduce) {
+            var result = {io_sum: 0, exec_sum: 0};
+            if (rereduce) {
+                for (var i = 0; i < values.length; i++) {
+                    result.io_sum += values[i].io_sum;
+                    result.exec_sum += values[i].exec_sum;
+                }
+            } else {
+                for (var i = 0; i < values.length; i++) {
+                    if (values[i].phase === 'io') {
+                        result.io_sum += values[i].time;
+                    } else if (values[i].phase === 'exec') {
+                        result.exec_sum += values[i].time;
+                    }
+                }
+            }
+            return result;
+        }'''
+        
+        results = db.query(map_fun, reduce_fun, group=True)
+        
+        latencies = {}
+        for row in results:
+            latencies[row.key] = {
+                'io_latency': row.value['io_sum'],
+                'exec_latency': row.value['exec_sum']
+            }
         return latencies
     
     def get_all_addrs(self):

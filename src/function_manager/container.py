@@ -1,12 +1,13 @@
 import requests
 import docker
 import time
-import logging
+import sys
 import gevent
 import redis
 import os
 from docker.types import Mount
 from gevent.lock import BoundedSemaphore
+sys.path.append('../../config')
 
 
 base_url = 'http://127.0.0.1:{}/{}'

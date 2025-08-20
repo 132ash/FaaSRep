@@ -47,13 +47,14 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']
+        #logging.info(f"[{client_id}] Starting transaction {i+1}/{ROUND} for workflow {workflow} with transaction ID {transaction_id}.")
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
             continue
         else:
             local_results.append(result)
-        if i % (ROUND // 10) == 0:
-            logging.info(f"[{client_id}] Completed {i} / {ROUND} of transactions for workflow {workflow}.")
+        if i % (ROUND // 10) == 0 or i == ROUND - 1:
+            logging.info(f"[{client_id}] Completed transaction {i+1}/{ROUND}.")
     logging.info(f"[{client_id}] Completed {len(local_results)} valid transactions for workflow {workflow}.")
     result_queue.put(local_results)
 
@@ -76,7 +77,6 @@ def analyze_workflow(workflow, parameters_input):
 
     txid = rep.get('transaction_id', '')
     
-    # 注意：这里不再获取IO延迟
     result_details = {
         "transaction_id": txid,
         "e2e_latency": rep.get('e2e_latency', 0),
@@ -92,9 +92,9 @@ def write_summary_to_file(system_mode, client_cnt, summary_stats):
     summary_file = script_dir / 'results' / "summary_results.csv"
     
     headers = [
-        "system_mode", "client_count", "avg_throughput",
-        "avg_e2e_latency", "avg_first_run_latency", "avg_exec_latency",
-        "avg_io_latency", "avg_time_inside_validator", "avg_time_repair", "avg_time_commit"
+        "system_mode", "client_count", "avg_throughput", "avg_e2e_latency",
+        "avg_scheduling_latency", "avg_func_exec_latency", "avg_io_latency",
+        "avg_time_inside_validator", "avg_time_repair", "avg_time_commit"
     ]
     
     if not summary_file.exists():
@@ -103,6 +103,7 @@ def write_summary_to_file(system_mode, client_cnt, summary_stats):
         logging.info(f"Created summary file: {summary_file}")
         
     with open(summary_file, 'a') as f:
+        # 从第4个元素开始格式化
         data_row = [f"{summary_stats.get(header, 0):.4f}" for header in headers[3:]]
         f.write(f"{system_mode},{client_cnt},{summary_stats.get('avg_throughput', 0):.4f}," + ','.join(data_row) + '\n')
     
@@ -124,15 +125,10 @@ def analyze_workflow_performance(system_mode, workflow, client_cnt):
     for p in processes:
         p.start()
 
-    # --- 正确的执行顺序 ---
-    # 1. 先从队列中获取所有子进程的结果
     all_results = []
     for _ in range(client_cnt):
-        # get() 会阻塞，直到从队列中获取到一个项目
-        # 这确保了我们能拿到所有 client 的结果
         all_results.extend(result_queue.get())
 
-    # 2. 现在所有子进程都已经将数据放入队列并可以安全终止，我们再 join 它们
     for p in processes:
         p.join()
         
@@ -145,38 +141,56 @@ def analyze_workflow_performance(system_mode, workflow, client_cnt):
         return
 
     # --- 批量获取IO延迟并后处理 ---
-    logging.info(f"所有工作进程已完成。开始批量获取 {len(all_results)} 条记录的IO延迟...")
+    logging.info(f"所有工作进程已完成。开始批量获取 {len(all_results)} 条记录的IO和EXEC延迟...")
     
-    # 1. 从所有结果中提取 transaction_id
     tx_ids = [res['transaction_id'] for res in all_results]
     
-    # 2. 使用新的批量方法一次性获取所有IO延迟数据
-    io_latencies = repo.get_io_latencies_for_txs(tx_ids)
+    # 使用合并后的函数，通过 phase 参数区分
+    io_latencies = repo.get_latencies_for_txs_by_phase(tx_ids, 'io')
+    func_e2e_latencies = repo.get_latencies_for_txs_by_phase(tx_ids, 'exec')
     
-    # 3. 将IO延迟合并回结果列表，并计算exec_latency
+    # 将延迟合并回结果列表，并计算所有延迟分量
     for res in all_results:
         tx_id = res['transaction_id']
+        
         io_latency = io_latencies.get(tx_id, 0)
+        func_e2e_latency = func_e2e_latencies.get(tx_id, 0)
+        first_run_latency = res.get('first_run_latency', 0)
+        
+        # 计算新的延迟分量 (移除保护)
+        func_exec_latency = func_e2e_latency - io_latency
+        scheduling_latency = first_run_latency - func_e2e_latency
+        
+        # 存储所有分量
         res['io_latency'] = io_latency
-        res['exec_latency'] = res['first_run_latency'] - io_latency 
+        res['func_e2e_latency'] = func_e2e_latency
+        res['func_exec_latency'] = func_exec_latency
+        res['scheduling_latency'] = scheduling_latency
 
-    logging.info("IO延迟数据获取和处理完成。")
+    logging.info("延迟数据分解完成。")
 
     df = pd.DataFrame(all_results)
     
-    # --- 存储所有原始数据到特定于模式的文件 ---
+    initial_rows = len(df)
+    latency_columns_to_clean = ["time_repair", "time_commit", "e2e_latency", "first_run_latency"]
+    for col in latency_columns_to_clean:
+        df = df[(df[col] >= 0) & (df[col] < 10)]
+    
+    cleaned_rows = len(df)
+    if initial_rows > cleaned_rows:
+        logging.warning(f"Filtered out {initial_rows - cleaned_rows} rows due to outlier latency values.")
+    
     results_dir = script_dir / 'results'
     results_dir.mkdir(parents=True, exist_ok=True)
     raw_output_file = results_dir / f"{system_mode}_raw_details.csv"
     df.to_csv(raw_output_file, mode='a', header=not raw_output_file.exists(), index=False)
-    logging.info(f"Saved/Appended raw results for {system_mode} to {raw_output_file}")
+    logging.info(f"Saved/Appended {cleaned_rows} cleaned raw results for {system_mode} to {raw_output_file}")
     
-    # --- 计算所有核心指标的平均值 ---
     summary_stats = {}
     summary_stats['avg_throughput'] = len(df) / total_time if total_time > 0 else 0
     
     latency_columns = [
-        "e2e_latency", "first_run_latency", "exec_latency", "io_latency",
+        "e2e_latency", "scheduling_latency", "func_exec_latency", "io_latency",
         "time_inside_validator", "time_repair", "time_commit"
     ]
     
@@ -186,7 +200,7 @@ def analyze_workflow_performance(system_mode, workflow, client_cnt):
     for col in latency_columns:
         mean_val = df[col].mean()
         summary_stats[f'avg_{col}'] = mean_val
-        print(f"  Average {col:<20}: {mean_val:.4f}s")
+        print(f"  Average {col:<22}: {mean_val:.4f}s")
 
     write_summary_to_file(system_mode, client_cnt, summary_stats)
     print("--------------------------------------------------\n")
@@ -204,7 +218,6 @@ if __name__ == '__main__':
     
     system_modes_to_test = "OPTIMISTIC"
     
-    # 在开始新的一轮测试前，可以选择性地清空旧的汇总文件
     summary_file_to_clear = results_dir / "summary_results.csv"
     if summary_file_to_clear.exists():
         summary_file_to_clear.unlink()

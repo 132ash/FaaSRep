@@ -42,6 +42,7 @@ class Store:
         self.transaction_id = transaction_id
         self.input = input
         self.output = output
+        self.io_latency = 0
         self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
         self.RYW_subjection_collect = metadata['RYW_subjection']

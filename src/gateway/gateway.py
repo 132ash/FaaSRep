@@ -123,14 +123,14 @@ def run():
     aborted = False
     retry = False
     # run the workflow,  the workflow may abort in the middle.
-    while not txTable.TxFinished(transaction_id) or aborted:
+    while not txTable.TxFinished(transaction_id):
         exec_first_run_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
-        if aborted:
-            #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
-            clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
-            gevent.joinall(clear_jobs)
-            break
+        # if aborted:
+        #     #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
+        #     # clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
+        #     # gevent.joinall(clear_jobs)
+        #     break
         #     txTable.resetTX(transaction_id)
         # retry = True
     if aborted:
@@ -138,6 +138,7 @@ def run():
     else:
         res = repo.get_result(transaction_id, workflow)
         first_run_finish_time, repair_start_time, repair_finish_time = txTable.finishTX(transaction_id)
+        log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {time.time() - start}, first_run_finish_time: {first_run_finish_time}, repair_start_time: {repair_start_time}, repair_finish_time: {repair_finish_time}")
         end = time.time()
         first_run_latency = first_run_finish_time - start
         time_inside_validator = repair_start_time - first_run_finish_time
@@ -156,13 +157,14 @@ def notify():
     transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     aborted_txs_from_validator = data.get('aborted_txs', [])
+    log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
     if aborted_txs_from_validator:
         txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True)
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
         if data.get('abort', False):
             txTable.notifyTX(transaction_id_list, 0,0, 0, True)
         else:
-            first_run_finish_time, repair_start_time, repair_finish_time = timestamp_per_batch
+            first_run_finish_time, repair_start_time, repair_finish_time = timestamp_per_batch[0], timestamp_per_batch[1], timestamp_per_batch[2]
             txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time)  
     return json.dumps({"status": "notified"})
 
