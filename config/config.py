@@ -1,7 +1,7 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STORAGE_NODE_IP = '10.3.96.150'
+STORAGE_NODE_IP = '10.2.29.142'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
 DYNAMODB_URL = f'http://{STORAGE_NODE_IP}:4567'
@@ -38,8 +38,8 @@ WORKFLOW_YAML_ADDR = {
                     #    'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     #    'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
                      'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 # cache setting
 CACHE_ENABLED = True

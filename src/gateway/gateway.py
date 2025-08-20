@@ -138,7 +138,7 @@ def run():
     else:
         res = repo.get_result(transaction_id, workflow)
         first_run_finish_time, repair_start_time, repair_finish_time = txTable.finishTX(transaction_id)
-        log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {time.time() - start}, first_run_finish_time: {first_run_finish_time}, repair_start_time: {repair_start_time}, repair_finish_time: {repair_finish_time}")
+        #log_message(f"[FINISHED] transaction {transaction_id} finished. e2e_latency: {time.time() - start}, first_run_finish_time: {first_run_finish_time}, repair_start_time: {repair_start_time}, repair_finish_time: {repair_finish_time}")
         end = time.time()
         first_run_latency = first_run_finish_time - start
         time_inside_validator = repair_start_time - first_run_finish_time
@@ -157,7 +157,7 @@ def notify():
     transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     aborted_txs_from_validator = data.get('aborted_txs', [])
-    log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
+    #log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
     if aborted_txs_from_validator:
         txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True)
     for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
@@ -185,7 +185,7 @@ def clear_container():
 from gevent.pywsgi import WSGIServer
 import logging
 
-#  python gateway.py  10.3.96.150  8000
+#  python gateway.py  10.2.29.142  8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

@@ -1,7 +1,7 @@
 import boto3
 
 # 创建dynamodb资源对象
-dynamodb  = boto3.resource('dynamodb', endpoint_url='http://10.3.96.150:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+dynamodb  = boto3.resource('dynamodb', endpoint_url='http://10.2.29.142:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 # transaction_id = '532dcb5d-2559-4075-a3a5-c90fef1a033f'
 table_name = "data"
 # table_name = "data"
