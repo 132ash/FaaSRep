@@ -46,14 +46,15 @@ def get_workflow_metadata(workflow_name):
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
     return workflow_metadata[workflow_name]
 
-def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
+def trigger_function(workflow_name, transaction_id, function_name, ip, retry, term):
     url = 'http://{}/request'.format(ip)
     data = {
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
         'function_name': function_name,
         'no_parent_execution': True,
-        'retry':retry
+        'retry':retry,
+        'term':term
     }
     requests.post(url, json=data)
 
@@ -64,7 +65,7 @@ def clear_mem(ip, transaction_id, workflow_name):
     requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name})
 
 
-def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
+def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry, term):
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
@@ -79,7 +80,7 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry, term))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
@@ -87,34 +88,40 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
 @app.route('/run', methods = ['POST'])
 def run():
     data = request.get_json(force=True, silent=True)
+    request_start = time.time()
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
+    term = 0
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
     # logging.info('processing request ' + transaction_id + '...')
-    start = time.time()
     aborted = False
     abort_type = ''
     retry = False
+    term = 0
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
-        exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
+        running_start = time.time()
+        exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry, term)
         aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
             if abort_type == 'PASSIVE':
-                txTable.resetTX(transaction_id)
+                retry = True
+                term += 1
+                txTable.resetTX(transaction_id, term)
             else:
                 break
-        retry = True
+    request_end = time.time()
     if aborted and abort_type == 'ACTIVE':
         message =  json.dumps({'status':'aborted', "res": {}})
     # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}"
     else:
         res = repo.get_result(transaction_id, workflow)
-        first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
-        first_run_latency = first_run_finish_time - start
-        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
+        success_term, commit_latency = txTable.finishTX(transaction_id)
+        success_run_latency = (request_end - running_start) - commit_latency
+        e2e_latency = request_end - request_start
+        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'success_run_latency': success_run_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'success_term':success_term, "res": res})
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
@@ -131,17 +138,16 @@ def run():
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
-    transaction_id_lists = data['transaction_id_list']
-    timestamps = data['timestamps']
-    for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
-        if data.get('abort', False):
-            Abort_type = data.get('Abort_type', 'ACTIVE')
-            # logging.info(f"transaction {transaction_id_list[0]} aborted.")
-            txTable.notifyTX(transaction_id_list, 0,0, 0, True, Abort_type)
-        else:
-            first_run_finish_time, start_time, validate_time_inside_validator = timestamp_per_batch
-            end_time = time.time()
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, end_time - start_time, validate_time_inside_validator)  
+    transaction_id = data['transaction_id']
+    term = data['term']
+    commit_latency = data['commit_latency']
+    if data.get('abort', False):
+        Abort_type = data.get('Abort_type', 'ACTIVE')
+        # logging.info(f"transaction {transaction_id_list[0]} aborted.")
+        txTable.notifyTX(transaction_id, term, commit_latency, True, Abort_type)
+    else:
+        end_time = time.time()
+        txTable.notifyTX(transaction_id, term,commit_latency, False, '')  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

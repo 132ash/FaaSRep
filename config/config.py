@@ -1,7 +1,7 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STORAGE_NODE_IP = '10.3.96.150'
+STORAGE_NODE_IP = '10.2.29.142'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
 DYNAMODB_URL = f'http://{STORAGE_NODE_IP}:4567'
@@ -34,7 +34,7 @@ WORKFLOW_YAML_ADDR = {
                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
-DEFAULT_CONTAINER_NUM = 32
+DEFAULT_CONTAINER_NUM = 16
 CLEAR_MEM = True
 
 # microbenchmark configuration
@@ -45,21 +45,16 @@ DATA_ITEM_SIZE = 4 * 1024
 FLIGHT_IDS = 100
 FLIGHT_CAPACITY = "100"
 RENTAL_START = '2025-07-01'
-RENTAL_END = '2025-08-31'
-CAR_NUM = '200'
+RENTAL_END = '2025-07-31'
+CAR_NUM = '100'
 DATE_FORMAT = "%Y-%m-%d"
 
 # banking system
 BANKING_ACCOUNTS = 100
 BANKING_ORIGINAL_BALANCE = "10000"
-LOGIN_FAIL_PROB = 0
+LOGIN_FAIL_PROB = 0.05
 
 # social network
-SOCIAL_NETWORK_USERS = 300
+SOCIAL_NETWORK_USERS = 200
 STARTUP_POSTS = 3
-
-
-
-
-
 
