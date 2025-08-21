@@ -18,7 +18,7 @@ def generate_function_info_chain(n):
     function_info = {
         'workflow': f"c{n}",
         'functions': [],
-        'max_containers': 30
+        'max_containers': 64
     }
     
     for i in range(1, n + 1):
@@ -34,7 +34,7 @@ def generate_function_info_parallel(n):
     function_info = {
         'workflow': f'w{n}',
         'functions': [],
-        'max_containers': 30
+        'max_containers': 64
     }
     
     function_info['functions'].append({

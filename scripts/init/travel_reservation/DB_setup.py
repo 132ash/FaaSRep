@@ -54,7 +54,7 @@ def create_travel_reservation_dataset():
     start_date = datetime.strptime(RENTAL_START, DATE_FORMAT)
     end_date = datetime.strptime(RENTAL_END, DATE_FORMAT)
     current_date = start_date
-    while current_date < end_date:
+    while current_date <= end_date:
         date_str = current_date.strftime(DATE_FORMAT)
         table.put_item(
             Item={

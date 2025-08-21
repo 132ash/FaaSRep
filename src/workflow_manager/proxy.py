@@ -52,8 +52,8 @@ class Dispatcher:
        self.node_list = repo.get_all_addrs('common')
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
  
-    def get_state(self, workflow_name, transaction_id, write_set) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, write_set)
+    def get_state(self, workflow_name, transaction_id, write_set, retry) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, write_set, retry)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -93,8 +93,9 @@ def req():
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
     write_set = data.get('write_set', {})
+    retry = data.get('retry', False)
 
-    state = dispatcher.get_state(workflow_name, transaction_id, write_set)
+    state = dispatcher.get_state(workflow_name, transaction_id, write_set, retry)
     # logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)

@@ -1,21 +1,18 @@
 #!/bin/bash
 # 示例：测试不同读写比例下的吞吐量
+CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
+cd "$CURRENT_SH_DIR"
 
 WORKFLOW="c16"
-CLIENT_CNT=16
-SYSTEM_MODE="optimistic" # 或者 "pessimistic"
+CLIENT_CNT=32
+SYSTEM_MODE="Concord" 
+# READ_RATIO=(1 0.75 0.5 0.25 0)\
+READ_RATIOS=(1)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的吞吐量"
 
-# 清空旧的结果文件
-RESULT_FILE="results/${SYSTEM_MODE}_res.csv"
-if [ -f "$RESULT_FILE" ]; then
-    rm "$RESULT_FILE"
-    echo "🗑️ 已删除旧的结果文件: $RESULT_FILE"
-fi
-
 # 测试不同的读写比例 (0, 0.25, 0.5, 0.75, 1.0)
-for READ_RATIO in 0 0.25 0.5 0.75 1; do
+for READ_RATIO in "${READ_RATIOS[@]}"; do
     echo "📋 测试读比例: $READ_RATIO"
     python3 run.py $WORKFLOW $SYSTEM_MODE $CLIENT_CNT $READ_RATIO
     

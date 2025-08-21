@@ -29,7 +29,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], write_set):
+    def __init__(self, transaction_id: str, all_func: List[str], write_set, retry=False):
         self.transaction_id = transaction_id
         # {key: func}
         self.write_set:Dict[str:Dict[str:str]] = write_set
@@ -37,6 +37,7 @@ class TransactionState:
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
         self.parent_executed: Dict[str, int] = {}
+        self.retry = retry
         for f in all_func:
             self.executed[f] = False
             self.parent_executed[f] = 0
@@ -73,11 +74,12 @@ class WorkerSPManager:
 
 
     # return the workflow state of the request
-    def get_state(self, transaction_id, write_set) -> TransactionState:
+    def get_state(self, transaction_id, write_set, retry) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, write_set)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, write_set, retry)
+            self.states[transaction_id].flushed = True
         else:
             state = self.states[transaction_id]
             state.lock.acquire()  
@@ -120,9 +122,9 @@ class WorkerSPManager:
             clear_url = 'http://{}:6000/clear_state'.format(ip)
             data = {'transaction_id':transaction_id, 'workflow_name': self.workflow_name}
             abort_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
-            clear_state_url = 'http://{}:7500/clear'.format(ip)
-            clear_state_data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'clear_mem': False}
-            abort_jobs.append(gevent.spawn(requests.post, clear_state_url, json=clear_state_data))
+            # clear_state_url = 'http://{}:7500/clear'.format(ip)
+            # clear_state_data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'clear_mem': False}
+            # abort_jobs.append(gevent.spawn(requests.post, clear_state_url, json=clear_state_data))
         gevent.joinall(abort_jobs)
         self.notify_gateway(transaction_id, True, Abort_type)
 
@@ -185,7 +187,7 @@ class WorkerSPManager:
             'function_name': function_name,
             'no_parent_execution': no_parent_execution,
             # collected for validation. updated only in first run.
-            'write_set': state.write_set,
+            'write_set': state.write_set
         }
         requests.post(remote_url, json=data)
 
@@ -229,9 +231,10 @@ class WorkerSPManager:
         # only count the function latency in first run.
         state.write_set.update(res["write_set"])
         state.lock.release()
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-        # logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
+        if not state.retry:
+            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+            self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
+            # logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         return True, ''
 
     def clear_mem(self, transaction_id):

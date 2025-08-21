@@ -51,6 +51,7 @@ class Store:
         self.db_server = db_server
 
     def runtime_init(self, input, output, transaction_id, metadata):
+        self.io_latency = 0
         self.transaction_id = transaction_id
         self.input = input
         self.output = output

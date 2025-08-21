@@ -46,13 +46,14 @@ def get_workflow_metadata(workflow_name):
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
     return workflow_metadata[workflow_name]
 
-def trigger_function(workflow_name, transaction_id, function_name, ip):
+def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
     url = 'http://{}/request'.format(ip)
     data = {
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
         'function_name': function_name,
         'no_parent_execution': True,
+        'retry':retry
     }
     requests.post(url, json=data)
 
@@ -78,7 +79,7 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip))
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
@@ -107,11 +108,13 @@ def run():
                 break
         retry = True
     if aborted and abort_type == 'ACTIVE':
-        return json.dumps({'status':'aborted', "res": {}})
-    # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
-    res = repo.get_result(transaction_id, workflow)
-    first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
-    first_run_latency = first_run_finish_time - start
+        message =  json.dumps({'status':'aborted', "res": {}})
+    # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}"
+    else:
+        res = repo.get_result(transaction_id, workflow)
+        first_run_finish_time, validate_latency,validate_time_inside_validator = txTable.finishTX(transaction_id)
+        first_run_latency = first_run_finish_time - start
+        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']
@@ -122,9 +125,7 @@ def run():
         gevent.joinall(jobs)
     end = time.time()
     # logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
-    
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
-
+    return message
 
 
 @app.route('/notify', methods = ['POST'])

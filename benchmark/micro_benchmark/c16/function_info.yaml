@@ -31,5 +31,5 @@ functions:
   name: f15
 - image: micro_func
   name: f16
-max_containers: 30
+max_containers: 64
 workflow: c16

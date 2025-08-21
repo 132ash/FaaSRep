@@ -6,6 +6,9 @@ def main():
     combined_content.append(func_input["t5"])
     combined_content.append(store.get("t4"))
     combined_content.append(store.get("t6"))
+    abort_int = random.randint(0, 2)
+    if abort_int == 0:
+        store.abort_tx()
     combined_content = ''.join(combined_content)
     shuffled_content = list(combined_content)
     random.shuffle(shuffled_content)
