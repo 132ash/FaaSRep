@@ -18,6 +18,9 @@ dynamodb_key_id = config.DYNAMODB_KEY_ID
 dynamodb_access_key = config.DYNAMODB_ACCESS_KEY
 dynamodb_area = config.DYNAMODB_AREA
 
+OPT_REPAIR = config.OPT_REPAIR  
+PESSI_REPAIR = config.PESSI_REPAIR  
+
 class DynamoDBClient:
     def __init__(self, endpoint_url, aws_secret_access_key, aws_access_key_id, region_name):
         self.client = boto3.resource('dynamodb', endpoint_url=endpoint_url, aws_secret_access_key=aws_secret_access_key, aws_access_key_id=aws_access_key_id, region_name=region_name)
@@ -169,13 +172,11 @@ class Repository:
                     pipe.set(key, json.dumps(data))
             pipe.execute()
 
-    def fillup_repair_matadata(self, repair_metadata):
+    def fillup_repair_matadata(self, repair_metadata, mode):
         for txid in repair_metadata:
             for func in repair_metadata[txid]:
                 # fill up the repair metadata to redis
-                repair_info = repair_metadata[txid][func]
-                repair_info
-                redis_key = self.param_wrapper(txid, 'REPAIR', func, "")
+                redis_key = self.param_wrapper(txid, f'REPAIR_{mode}', func, "")
                 self.shadowtable_redis_all_addr[self.ip][redis_key] = json.dumps(repair_metadata[txid][func])
 
     def get_global_function_pos(self, batch_id):

@@ -37,7 +37,7 @@ WORKFLOW_YAML_ADDR = {
                     #    'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                     #    'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     #    'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                     'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                     'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
@@ -53,7 +53,7 @@ VALIDATE_INTERVAL = 0.015
 BATCH_TIMEOUT = 0.045
 
 # batch setting
-BATCH_SIZE = 1
+BATCH_SIZE = 4  
 
 # mode setting
 FAST_PATH = True
@@ -68,7 +68,7 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
-DEFAULT_CONTAINER_NUM = 16
+DEFAULT_CONTAINER_NUM = 32
 CLEAR_MEM = True
 
 # microbenchmark configuration
@@ -79,8 +79,8 @@ DATA_ITEM_SIZE = 4 * 1024
 FLIGHT_IDS = 100
 FLIGHT_CAPACITY = "100"
 RENTAL_START = '2025-07-01'
-RENTAL_END = '2025-07-31'
-CAR_NUM = '100'
+RENTAL_END = '2025-08-31'
+CAR_NUM = '200'
 DATE_FORMAT = "%Y-%m-%d"
 
 # banking system

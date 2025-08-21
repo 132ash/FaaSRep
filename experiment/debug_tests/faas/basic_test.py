@@ -1,4 +1,6 @@
-set1 = set([1, 2, 3])
-print(set1)
-set1 = set1.union({4:True, 5:True})
-print(set1)
+test_batch = {'id1':[1,2,3]}
+
+finished_list = [test_batch[id] for id in test_batch]
+print(finished_list)  # Output: [[1, 2, 3]]
+test_batch.pop('id1', None)
+print(finished_list)  # Output: {}

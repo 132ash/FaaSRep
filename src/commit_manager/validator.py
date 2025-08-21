@@ -179,16 +179,22 @@ class ValidatorProcess(Process):
             else:
                 self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
         elif op == CASCADED_COMMIT:
-            txid_lists = [self.successed_tx_list_per_batch[batch_id] for batch_id in data]
-            timestamps = [self.time_tuple_per_batch[batch_id] for batch_id in data]
+            aborted_txs = []
+            txid_lists = []
+            timestamps = []
+            for batch_id in data:
+                aborted_txs.extend(self.aborted_tx_list_per_batch[batch_id])
+                txid_lists.append(self.successed_tx_list_per_batch[batch_id])
+                timestamps.append(self.time_tuple_per_batch[batch_id])
             if FAST_PATH_ENABLED:
                 jobs = [
                     gevent.spawn(requests.post, url=f"http://{worker_ip}/release", json={"tx_lists":txid_lists, 'workflow_name':self.workflow_name})
                     for worker_ip in self.worker_ip_set
                     ]
                 gevent.joinall(jobs)
+            #log_message(self.logger, f"[CASCADED COMMIT] : {data} WITH {txid_lists}")
+            self.notify_gateway(txid_lists, True, timestamps, aborted_txs)
             self.clean_batch_info(data)
-            self.notify_gateway(txid_lists, True, timestamps)
 
     def serializer_request(self, batch_id, op, data):
         res_event = event.AsyncResult()

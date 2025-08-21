@@ -57,10 +57,11 @@ class RepairEngine:
                     txs_for_optimistic_repair.append(tx_id)
         else:
             txs_for_pessimistic_repair = ready_txs
+        #log_message(self.logger, f"[REPAIR AFTER VALIDATE] Batch {batch_id} PESSI ready transactions: {ready_txs},opt_txs_become_pessi:{opt_txs_become_pessi} optimistic repair transactions: {txs_for_optimistic_repair}, pessimistic repair transactions: {txs_for_pessimistic_repair}")
         repair_jobs = []
         if txs_for_pessimistic_repair:
             expired_keys_pessi = {}
-            self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys_pessi, ready_txs)
+            self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys_pessi, txs_for_pessimistic_repair)
             repair_jobs.append(gevent.spawn(self.repair_transactions, batch_id, txs_for_pessimistic_repair, expired_keys_pessi, container_port, PESSI_REPAIR))
         if txs_for_optimistic_repair:
             repair_jobs.append(gevent.spawn(self.repair_transactions, batch_id, txs_for_optimistic_repair, expired_keys, container_port, OPT_REPAIR))
@@ -78,7 +79,7 @@ class RepairEngine:
         trigger_jobs = []
         for ip in self.worker_ip_set:
             repair_metadata_local = self.repair_info.get_repair_metadata(mode, batch_id, ip) if FAST_PATH_ENABLED else {}
-            repair_prepare_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set())))
+            repair_prepare_jobs.append(gevent.spawn(self.prepare_repairing_on_worker, batch_id, ip, repair_metadata_local, expired_keys.get(ip, set()), mode))
         gevent.joinall(repair_prepare_jobs) 
         # metadata filled. Trigger start functions to repair workflow.
         repair_metadata_no_fast = {}
@@ -142,15 +143,16 @@ class RepairEngine:
     # repair_metadata: {txid:{func:{ RYW:xx, dirty:xx, downstream:xx, upstream:xx}}}
     # send metadata to the proxy on worker node.
     # all functions' ip and port need to be sent(?)
-    def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set):
-        #log_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}")
+    def prepare_repairing_on_worker(self, batch_id, worker_ip, repair_metadata, expired_keys:set, mode):
+        #log_message(self.logger, f"[PESSIMISTIC REPAIR] Preparing repair on worker {worker_ip} for batch {batch_id}, repair_metadata: {repair_metadata}, expired_keys: {expired_keys}, mode:{mode}")
         if not repair_metadata and not expired_keys:
             return
         url = 'http://{}/prepare'.format(worker_ip)
         data = {
             'batch_id': batch_id,
             'repair_metadata': repair_metadata,
-            'expired_keys': list(expired_keys)
+            'expired_keys': list(expired_keys),
+            'mode': mode
         }
         requests.post(url, json=data)
 

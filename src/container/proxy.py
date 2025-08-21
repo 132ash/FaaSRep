@@ -137,7 +137,8 @@ class Runner:
     # in repair mode: save the repair metadata. 
     def fetch_repair_metadata(self, transaction_id, repair_mode, metadata_nofast={}):
         self.repair_metadata_lock.acquire()
-        if self.repair_mode != repair_mode:
+        if self.repair_mode == None or self.repair_mode == OPT_REPAIR and repair_mode == PESSI_REPAIR:
+            #print(f"repair mode changed from {self.repair_mode} to {repair_mode}")
             self.repair_mode = repair_mode
             self.parent_executed = 0
             # not fast-path: the metadata is sent by workersp.
@@ -147,7 +148,7 @@ class Runner:
                 self.dirty = metadata_nofast['dirty']
                 #print(f"NOFAST Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt}", flush=True)
             else:
-                metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR:{self.function}:", self.host_addr)
+                metadata_string = self.shadow_table.raw_fetch_data( f"{transaction_id}:REPAIR_{self.repair_mode}:{self.function}:", self.host_addr)
                 if metadata_string:
                     repair_metadata = json.loads(metadata_string)
                     self.keys_from_upstream = repair_metadata['upstream_keys']
@@ -159,12 +160,16 @@ class Runner:
                     #print(f"FASTPATH Fetched repair metadata: keys_from_upstream: {self.keys_from_upstream}, dirty: {self.dirty}, subjection_waiting_cnt:{self.subjection_waiting_cnt}", flush=True)
         self.repair_metadata_lock.release()
 
-    def check_runnable(self, is_repair, no_parent_execution):
+    def check_runnable(self, is_repair, no_parent_execution, repair_mode_from_upstream):
         # not in repair mode, check is finished outside the container.
         if not is_repair or not self.fast_path_enabled:
             #print(f"Check runnable: not in repair mode or not fast-path enabled, is_repair: {is_repair}, fast_path_enabled: {self.fast_path_enabled}", flush=True)
             return True
         else:
+            if self.repair_mode == PESSI_REPAIR and repair_mode_from_upstream != PESSI_REPAIR:
+                # in pessi repair mode: only the request from upstream in the workflow should be accepted.
+                #print(f"Rejecting request from upstream: {repair_mode_from_upstream} != {PESSI_REPAIR}", flush=True)
+                return False
             if not no_parent_execution:
                 self.repair_metadata_lock.acquire()
                 self.parent_executed += 1
@@ -339,12 +344,13 @@ def run():
                 no_parent_execution = inp.get('no_parent_execution', False)
             runner.fetch_repair_metadata(transaction_id, repair_mode, inp.get('repair_states', {}))
         else:
+            # without batch id: cross tx send dependency, but pessi dosen't need cross send.
             if runner.repair_mode == PESSI_REPAIR:
-                return {}
-        
+                return json.dumps({'Abort': True, 'error': "PESSIMISTIC REPAIR should not be triggered without batch_id."})
+
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
-    if runner.check_runnable(is_repair, no_parent_execution):
+    if runner.check_runnable(is_repair, no_parent_execution, repair_mode):
         aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(transaction_id, is_repair)
         if aborted:
             return abort_msg

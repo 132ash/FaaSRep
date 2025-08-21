@@ -96,16 +96,17 @@ def workflow_process_task(workflow, workflow_result_queue):
             processes[i].start()
             logging.info(f"Started client process {processes[i].pid} for client {i}")
 
-        # 等待所有客户端进程结束
-        for process in processes:
-            process.join()
-        end_time = time.time()
-        total_time = end_time - start_time
 
         # 从队列中收集所有结果
         all_results = []
         while not result_queue.empty():
             all_results.extend(result_queue.get())
+            
+        # 等待所有客户端进程结束
+        for process in processes:
+            process.join()
+        end_time = time.time()
+        total_time = end_time - start_time
 
         logging.info(f"工作流 {workflow} 处理完成, 收集到 {len(all_results)} 条有效结果，耗时 {total_time:.2f} 秒。")
         # 将原始结果和总时间放入主队列

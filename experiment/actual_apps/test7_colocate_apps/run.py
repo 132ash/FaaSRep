@@ -29,9 +29,9 @@ DB_NODE_IP = config.STORAGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
 # --- 全局测试参数 ---
-CLIENT_CNT = 16
+CLIENT_CNT = 32
 ROUND = 100
-all_workflows = ['travel_reservation', 'social_network', 'banking_system']
+all_workflows = ['social_network', 'travel_reservation', 'banking_system']
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
@@ -39,13 +39,13 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']
-        logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
         txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
             continue
         else:
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, result: {result}")
             local_results.append(result)
+        if i % (ROUND // 10) == 0:
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} for workflow {workflow}, txid:{transaction_id}")
     result_queue.put(local_results)
 
 def workflow_process_task(workflow, workflow_result_queue):
@@ -142,15 +142,16 @@ def analyze_all_workflows(system_mode):
         process.start()
         logging.info(f"Started workflow process {process.pid} for {all_workflows[i]}")
     
-    # 等待所有工作流进程完成
+    # --- 关键修复：先从队列获取结果，再 join 进程 ---
+    # 收集所有工作流的原始结果。这将阻塞直到所有工作流进程都已 put 了它们的结果。
+    raw_workflow_results = []
+    for _ in all_workflows:
+        raw_workflow_results.append(workflow_result_queue.get())
+
+    # 等待所有工作流进程完成它们的清理工作并终止
     for i, process in enumerate(workflow_processes):
         process.join()
         logging.info(f"Workflow process for {all_workflows[i]} completed")
-    
-    # 收集所有工作流的原始结果
-    raw_workflow_results = []
-    while not workflow_result_queue.empty():
-        raw_workflow_results.append(workflow_result_queue.get())
     
     # --- 结果处理和汇总 ---
     final_summary_list = []

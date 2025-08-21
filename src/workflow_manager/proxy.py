@@ -80,7 +80,7 @@ class Dispatcher:
                     except Exception as e:
                         log_message(f"Failed to remove container {container.id}: {e}")
                 time.sleep(1)  # Wait a moment for cleanup to complete
-            #log_message("All workflow containers have been cleared.")
+            log_message("All workflow containers have been cleared.")
         except Exception as e:
             log_message(f"Error during container cleanup: {e}")
         self.host_addr = sys.argv[1] + ':' + sys.argv[2]
@@ -199,11 +199,11 @@ def clear():
 def prepare():
     data = request.get_json(force=True, silent=True)
     repair_metadata = data['repair_metadata'] # {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
-    
     # update cache on this node.
     repo.update_cache(data['expired_keys'])
+    
     if repair_metadata:
-        repo.fillup_repair_matadata(repair_metadata)
+        repo.fillup_repair_matadata(repair_metadata, data['mode'])
 
     return json.dumps({'status': 'ok'})
 
