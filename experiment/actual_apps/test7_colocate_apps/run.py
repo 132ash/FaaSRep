@@ -29,7 +29,7 @@ DB_NODE_IP = config.STORAGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
 # --- 全局测试参数 ---
-CLIENT_CNT = 32
+CLIENT_CNT = 16
 ROUND = 100
 all_workflows = ['social_network', 'travel_reservation', 'banking_system']
 
