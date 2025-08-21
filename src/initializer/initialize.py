@@ -39,6 +39,7 @@ if __name__ == '__main__':
         sink_node = all_worker_node[sink_addr_idx]
         workflow = parse_yaml.parse(workflow_name)
         node_assign = assign_function_to_node(workflow, all_worker_node, sink_node)
+        #print(f"sink_node:{sink_node}, node_assign: {node_assign}")
         function_info = makeWorkflowConfig(workflow, node_assign)
         saveWorkflowConfig(workflow, all_worker_node, function_info)
         sink_addr_idx = (sink_addr_idx + 1) % len(all_worker_node)

@@ -33,7 +33,8 @@ def assign_function_to_node(workflow: component.workflow, all_worker_node: list,
     function_names = list(workflow.nodes.keys())
     num_functions = len(function_names)
     num_workers = len(all_worker_node)
-    
+    end_function_name = workflow.end_function['name']
+
     if num_functions == 0:
         return {}
     
@@ -42,9 +43,9 @@ def assign_function_to_node(workflow: component.workflow, all_worker_node: list,
         assignment = {}
         
         # 确保 end_function 分配到 sink_node_addr
-        if workflow.end_function in function_names:
-            assignment[workflow.end_function] = f"{sink_node_addr}:{WORKERSP_PORT}"
-            remaining_functions = [f for f in function_names if f != workflow.end_function]
+        if end_function_name in function_names:
+            assignment[end_function_name] = f"{sink_node_addr}:{WORKERSP_PORT}"
+            remaining_functions = [f for f in function_names if f != end_function_name]
             remaining_workers = [w for w in all_worker_node if w != sink_node_addr]
         else:
             remaining_functions = function_names[:]
@@ -82,7 +83,7 @@ def assign_function_to_node(workflow: component.workflow, all_worker_node: list,
     # 确保 end_function 在指定的 sink 组中
     end_function_group_idx = None
     for i, group in enumerate(groups):
-        if workflow.end_function in group:
+        if end_function_name in group:
             end_function_group_idx = i
             break
     

@@ -5,4 +5,4 @@ functions:
 - {image: textseq_f3, name: f3}
 - {image: textseq_f4, name: f4}
 - {image: textseq_f5, name: f5}
-
+max_containers: 64

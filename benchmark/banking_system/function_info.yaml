@@ -3,4 +3,4 @@ functions:
 - {image: banking_login, name: banking_login}
 - {image: withdraw, name: withdraw}
 - {image: deposit, name: deposit}
-
+max_containers: 64

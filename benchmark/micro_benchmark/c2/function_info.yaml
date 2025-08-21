@@ -3,5 +3,5 @@ functions:
   name: f1
 - image: micro_func
   name: f2
-max_containers: 30
+max_containers: 64
 workflow: c2

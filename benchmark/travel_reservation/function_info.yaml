@@ -4,4 +4,4 @@ functions:
 - {image: reserve_car_rental, name: reserve_car_rental}
 - {image: confirm_reservation, name: confirm_reservation}
 - {image: payment, name: payment}
-
+max_containers: 64

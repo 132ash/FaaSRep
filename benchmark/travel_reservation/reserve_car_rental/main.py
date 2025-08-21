@@ -6,16 +6,21 @@ def main():
     flight_reservation_id = func_input["flight_reservation_id"]
     rentle_from = func_input["rentle_from"]
     rentle_to = func_input["rentle_to"]
-    car_cap = store.get(rentle_from)
-    if type(car_cap) is not int:
-        car_cap = int(car_cap)
-    if car_cap == 0:
-        store.abort_tx(f"No car can be rent from {rentle_from}.")
+    print(f"rent car at {rentle_from}")
     date_format = "%Y-%m-%d"
     start_date = datetime.strptime(rentle_from, date_format)
     end_date = datetime.strptime(rentle_to, date_format)
     current_date = start_date
-    while current_date < end_date:
+    while current_date <= end_date:
+        date_str = current_date.strftime(date_format)
+        cap = store.get(date_str)
+        if type(cap) is not int:
+            cap = int(cap)
+        if cap <= 0:
+            store.abort_tx(f"No car can be rent from {rentle_from}. remain: {cap}")
+        current_date += timedelta(days=1)
+    current_date = start_date
+    while current_date <= end_date:
         date_str = current_date.strftime(date_format)
         cap = store.get(date_str)
         if type(cap) is not int:

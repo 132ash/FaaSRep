@@ -3,52 +3,26 @@ import gevent
 from gevent import monkey
 import uuid
 import sys
-import os
 import logging
-log_file = '../../logging/gateway.log'
-
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
-
-def setup_logger():
-    logger = logging.getLogger('gateway')
-    logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    
-    # 创建格式化器
-    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                datefmt='%Y-%m-%d %H:%M:%S')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    # 添加处理器到logger
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
-
-# 全局logger实例
-logger = setup_logger()
-
-def log_message(message):
-    logger.info(message)
-    for handler in logger.handlers:
-        handler.flush()
+# 配置日志记录
+logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    # 设置日志级别为 INFO
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
+    ],
+    force=True 
+)
 
 monkey.patch_all()
 from flask import Flask, request
 from gateway_repo import Repository
 from transaction_info import RunningTXTable
 import requests
-import time
 import gevent.lock
-
-session = requests.Session()
+import time
 
 sys.path.append('../../config')
 import config
@@ -57,49 +31,48 @@ CLEAR_MEM = config.CLEAR_MEM
 
 app = Flask(__name__)
 repo = Repository()
-txTable = RunningTXTable(repo)
-repo.delete_shadow_table()
+txTable = RunningTXTable()
 
-metadata_lock = gevent.lock.BoundedSemaphore()
 workflow_metadata  =  {}
+workflow_metadata_lock = gevent.lock.BoundedSemaphore()
 def get_workflow_metadata(workflow_name):
-    metadata_lock.acquire()
-    if workflow_name not in workflow_metadata:
-        workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
-        workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
-        for func in workflow_metadata[workflow_name]['start_functions']:
-            info = repo.get_function_info(func, workflow_name + '_function_info')
+    with workflow_metadata_lock:
+        if workflow_name not in workflow_metadata:
+            workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
+            workflow_metadata[workflow_name]['start_functions'] = repo.get_start_functions(workflow_name + '_workflow_metadata')
+            for func in workflow_metadata[workflow_name]['start_functions']:
+                info = repo.get_function_info(func, workflow_name + '_function_info')
             workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
         workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
-    metadata_lock.release()
     return workflow_metadata[workflow_name]
 
-def trigger_function(workflow_name, transaction_id, create_timestamp, function_name, ip, retry):
+def trigger_function(workflow_name, transaction_id, function_name, ip, retry, term):
     url = 'http://{}/request'.format(ip)
     data = {
         'transaction_id': transaction_id,
         'workflow_name': workflow_name,
-        'create_timestamp': create_timestamp,
         'function_name': function_name,
         'no_parent_execution': True,
-        'repair': False,
-        'retry': retry
+        'retry':retry,
+        'term':term
     }
-    session.post(url, json=data)
+    requests.post(url, json=data)
 
-def clear_mem(ip, transaction_id, workflow_name, abort=False):
+def clear_mem(ip, transaction_id, workflow_name):
     if not ip.endswith(':7500'):
         ip += ':7500'
     clear_url = 'http://{}/clear'.format(ip)
-    session.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'abort': abort})
+    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name})
 
-def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
+
+def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry, term):
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
     start_functions = workflow_metadata['start_functions']
     start = time.time()
     jobs = []
+    # logging.info(f"[RUNNING] send req of {transaction_id}, retry: {retry}")
     if type(parameters) is not dict:
         parameters = json.loads(parameters)
     for n in start_functions:
@@ -107,7 +80,7 @@ def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction
         func_param = parameters.get(n, {})
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, create_timestamp, n, ip, retry))
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry, term))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
@@ -115,61 +88,65 @@ def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction
 @app.route('/run', methods = ['POST'])
 def run():
     data = request.get_json(force=True, silent=True)
+    request_start = time.time()
     workflow = data['workflow']
     parameters = data['parameters']
-    transaction_id = data.get('transaction_id', str(uuid.uuid4()))
+    transaction_id = str(uuid.uuid4())
+    term = 0
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    ## logging.info('processing request ' + transaction_id + '...')
-    start = time.time()
-    repo.create_shadow_table(transaction_id)
+    # logging.info('processing request ' + transaction_id + '...')
     aborted = False
-    Abort_type = ''
+    abort_type = ''
     retry = False
+    term = 0
+    workflow_exec_latency=0
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
-        # logging.info(f"running workflow {workflow}, transaction_id: {transaction_id}, retry: {retry}")
-        exec_first_latency = run_workflow(time.time(), workflow, workflow_metadata, transaction_id, parameters, retry)
-        aborted, Abort_type = txTable.waitTX(transaction_id)
+        running_start = time.time()
+        workflow_exec_latency += run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry, term)
+        aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
-            clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
-            gevent.joinall(clear_jobs)
-            if Abort_type == 'PASSIVE':
-                txTable.resetTX(transaction_id)           
+            if abort_type == 'PASSIVE':
+                retry = True
+                term += 1
+                txTable.resetTX(transaction_id, term)
             else:
                 break
-        retry = True
-    if aborted and Abort_type == 'ACTIVE':
-        return json.dumps({'status':'aborted', "res": {}})
-    ## logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}")
-    res = repo.get_result(transaction_id, workflow)
-    first_run_finish_time, validate_latency, validate_time_inside_validator = txTable.finishTX(transaction_id)
-    end = time.time()
-    first_run_latency = first_run_finish_time - start
-    # log_message(f"transaction {transaction_id} finished. e2e_latency: {end-start}, res: {res}")
-    #     # clear memory and other stuff
+    request_end = time.time()
+    if aborted and abort_type == 'ACTIVE':
+        message =  json.dumps({'status':'aborted', "res": {}})
+    # logging.info(f"transaction {transaction_id} latency in the first run: {exec_first_latency}"
+    else:
+        res = repo.get_result(transaction_id, workflow)
+        success_term, commit_latency = txTable.finishTX(transaction_id)
+        e2e_latency = request_end - request_start
+        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term, "res": res})
+        # clear memory and other stuff
     if config.CLEAR_MEM:
-        clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]
-        gevent.joinall(clear_jobs)
-        repo.clear_db(transaction_id)
-
-    return json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'validate_time_inside_validator':validate_time_inside_validator})
-
+        worker_addrs = workflow_metadata['all_addrs']
+        jobs = []
+        # logging.info(f"clearing shadow table and transaction state on {worker_addrs}")
+        for ip in worker_addrs:
+            jobs.append(gevent.spawn(clear_mem, ip, transaction_id, workflow))
+        gevent.joinall(jobs)
+    end = time.time()
+    # logging.info(f"transaction {transaction_id} finished. e2e_latency: {end-start}, validate_latency: {validate_latency}")
+    return message
 
 
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
-    first_run_finish_time = data['first_run_finish_time']
-    
+    term = data['term']
+    commit_latency = data['commit_latency']
     if data.get('abort', False):
-        Abort_type = data['Abort_type']
-        # log_message(f"transaction {transaction_id} aborted. Abort_type:{Abort_type}")
-        txTable.notifyTX(transaction_id, 0, True, Abort_type)
+        Abort_type = data.get('Abort_type', 'ACTIVE')
+        # logging.info(f"transaction {transaction_id_list[0]} aborted.")
+        txTable.notifyTX(transaction_id, term, commit_latency, True, Abort_type)
     else:
-        first_run_finish_time = data['first_run_finish_time']
-        txTable.notifyTX(transaction_id, first_run_finish_time)  
+        txTable.notifyTX(transaction_id, term,commit_latency, False, '')  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])
@@ -180,14 +157,14 @@ def clear_container():
     jobs = []
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
-        jobs.append(gevent.spawn(session.get, clear_url))
+        jobs.append(gevent.spawn(requests.get, clear_url))
     gevent.joinall(jobs)
     return json.dumps({'status': 'ok'})
 
 from gevent.pywsgi import WSGIServer
 import logging
 
-# python3 gateway.py  10.2.27.22 8000
+# python gateway.py 10.2.27.22 8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

@@ -29,7 +29,7 @@ def extract_ip(address: str) -> str:
 
 
 class TransactionState:
-    def __init__(self, create_timestamp, transaction_id: str, all_func: List[str], write_set, lock_set):
+    def __init__(self, create_timestamp, transaction_id: str, all_func: List[str], write_set, lock_set, term):
         self.transaction_id = transaction_id
         # {func: {key: version}}
         # {key: func_ip}
@@ -39,7 +39,7 @@ class TransactionState:
         self.executed: Dict[str, bool] = {}
         self.create_timestamp = create_timestamp
         self.parent_executed: Dict[str, int] = {}
-        self.stop_running = False # used to stop running the transaction, e.g., when the function is aborted.
+        self.term = term 
         # used only in remote lock mode.
         self.lock_set:Dict = lock_set
 
@@ -81,16 +81,17 @@ class WorkerSPManager:
         # config of different modes.
 
     # return the workflow state of the request
-    def get_state(self, create_timestamp, retry_after_abort, transaction_id: str, write_set, lock_set) -> TransactionState:
+    def get_state(self, create_timestamp, transaction_id: str, write_set, lock_set, term) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
-        if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(create_timestamp, transaction_id, self.func,  write_set,  lock_set)
+        if transaction_id not in self.states:
+            self.states[transaction_id] = TransactionState(create_timestamp, transaction_id, self.func,  write_set,  lock_set, term)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
             state.lock_set.update(lock_set)
             state.write_set.update(write_set)
+            state.term = term
             state.lock.release()
         state = self.states[transaction_id]
         self.lock.release()
@@ -106,23 +107,16 @@ class WorkerSPManager:
             del self.states[transaction_id]
         self.lock.release()
 
-    def stop_transaction(self, transaction_id: str) -> None:
-        self.lock.acquire()
-        if transaction_id not in self.states:
-            return
-        state = self.states[transaction_id]
-        state.lock.acquire()
-        state.stop_running = True
-        state.lock.release()
-
     # trigger the function when one of its parent is finished
     # function may run or not, depending on if all its parents were finished
     # function could be local or remote
     # with dirty set: the corresponding downstream is triggered, update dirty set.
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
+            commit_start = time.time()
             self.repo.beldi_commit(state.transaction_id, state.lock_set)
-            self.abort_or_commit_tx(state.transaction_id, False)
+            commit_end = time.time()
+            self.abort_or_commit_tx(state.transaction_id, False, state.term, '', commit_end-commit_start)
             # logging.info(f"Transaction {state.transaction_id} committed. lock_set: {state.lock_set}")
             return
         func_info = self.function_info[function_name]
@@ -135,8 +129,6 @@ class WorkerSPManager:
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         state.lock.acquire()
-        if state.stop_running:
-            return
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         runnable = self.check_runnable(state, function_name)
@@ -159,19 +151,21 @@ class WorkerSPManager:
             'no_parent_execution': no_parent_execution,
             'write_set': state.write_set,
             'create_timestamp': state.create_timestamp,
-            'lock_set': state.lock_set
+            'lock_set': state.lock_set,
+            'term':state.term
 
         }
         requests.post(remote_url, json=data)
 
-    def abort_or_commit_tx(self, transaction_id, aborted, Abort_type=''):
+    def abort_or_commit_tx(self, transaction_id, aborted, term, Abort_type, commit_time):
         # trigger next run of the transaction under pessimistic repair mode
         notify_url = "http://{}/notify".format(self.GATEWAY_ADDR)
         payload = {
             'transaction_id': transaction_id,
-            'first_run_finish_time': time.time(),  # first_run_finish_time, start_time, validate_time_inside_validator
             'abort': aborted,
-            'Abort_type':Abort_type
+            'Abort_type':Abort_type,
+            'term':term,
+            'commit_latency':commit_time
         }
         requests.post(notify_url, json=payload)
 
@@ -192,7 +186,7 @@ class WorkerSPManager:
            # logging.error(f"function {function_name} failed to run, lock_set: {lock_set}")
             already_aborted = self.repo.release_lock(state.transaction_id, lock_set)
             if not already_aborted:
-                self.abort_or_commit_tx(state.transaction_id, True, Abort_type)
+                self.abort_or_commit_tx(state.transaction_id, True, state.term, Abort_type, 0)
             return
         # trigger downstream functions, including the ones in write relation table.
         jobs = [
@@ -223,9 +217,9 @@ class WorkerSPManager:
         state.write_set.update(res["write_set"])
         state.lock_set.update(res['lock_set'])
         state.lock.release()
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency']})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency'], 'term':state.term})
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start, 'term':state.term})
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency'], 'term':state.term}) 
         ## logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
 
         return True, res['lock_set'], ''
