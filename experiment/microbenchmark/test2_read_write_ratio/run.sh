@@ -25,10 +25,5 @@ for READ_RATIO in "${READ_RATIOS[@]}"; do
     echo ""
 done
 
-echo "📊 显示 $SYSTEM_MODE 模式的所有测试结果:"
-python3 process_results.py $SYSTEM_MODE --show
-
-echo "🔧 整理 $SYSTEM_MODE 模式的结果文件 (排序):"
-python3 process_results.py $SYSTEM_MODE
 
 echo "✅ $SYSTEM_MODE 模式测试完成"

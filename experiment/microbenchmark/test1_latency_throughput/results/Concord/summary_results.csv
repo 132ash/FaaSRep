@@ -1,0 +1,2 @@
+workflow,client_count,median_latency,p99_latency,avg_throughput
+c4,32,0.3284,0.6794,92.3795
