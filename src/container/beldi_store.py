@@ -101,10 +101,10 @@ class BeldiStore:
         
         # 步骤 1: 检查是否已持有锁 (快速路径)
         if self.lock_shadow_table.get_item(Key={'key': key}).get('Item'):
-            #print(f"Lock for key '{key}' already exists in shadow table, skipping global lock acquisition.", flush=True)
+            ##print(f"Lock for key '{key}' already exists in shadow table, skipping global lock acquisition.", flush=True)
             return time.time() - start_time
 
-        #print(f"Acquiring global lock for key: {key}, key type:{type(key)} transaction_id: {self.transaction_id}")
+        ##print(f"Acquiring global lock for key: {key}, key type:{type(key)} transaction_id: {self.transaction_id}")
         # # 步骤 2: 验证 Term 是否有效
         try:
             term_item = self.lock_shadow_table.get_item(Key={'key': '_term_'}).get('Item')
@@ -179,11 +179,11 @@ class BeldiStore:
             # 检查事务是否因为条件检查失败而取消
             if e.response['Error']['Code'] == 'TransactionCanceledException' and \
                e.response['CancellationReasons'][0]['Code'] == 'ConditionalCheckFailed':
-                #print(f"Term changed while trying to record lock for key '{key}'. Rolling back global lock.", flush=True)
+                ##print(f"Term changed while trying to record lock for key '{key}'. Rolling back global lock.", flush=True)
                 self._release_global_lock(key)
                 raise PassiveAbortException(f"Term changed while trying to record lock for key '{key}'. Aborting.")
             else:
-                #print(f"DynamoDB transaction error while recording lock for key '{key}': {e}", flush=True)
+                ##print(f"DynamoDB transaction error while recording lock for key '{key}': {e}", flush=True)
                 raise Exception(f"DynamoDB transaction error while recording lock for key '{key}': {e}")
 
         return time.time() - start_time

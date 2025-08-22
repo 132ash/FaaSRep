@@ -1,10 +1,6 @@
-2025-08-22 16:47:37,753 [Client-12] [INFO] [12] Round 1/100 for workflow social_network, txid:95728061-9e53-41af-8848-b49c59b5fa42
-2025-08-22 16:49:01,541 [Client-12] [INFO] [12] Round 11/100 for workflow social_network, txid:0683e788-b8ab-41f3-8668-9df53f7f8993
-2025-08-22 16:49:49,562 [Client-12] [INFO] [12] Round 21/100 for workflow social_network, txid:bd777e78-8f6c-49ab-ad9c-ef156847bfd0
-2025-08-22 16:51:13,274 [Client-12] [INFO] [12] Round 31/100 for workflow social_network, txid:9c2ac044-1eac-42e7-aa76-5ed9b1fc6008
-2025-08-22 16:52:24,836 [Client-12] [INFO] [12] Round 41/100 for workflow social_network, txid:cec94854-722a-42bf-bc84-02754db545d0
-2025-08-22 16:53:13,042 [Client-12] [INFO] [12] Round 51/100 for workflow social_network, txid:174f414f-a88e-4a64-a1ce-cb2d35c4c021
-2025-08-22 16:54:31,917 [Client-12] [INFO] [12] Round 61/100 for workflow social_network, txid:d554780e-4bdd-49d7-a603-e3de64018f51
-2025-08-22 16:55:36,462 [Client-12] [INFO] [12] Round 71/100 for workflow social_network, txid:4c524127-d96b-4ef2-b363-baa1dadd34f9
-2025-08-22 16:56:36,900 [Client-12] [INFO] [12] Round 81/100 for workflow social_network, txid:28fed4ae-197f-41b3-ad0b-c678e5104c48
-2025-08-22 16:57:45,815 [Client-12] [INFO] [12] Round 91/100 for workflow social_network, txid:ccec6771-dd51-4244-88be-739c56b468cb
+2025-08-22 19:42:27,069 [Client-12] [INFO] [12] Round 1/100 for workflow travel_reservation, txid:f49631b9-9968-45b3-8804-8b3cb14392025-08-22 19:43:20,707 [Client-12] [INFO] [12] Round 21/100 for workflow banking_system, txid:21d10c1e-218e-48f3-bf22-41d61d290b50
+2025-08-22 19:43:48,805 [Client-12] [INFO] [12] Round 31/100 for workflow banking_system, txid:539c7e51-8609-4e05-a58e-d07e0bfe0365
+2025-08-22 19:44:43,551 [Client-12] [INFO] [12] Round 51/100 for workflow banking_system, txid:3ffece11-3873-4b66-affb-63f4eb632b47
+2025-08-22 19:45:35,419 [Client-12] [INFO] [12] Round 71/100 for workflow banking_system, txid:90149730-ca72-4726-9fdc-1fe254da429b
+2025-08-22 19:46:03,508 [Client-12] [INFO] [12] Round 81/100 for workflow banking_system, txid:29588ba6-df3e-4fff-bd0a-9a05260d8bd7
+2025-08-22 19:45:41,917 2025-08-22 19:45:42,216 [Client-12] [INFO] [12] Round 61/100 for workflow travel_reservation, txid:a8a4fa30-2025-08-22 19:46:15,574 [Cli2025-08-22 19:46:15,804 [Client-12] [INFO] [12] Round 71/100 for workflow travel_reservation, txid:479e42025-08-22 19:46:48,794 [Client-2025-08-22 19:47:13,689 [Client-12] [INFO] [12] Round 91/100 for workflow travel_reservation, txid:e2025-08-22 19:47:14,067 [Client-12] [INFO] [12] Round 91/100 for workflow social_network, txid:889c7524-ac25-463c-ab6d-4cbd011b5f10

@@ -37,7 +37,7 @@ def setup_logger():
 # 全局logger实例
 logger = setup_logger()
 
-def log_message(message):
+def #log_message(message):
     logger.info(message)
     for handler in logger.handlers:
         handler.flush()
@@ -187,7 +187,7 @@ class Repository:
                 if doc['transaction_id'] == transaction_id:
                     latency_db.delete(doc)
             except couchdb.http.ResourceNotFound:
-                log_message(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
+                #log_message(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
 
     def create_shadow_table(self, transaction_id):
         # --- 任务 1: 同时创建 data_shadow_table 和 lock_shadow_table ---
@@ -245,7 +245,7 @@ class Repository:
                 )
             except ClientError as e:
                 if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
-                    log_message(f"Error releasing global lock for {key_to_release}: {e}")
+                    #log_message(f"Error releasing global lock for {key_to_release}: {e}")
             lock_table.delete_item(Key={'key': key_to_release})
 
     def release_all_locks(self, transaction_id):
@@ -270,7 +270,7 @@ class Repository:
                 )
             except ClientError as e:
                 if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
-                    log_message(f"Error releasing global lock for {key_to_release} on commit: {e}")
+                    #log_message(f"Error releasing global lock for {key_to_release} on commit: {e}")
 
 
     def delete_shadow_table(self, transaction_id=None):

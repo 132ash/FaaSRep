@@ -89,7 +89,7 @@ class Store:
     def ret(self, output_result):
         for k, v in output_result.items():
             self.ret_dict[k] = v
-            print(f"{self.function_name} in {self.transaction_id} return {k}: {v}", flush=True)
+            #print(f"{self.function_name} in {self.transaction_id} return {k}: {v}", flush=True)
             self.put_to_mem(k, self.function_name, 'RET')
 
     def get(self, key):

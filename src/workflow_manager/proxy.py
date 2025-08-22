@@ -32,7 +32,7 @@ def setup_logger():
 # 全局logger实例
 logger = setup_logger()
 
-def log_message(message):
+def #log_message(message):
     logger.info(message)
     for handler in logger.handlers:
         handler.flush()

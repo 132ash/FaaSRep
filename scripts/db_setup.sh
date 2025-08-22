@@ -17,8 +17,8 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 
 
 # Stop and remove containers for amazon/dynamodb-local:latest and couchdb
-# docker stop $(docker ps -q --filter ancestor=amazon/dynamodb-local:latest)
-# docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
+docker stop $(docker ps -q --filter ancestor=amazon/dynamodb-local:latest)
+docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
 # docker stop couchdb
 # docker rm couchdb
 # docker stop redis
@@ -26,7 +26,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # # install and initialize DynamoDB
 # # docker pull amazon/dynamodb-local:latest
 # # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
-# docker run -d -p 4567:8000 amazon/dynamodb-local:latest
+docker run -d -p 4567:8000 amazon/dynamodb-local:latest
 # Default region name: us-west-2
 
 
