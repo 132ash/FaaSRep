@@ -107,38 +107,6 @@ class Repository:
         key = ':'.join(parts[3:])  # 将索引3及之后的部分重新组合成key
         return key
 
-    def release_lock(self, transaction_id, lock_set):
-        """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。时间戳也置为None
-        """
-
-        for key in lock_set.keys():
-            # 更新 lock 属性为 None
-            lock_item = self.data_db.get_item(
-                Key={'key': key}
-            )
-            try:
-                self.data_db.update_item(
-                    Key={'key': key},
-                    UpdateExpression="SET #l = :none, #ct = :none",
-                    ExpressionAttributeNames={
-                        '#l': 'lock',
-                        '#ct': 'create_timestamp'
-                    },
-                    ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                    ExpressionAttributeValues={
-                        ':txid': transaction_id,
-                        ':none': None
-                    },
-                    ReturnValues="UPDATED_NEW"
-                )
-            except:
-                logging.info(f"the lock has been released by another branch, skip.")
-                return True
-        return False
-            
-        
-
     def sync_shadow_to_data_db_with_version(self, transaction_id, version=''):
         shadow_table_name = f"{transaction_id}_shadow_table"
         shadow_table = self.dynamo.Table(shadow_table_name)
@@ -166,6 +134,36 @@ class Repository:
                     ReturnValues="UPDATED_NEW"
                 )
 
-    def beldi_commit(self, transaction_id, lock_set):
+    def beldi_commit(self, transaction_id):
         self.sync_shadow_to_data_db_with_version(transaction_id)
-        self.release_lock(transaction_id, lock_set)
+
+    # def release_lock(self, transaction_id, lock_set):
+    #     """
+    #     释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。时间戳也置为None
+    #     """
+
+    #     for key in lock_set.keys():
+    #         # 更新 lock 属性为 None
+    #         lock_item = self.data_db.get_item(
+    #             Key={'key': key}
+    #         )
+    #         try:
+    #             self.data_db.update_item(
+    #                 Key={'key': key},
+    #                 UpdateExpression="SET #l = :none, #ct = :none",
+    #                 ExpressionAttributeNames={
+    #                     '#l': 'lock',
+    #                     '#ct': 'create_timestamp'
+    #                 },
+    #                 ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
+    #                 ExpressionAttributeValues={
+    #                     ':txid': transaction_id,
+    #                     ':none': None
+    #                 },
+    #                 ReturnValues="UPDATED_NEW"
+    #             )
+    #         except:
+    #             logging.info(f"the lock has been released by another branch, skip.")
+    #             continue
+            
+        

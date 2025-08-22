@@ -1,0 +1,136 @@
+[2025-08-21 23:01:14.187] Exception on /run [POST]
+Traceback (most recent call last):
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/FaaSnap/src/gateway/gateway.py", line 124, in run
+    repo.create_shadow_table(transaction_id)
+  File "/home/shao/FaaSnap/src/gateway/gateway_repo.py", line 158, in create_shadow_table
+    table = self.dynamo.create_table(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/factory.py", line 581, in do_action
+    response = action(self, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/action.py", line 88, in __call__
+    response = getattr(parent.meta.client, operation_name)(*args, **params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 602, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/context.py", line 123, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 1078, in _make_api_call
+    raise error_class(parsed_response, operation_name)
+botocore.exceptions.ClientError: An error occurred (InternalFailure) when calling the CreateTable operation (reached max retries: 9): The request processing has failed because of an unknown error, exception or failure.
+[2025-08-21 23:01:14.190] Exception on /run [POST]
+Traceback (most recent call last):
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/FaaSnap/src/gateway/gateway.py", line 124, in run
+    repo.create_shadow_table(transaction_id)
+  File "/home/shao/FaaSnap/src/gateway/gateway_repo.py", line 158, in create_shadow_table
+    table = self.dynamo.create_table(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/factory.py", line 581, in do_action
+    response = action(self, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/action.py", line 88, in __call__
+    response = getattr(parent.meta.client, operation_name)(*args, **params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 602, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/context.py", line 123, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 1078, in _make_api_call
+    raise error_class(parsed_response, operation_name)
+botocore.exceptions.ClientError: An error occurred (InternalFailure) when calling the CreateTable operation (reached max retries: 9): The request processing has failed because of an unknown error, exception or failure.
+[2025-08-21 23:01:14.191] Exception on /run [POST]
+Traceback (most recent call last):
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/FaaSnap/src/gateway/gateway.py", line 124, in run
+    repo.create_shadow_table(transaction_id)
+  File "/home/shao/FaaSnap/src/gateway/gateway_repo.py", line 158, in create_shadow_table
+    table = self.dynamo.create_table(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/factory.py", line 581, in do_action
+    response = action(self, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/action.py", line 88, in __call__
+    response = getattr(parent.meta.client, operation_name)(*args, **params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 602, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/context.py", line 123, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 1078, in _make_api_call
+    raise error_class(parsed_response, operation_name)
+botocore.exceptions.ClientError: An error occurred (InternalFailure) when calling the CreateTable operation (reached max retries: 9): The request processing has failed because of an unknown error, exception or failure.
+[2025-08-21 23:01:14.192] Exception on /run [POST]
+Traceback (most recent call last):
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/FaaSnap/src/gateway/gateway.py", line 124, in run
+    repo.create_shadow_table(transaction_id)
+  File "/home/shao/FaaSnap/src/gateway/gateway_repo.py", line 158, in create_shadow_table
+    table = self.dynamo.create_table(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/factory.py", line 581, in do_action
+    response = action(self, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/boto3/resources/action.py", line 88, in __call__
+    response = getattr(parent.meta.client, operation_name)(*args, **params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 602, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/context.py", line 123, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shao/anaconda3/envs/FaaSnap/lib/python3.12/site-packages/botocore/client.py", line 1078, in _make_api_call
+    raise error_class(parsed_response, operation_name)
+botocore.exceptions.ClientError: An error occurred (InternalFailure) when calling the CreateTable operation (reached max retries: 9): The request processing has failed because of an unknown error, exception or failure.

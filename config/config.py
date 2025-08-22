@@ -1,7 +1,7 @@
 # basic settings
 from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
-STORAGE_NODE_IP =  '10.3.96.150'
+STORAGE_NODE_IP =  '10.2.29.142'
 
 COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
 DYNAMODB_URL = f'http://{STORAGE_NODE_IP}:4567'
@@ -20,17 +20,17 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                     # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                    'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                    'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                    'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                    'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                    #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                   # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    # 'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                    # 'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                    # 'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                    # 'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                    # 'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                    # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                    # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                    # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
+                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
 # app configuration

@@ -39,9 +39,9 @@ class Store:
         self.input = input
         self.output = output
         self.write_set = metadata['write_set']
-        self.lock_set = metadata['lock_set']
         create_timestamp = metadata['create_timestamp']
-        self.beldi_store.runtime_init(transaction_id, self.lock_set, create_timestamp)
+        term = metadata['term']
+        self.beldi_store.runtime_init(transaction_id, create_timestamp, term)
         self.io_latency = 0
         self.lock_latency = 0
 

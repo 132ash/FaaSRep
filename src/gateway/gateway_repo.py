@@ -4,6 +4,9 @@ import redis
 import boto3
 import sys
 import re
+from botocore.exceptions import ClientError
+import logging
+
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -151,30 +154,88 @@ class Repository:
                 print(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
 
     def create_shadow_table(self, transaction_id):
+        # --- 任务 1: 同时创建 data_shadow_table 和 lock_shadow_table ---
+        # 创建数据影子表
         table_name = f"{transaction_id}_shadow_table"
-        existing_tables = self.dynamo.tables.all()
-        if table_name not in [table.name for table in existing_tables]:
-        # 创建表
-            table = self.dynamo.create_table(
+        if not self.table_exists(table_name):
+            self.dynamo.create_table(
                 TableName=table_name,
-                KeySchema=[
-                    {
-                        'AttributeName': 'key',
-                        'KeyType': 'HASH'  # 主键
-                    }
-                ],
-                AttributeDefinitions=[
-                    {
-                        'AttributeName': 'key',
-                        'AttributeType': 'S'  # 字符串类型
-                    }
-                ],
-                ProvisionedThroughput={
-                    'ReadCapacityUnits': 100,
-                    'WriteCapacityUnits': 100
-                }
+                KeySchema=[{'AttributeName': 'key', 'KeyType': 'HASH'}],
+                AttributeDefinitions=[{'AttributeName': 'key', 'AttributeType': 'S'}],
+                ProvisionedThroughput={'ReadCapacityUnits': 100, 'WriteCapacityUnits': 100}
             )
-            table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+            self.dynamo.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        
+        # 创建锁影子表
+        lock_table_name = f"{transaction_id}_lock_shadow_table"
+        if not self.table_exists(lock_table_name):
+            lock_table = self.dynamo.create_table(
+                TableName=lock_table_name,
+                KeySchema=[{'AttributeName': 'key', 'KeyType': 'HASH'}],
+                AttributeDefinitions=[{'AttributeName': 'key', 'AttributeType': 'S'}],
+                ProvisionedThroughput={'ReadCapacityUnits': 100, 'WriteCapacityUnits': 100}
+            )
+            lock_table.wait_until_exists()
+            # 初始化 term 为 0
+            lock_table.put_item(Item={'key': '_term_', 'value': 0})
+
+    def table_exists(self, table_name):
+        try:
+            self.dynamo.meta.client.describe_table(TableName=table_name)
+            return True
+        except self.dynamo.meta.client.exceptions.ResourceNotFoundException:
+            return False
+
+    def reset_and_release_locks_for_retry(self, transaction_id):
+        lock_table_name = f"{transaction_id}_lock_shadow_table"
+        lock_table = self.dynamo.Table(lock_table_name)
+        data_db = self.dynamo.Table('data')
+        response = lock_table.scan(FilterExpression="attribute_exists(#k) AND #k <> :state_key",
+                                   ExpressionAttributeNames={"#k": "key"},
+                                   ExpressionAttributeValues={":state_key": "_term_"})
+        old_locks = response.get('Items', [])
+        lock_table.update_item(Key={'key': '_term_'}, UpdateExpression="SET #v = #v + :inc",
+                               ExpressionAttributeNames={'#v': 'value'},
+                               ExpressionAttributeValues={':inc': 1})
+        for lock_item in old_locks:
+            key_to_release = lock_item['key']
+            try:
+                data_db.update_item(
+                    Key={'key': key_to_release},
+                    UpdateExpression="SET #l = :none",
+                    ConditionExpression="#l = :txid",
+                    ExpressionAttributeNames={'#l': 'lock'},
+                    ExpressionAttributeValues={':none': None, ':txid': transaction_id}
+                )
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
+                    logging.warning(f"Error releasing global lock for {key_to_release}: {e}")
+            lock_table.delete_item(Key={'key': key_to_release})
+
+    def release_all_locks(self, transaction_id):
+        """任务 3: 释放一个成功事务持有的所有锁。"""
+        lock_table_name = f"{transaction_id}_lock_shadow_table"
+        lock_table = self.dynamo.Table(lock_table_name)
+        data_db = self.dynamo.Table('data')
+
+        response = lock_table.scan(FilterExpression="attribute_exists(#k) AND #k <> :state_key",
+                                   ExpressionAttributeNames={"#k": "key"},
+                                   ExpressionAttributeValues={":state_key": "_term_"})
+        
+        for lock_item in response.get('Items', []):
+            key_to_release = lock_item['key']
+            try:
+                data_db.update_item(
+                    Key={'key': key_to_release},
+                    UpdateExpression="SET #l = :none",
+                    ConditionExpression="#l = :txid",
+                    ExpressionAttributeNames={'#l': 'lock'},
+                    ExpressionAttributeValues={':none': None, ':txid': transaction_id}
+                )
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
+                    logging.warning(f"Error releasing global lock for {key_to_release} on commit: {e}")
+
 
     def delete_shadow_table(self, transaction_id=None):
         if transaction_id is None:
@@ -197,4 +258,11 @@ class Repository:
         if transaction_id in db:
             doc = db[transaction_id]
             db.delete(doc)
-        self.delete_shadow_table(transaction_id)
+        
+        table_name = f"{transaction_id}_shadow_table"
+        if self.table_exists(table_name):
+            self.dynamo.Table(table_name).delete()
+
+        lock_table_name = f"{transaction_id}_lock_shadow_table"
+        if self.table_exists(lock_table_name):
+            self.dynamo.Table(lock_table_name).delete()

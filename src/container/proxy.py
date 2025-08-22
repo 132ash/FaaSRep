@@ -42,7 +42,8 @@ class Runner:
         self.input = {}
         self.output = {}
         self.write_set = {}
-        self.lock_set = {}
+        self.term = None
+
 
     def init(self, function,input,output, port):
         # update function status
@@ -61,11 +62,11 @@ class Runner:
 
         ## logging.info('init finished...')
 
-    def save(self, transaction_id, write_set, lock_set, create_timestamp):
+    def save(self, transaction_id, write_set, create_timestamp, term):
         self.transaction_id = transaction_id
         self.write_set = write_set
-        self.lock_set = lock_set
         self.create_timestamp = create_timestamp
+        self.term = term
 
     def run(self, transaction_id):
         # in first run, collect read/write set, and RYW subjection
@@ -73,14 +74,14 @@ class Runner:
 
         TxMetaData_thisFunc = {
                                 "write_set": self.write_set, 
-                                "lock_set": self.lock_set,
                                 'create_timestamp': self.create_timestamp,
+                                'term':self.term
                               }
         aborted = False
         msg = ''
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
-        ## logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}, lock_set:{self.lock_set}")
+        ## logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}")
         # need run: first run / repair, in fast-path and dirty / repair, not in fast-path.
         store.runtime_init(self.input, self.output, transaction_id, TxMetaData_thisFunc)
         self.ctx = {'function_name': self.function, 'store': store}
@@ -92,14 +93,14 @@ class Runner:
         except ActiveAbortException as e:
             aborted = True
             print(f"Error executing function {self.function}: {e}", flush=True)
-            msg = json.dumps({'Abort': True, 'lock_set':self.lock_set, 'Abort_type':'ACTIVE', 'error': str(e)})
+            msg = json.dumps({'Abort': True,  'Abort_type':'ACTIVE', 'error': str(e)})
         except PassiveAbortException as e:
             aborted = True
             print(f"Error executing function {self.function}: {e}", flush=True)
-            msg = json.dumps({'Abort': True, 'lock_set':self.lock_set,'Abort_type':'PASSIVE', 'error': str(e)})
+            msg = json.dumps({'Abort': True, 'Abort_type':'PASSIVE', 'error': str(e)})
         except Exception as e:
             print(f"Error executing function {self.function}: {e}", flush=True)
-            msg = json.dumps({'Abort': True, 'lock_set':self.lock_set, 'Abort_type':'ERROR', 'error': str(e)})
+            msg = json.dumps({'Abort': True,  'Abort_type':'ERROR', 'error': str(e)})
 
         io_latency = store.io_latency
         lock_latency = store.lock_latency
@@ -141,8 +142,8 @@ def run():
     inp = request.get_json(force=True, silent=True)
     transaction_id = inp['transaction_id']
     create_timestamp = inp['create_timestamp']
-    lock_set = inp['lock_set']
-    runner.save(transaction_id, inp['write_set'],  lock_set, create_timestamp)
+    term = inp['term']
+    runner.save(transaction_id, inp['write_set'], create_timestamp, term)
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
     aborted, abort_msg, ws, io_latency, lock_latency = runner.run(transaction_id)
@@ -152,7 +153,6 @@ def run():
     res = {
         "write_set": ws,
         "io_latency": io_latency,
-        "lock_set": lock_set,
         "lock_latency": lock_latency,
     }
 
