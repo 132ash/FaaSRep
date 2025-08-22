@@ -34,7 +34,7 @@ WORKFLOW_YAML_ADDR = {
                       }
 
 # app configuration
-DEFAULT_CONTAINER_NUM = 4
+DEFAULT_CONTAINER_NUM = 16
 CLEAR_MEM = True
 
 # microbenchmark configuration
