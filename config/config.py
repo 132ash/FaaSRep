@@ -28,13 +28,13 @@ WORKFLOW_YAML_ADDR = {
                     # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                     # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
 # app configuration
-DEFAULT_CONTAINER_NUM = 16
+DEFAULT_CONTAINER_NUM = 4
 CLEAR_MEM = True
 
 # microbenchmark configuration

@@ -4,9 +4,43 @@ import redis
 import boto3
 import sys
 import re
+import os
 from botocore.exceptions import ClientError
 import logging
+log_file = '../../logging/gateway_repo.log'
 
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('gateway_repo')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -110,6 +144,7 @@ class Repository:
         keys = output.keys()
         result = {}
         shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
+        #log_message(f"Fetching result for transaction {transaction_id} from shadow table {transaction_id}_shadow_table")
         for k in keys:
             dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
             response = shadow_table.get_item(
@@ -118,6 +153,7 @@ class Repository:
                 }
             )
             item = response.get('Item')
+            #log_message(f"Fetched item for key {dynamo_key}: {item}")
             result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
@@ -151,7 +187,7 @@ class Repository:
                 if doc['transaction_id'] == transaction_id:
                     latency_db.delete(doc)
             except couchdb.http.ResourceNotFound:
-                print(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
+                log_message(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
 
     def create_shadow_table(self, transaction_id):
         # --- 任务 1: 同时创建 data_shadow_table 和 lock_shadow_table ---
@@ -190,13 +226,13 @@ class Repository:
         lock_table_name = f"{transaction_id}_lock_shadow_table"
         lock_table = self.dynamo.Table(lock_table_name)
         data_db = self.dynamo.Table('data')
+        lock_table.update_item(Key={'key': '_term_'}, UpdateExpression="SET #v = #v + :inc",
+                               ExpressionAttributeNames={'#v': 'value'},
+                               ExpressionAttributeValues={':inc': 1})
         response = lock_table.scan(FilterExpression="attribute_exists(#k) AND #k <> :state_key",
                                    ExpressionAttributeNames={"#k": "key"},
                                    ExpressionAttributeValues={":state_key": "_term_"})
         old_locks = response.get('Items', [])
-        lock_table.update_item(Key={'key': '_term_'}, UpdateExpression="SET #v = #v + :inc",
-                               ExpressionAttributeNames={'#v': 'value'},
-                               ExpressionAttributeValues={':inc': 1})
         for lock_item in old_locks:
             key_to_release = lock_item['key']
             try:
@@ -209,7 +245,7 @@ class Repository:
                 )
             except ClientError as e:
                 if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
-                    logging.warning(f"Error releasing global lock for {key_to_release}: {e}")
+                    log_message(f"Error releasing global lock for {key_to_release}: {e}")
             lock_table.delete_item(Key={'key': key_to_release})
 
     def release_all_locks(self, transaction_id):
@@ -234,7 +270,7 @@ class Repository:
                 )
             except ClientError as e:
                 if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
-                    logging.warning(f"Error releasing global lock for {key_to_release} on commit: {e}")
+                    log_message(f"Error releasing global lock for {key_to_release} on commit: {e}")
 
 
     def delete_shadow_table(self, transaction_id=None):
@@ -253,16 +289,24 @@ class Repository:
                 table.delete()
                 table.meta.client.get_waiter('table_not_exists').wait(TableName=table_name)
 
-    def clear_db(self, transaction_id):
-        db = self.couch['results']
-        if transaction_id in db:
-            doc = db[transaction_id]
-            db.delete(doc)
-        
-        table_name = f"{transaction_id}_shadow_table"
-        if self.table_exists(table_name):
-            self.dynamo.Table(table_name).delete()
+    def clear_db(self, transaction_id=''):
+        if transaction_id:
+            db = self.couch['results']
+            if transaction_id in db:
+                doc = db[transaction_id]
+                db.delete(doc)
 
-        lock_table_name = f"{transaction_id}_lock_shadow_table"
-        if self.table_exists(lock_table_name):
-            self.dynamo.Table(lock_table_name).delete()
+            table_name = f"{transaction_id}_shadow_table"
+            if self.table_exists(table_name):
+                self.dynamo.Table(table_name).delete()
+
+            lock_table_name = f"{transaction_id}_lock_shadow_table"
+            if self.table_exists(lock_table_name):
+                self.dynamo.Table(lock_table_name).delete()
+        else:
+            for table in self.dynamo.tables.all():
+                if table.name.endswith('_shadow_table'):
+                    t = self.dynamo.Table(table.name)
+                    t.delete()
+                    t.meta.client.get_waiter('table_not_exists').wait(TableName=table.name)
+            #log_message("Cleared all shadow tables.")

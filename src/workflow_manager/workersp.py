@@ -131,15 +131,16 @@ class WorkerSPManager:
         return state
 
     # delete state
-    def del_state(self, transaction_id: str):
+    def del_state(self, transaction_id: str, fin):
         self.lock.acquire()
         if transaction_id in self.states:
-            state = self.states[transaction_id]
-            state.lock.acquire()
-            state.valid = False
-            state.lock.release()
-            ## #log_message('delete state of: %s', transaction_id)
-            del self.states[transaction_id]
+            if fin:
+                del self.states[transaction_id]
+            else:
+                state = self.states[transaction_id]
+                state.lock.acquire()
+                state.valid = False
+                state.lock.release()
         self.lock.release()
 
     # trigger the function when one of its parent is finished
@@ -228,7 +229,6 @@ class WorkerSPManager:
         successful, Abort_type = self.run_normal(state, info)
         if successful is None:
             return
-        #log_message(f"function {function_name} in {state.transaction_id} run {'succeeded' if successful else 'failed'}, Abort_type:{Abort_type}")
         if not successful:
            # logging.error(f"function {function_name} failed to run")
             #log_message(f"function {function_name} in {state.transaction_id} failed to run, trigger abort.")
@@ -247,14 +247,12 @@ class WorkerSPManager:
         #log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.term)
         end = time.time()
+        #log_message(f"function {name} in {state.transaction_id} done, res:{res}")
         if res.get("Abort", False):
            # logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}")
-            if 'current_lock_timestamp' in res['error']:
-                #log_message(f"Function {name} failed due to lock acquisition error: {res['error']}")
-                exit(1)
             if res['Abort_type'] == 'ERROR':
-                log_message(f"Function {name} failed with error: {res['error']}")
-            #log_message(f"Function {name} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
+                log_message(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
+            #log_message(f"Function {name} in {state.transaction_id} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
             return False, res['Abort_type']
             
         state.lock.acquire()

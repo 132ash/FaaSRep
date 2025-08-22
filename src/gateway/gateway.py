@@ -55,12 +55,11 @@ import config
 CLEAR_MEM = config.CLEAR_MEM
 
 app = Flask(__name__)
-repo = Repository()
 txTable = RunningTXTable()
 
 workflow_metadata  =  {}
 workflow_metadata_lock = gevent.lock.BoundedSemaphore()
-def get_workflow_metadata(workflow_name):
+def get_workflow_metadata(repo, workflow_name):
     with workflow_metadata_lock:
         if workflow_name not in workflow_metadata:
             workflow_metadata[workflow_name] = {'start_functions':[], 'function_ip':{}, 'all_addrs':[]}
@@ -88,10 +87,10 @@ def clear_mem(ip, transaction_id, workflow_name):
     if not ip.endswith(':7500'):
         ip += ':7500'
     clear_url = 'http://{}/clear'.format(ip)
-    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name})
+    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'fin':True})
 
 
-def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction_id, parameters, retry, term):
+def run_workflow(repo, create_timestamp, workflow_name, workflow_metadata, transaction_id, parameters, retry, term):
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
@@ -114,13 +113,14 @@ def run_workflow(create_timestamp, workflow_name, workflow_metadata, transaction
 @app.route('/run', methods = ['POST'])
 def run():
     data = request.get_json(force=True, silent=True)
+    repo = Repository()
     request_start = time.time()
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
     term = 0
     txTable.registerTX(workflow, transaction_id, parameters)
-    workflow_metadata = get_workflow_metadata(workflow)
+    workflow_metadata = get_workflow_metadata(repo, workflow)
     repo.create_shadow_table(transaction_id)
     #log_message('processing request ' + transaction_id + '...')
     aborted = False
@@ -131,9 +131,10 @@ def run():
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         running_start = time.time()
-        workflow_exec_latency += run_workflow(time.time(), workflow,workflow_metadata, transaction_id, parameters, retry, term)
+        workflow_exec_latency += run_workflow(repo, time.time(), workflow,workflow_metadata, transaction_id, parameters, retry, term)
         aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
+            #log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
             repo.reset_and_release_locks_for_retry(transaction_id)
             if abort_type == 'PASSIVE':
                 retry = True
@@ -169,29 +170,19 @@ def notify():
     commit_latency = data['commit_latency']
     if data.get('abort', False):
         Abort_type = data.get('Abort_type', 'ACTIVE')
-        # logging.info(f"transaction {transaction_id_list[0]} aborted.")
+        #log_message(f"[ABORT ACCEPTED] transaction {transaction_id} aborted, term: {term}, commit_latency: {commit_latency}, Abort_type: {Abort_type}")
         txTable.notifyTX(transaction_id, term, commit_latency, True, Abort_type)
     else:
         txTable.notifyTX(transaction_id, term,commit_latency, False, '')  
     return json.dumps({"status": "notified"})
 
-@app.route('/clear_container', methods = ['POST'])
-def clear_container():
-    data = request.get_json(force=True, silent=True)
-    workflow = data['workflow']
-    addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
-    jobs = []
-    for addr in addrs:
-        clear_url = f'http://{addr}/clear_container'
-        jobs.append(gevent.spawn(requests.get, clear_url))
-    gevent.joinall(jobs)
-    return json.dumps({'status': 'ok'})
-
 from gevent.pywsgi import WSGIServer
 import logging
 
-# python gateway.py 10.2.27.22 8000
+# python gateway.py 10.2.29.142 8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
+    repo = Repository()
+    repo.clear_db()
     server.serve_forever()

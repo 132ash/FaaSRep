@@ -74,8 +74,8 @@ class Dispatcher:
        self.node_list = repo.get_all_addrs('common')
        self.managers = {name: WorkerSPManager(self.host_addr, name, addr,  repo, self.node_list) for name, addr in info_addrs.items()}
 
-    def get_state(self, create_timestamp, workflow_name, transaction_id, write_set, lock_set, term) -> TransactionState:
-        return self.managers[workflow_name].get_state(create_timestamp, transaction_id, write_set,lock_set, term)
+    def get_state(self, create_timestamp, workflow_name, transaction_id, write_set, term) -> TransactionState:
+        return self.managers[workflow_name].get_state(create_timestamp, transaction_id, write_set, term)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -83,8 +83,8 @@ class Dispatcher:
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
     
-    def del_state(self, workflow_name, transaction_id):
-        self.managers[workflow_name].del_state(transaction_id)
+    def del_state(self, workflow_name, transaction_id, fin):
+        self.managers[workflow_name].del_state(transaction_id, fin)
 
 dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 
@@ -100,9 +100,8 @@ def req():
     create_timestamp = data['create_timestamp']
     no_parent_execution = data['no_parent_execution']
     write_set = data.get('write_set', {})
-    lock_set = data.get('lock_set', {})
     term = data['term']
-    state = dispatcher.get_state(create_timestamp, workflow_name, transaction_id,  write_set, lock_set, term)
+    state = dispatcher.get_state(create_timestamp, workflow_name, transaction_id,  write_set, term)
     ## logging.info(f"request [{transaction_id}], workflow_name: {workflow_name}, function_name: {function_name}, lock_set:{lock_set} get state latency:{time.time()-start}")
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -113,7 +112,8 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
+    fin = data.get('fin', False)
+    dispatcher.del_state(workflow_name, transaction_id, fin) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
 @app.route('/info', methods = ['GET'])
@@ -135,7 +135,7 @@ def get_container_names():
 
     
 # python3 proxy.py  10.2.30.50 7500
-# python3 proxy.py  10.2.27.22 7500
+# python3 proxy.py  10.2.30.62 7500
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
