@@ -116,7 +116,8 @@ def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     transaction_id = rep.get('transaction_id', '')
     return transaction_id, {
-        "e2e_latency": rep.get('e2e_latency', 0)
+        "e2e_latency": rep.get('e2e_latency', 0),
+        "rounds": rep.get('rounds', 0)
     }, rep['status']
 
 def analyze_all_workflows(system_mode):
@@ -178,12 +179,15 @@ def analyze_all_workflows(system_mode):
         p99_latency = df['e2e_latency'].quantile(0.99)
         # 吞吐量 = 成功事务数 / 总时间
         avg_throughput = len(df) / total_time if total_time > 0 else 0
+
+        avg_rounds = df['rounds'].mean()
         
         summary_dict = {
             'application': workflow,
             'p50_e2e_latency': p50_latency,
             'p99_e2e_latency': p99_latency,
-            'avg_throughput': avg_throughput
+            'avg_throughput': avg_throughput,
+            'avg_rounds': avg_rounds
         }
         final_summary_list.append(summary_dict)
         
