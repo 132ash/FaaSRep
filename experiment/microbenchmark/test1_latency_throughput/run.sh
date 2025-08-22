@@ -6,11 +6,11 @@ cd "$CURRENT_SH_DIR"
 WORKFLOWS=(c4)
 # WORKFLOWS=(c2 c4 c8 c16 w2 w4 w8 w16)
 # CLIENT_COUNTS=(16 32 48)
-CLIENT_COUNTS=(16)
+CLIENT_COUNTS=(32)
 TEXT_SIZE=4096  # 固定为 4KB
-SYSTEM_MODE="PESSIMISTIC"
+SYSTEM_MODE="beldi"
 
-echo "=== 开始消融实验 ==="
+echo "=== 开始实验 ==="
 echo "测试时间: $(date)"
 echo "工作流: ${WORKFLOWS[*]}"
 echo "客户端数量: ${CLIENT_COUNTS[*]}"
@@ -65,7 +65,7 @@ for WORKFLOW in "${WORKFLOWS[@]}"; do
         
         # 使用 stdbuf -oL 确保行缓冲，-eL 确保错误输出也是行缓冲
         # tee 命令将输出同时显示在终端和保存到文件
-        stdbuf -oL -eL python3 run.py "$WORKFLOW" "$SYSTEM_MODE" "$CLIENT_COUNT" 2>&1 | tee "$LOG_FILE"
+        stdbuf -oL -eL python3 run.py "$WORKFLOW" "$CLIENT_COUNT" 2>&1 | tee "$LOG_FILE"
         
         # 检查执行结果
         PYTHON_EXIT_CODE=${PIPESTATUS[0]}  # 获取 python 命令的退出码
@@ -126,15 +126,4 @@ echo "结束时间: $(date)"
 echo "结果文件位于: $CURRENT_SH_DIR/results/"
 echo "日志文件位于: $CURRENT_SH_DIR/logs/"
 
-# 显示最终结果汇总
-echo ""
-echo "📊 最终结果汇总:"
-echo "================================"
-for WORKFLOW in "${WORKFLOWS[@]}"; do
-    FINAL_RESULT_FILE="results/${WORKFLOW}_results.csv"
-    if [ -f "$FINAL_RESULT_FILE" ]; then
-        echo "📈 工作流 $WORKFLOW 结果:"
-        cat "$FINAL_RESULT_FILE"
-        echo ""
-    fi
 done

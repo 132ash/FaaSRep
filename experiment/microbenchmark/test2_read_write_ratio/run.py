@@ -114,10 +114,7 @@ def run_workflow(workflow_name, parameters):
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     return rep['transaction_id'], {
-        "validate_time_inside_validator": rep['validate_time_inside_validator'],
-        "validate_latency": rep['validate_latency'],
-        "e2e_latency": rep['e2e_latency'],
-        "first_run_latency": rep['first_run_latency'],
+        "e2e_latency": rep['e2e_latency']
     }
 
 def write_result_to_file(system_mode, read_ratio, median_latency, p99_latency, avg_throughput):
@@ -153,7 +150,7 @@ def analyze_all(workflow_name, system_mode, client_cnt, read_ratio):
 
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
-    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, micro_workflow=workflow_name, zipf_param=1, read_ratio=read_ratio)
+    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, micro_workflow=workflow_name, zipf_param=None, read_ratio=read_ratio)
     # 使用更大的队列或无限大小队列
     result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
     
