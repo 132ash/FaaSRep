@@ -251,7 +251,7 @@ class WorkerSPManager:
         if res.get("Abort", False):
            # logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}")
             if res['Abort_type'] == 'ERROR':
-                log_message(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
+                #log_message(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
             #log_message(f"Function {name} in {state.transaction_id} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
             return False, res['Abort_type']
             

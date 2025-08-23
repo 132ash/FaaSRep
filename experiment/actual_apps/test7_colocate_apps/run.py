@@ -30,7 +30,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 # --- 全局测试参数 ---
 CLIENT_CNT = 16
-ROUND = 100
+ROUND = 10
 all_workflows = ['social_network', 'travel_reservation', 'banking_system']
 # all_workflows = ['social_network']
 def worker_task(client_id, workflow, parameters_all_round, result_queue):

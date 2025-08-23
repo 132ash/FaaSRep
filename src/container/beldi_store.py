@@ -39,7 +39,8 @@ class BeldiStore:
         lock_time = 0
         # have upstream func: no need for lock. change the write func.
         if not upstream_func:
-            lock_time = self.acquire_lock(key)
+            # put 操作需要获取写锁 ('W')
+            lock_time = self.acquire_lock(key, 'W')
         self.shadow_table.put_item(
             Item={
                 'key': key,
@@ -64,7 +65,8 @@ class BeldiStore:
                 )
             item = response.get('Item')
         else:
-            lock_time = self.acquire_lock(key)
+            # get 操作需要获取读锁 ('R')
+            lock_time = self.acquire_lock(key, 'R')
             response = self.data_db.get_item(
                 Key={
                     'key': key
@@ -79,36 +81,28 @@ class BeldiStore:
         
     def _release_global_lock(self, key):
         try:
+            # 释放锁时，只需检查 txid，因为只有自己持有的锁才需要自己释放
             self.data_db.update_item(
                 Key={'key': key},
-                UpdateExpression="SET #l = :none, #ct = :none",
-                ExpressionAttributeNames={
-                    '#l': 'lock',
-                    '#ct': 'create_timestamp'
-                },
-                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                ExpressionAttributeValues={
-                    ':txid': self.transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
+                UpdateExpression="REMOVE #l, #ct",
+                ConditionExpression="#l.txid = :txid",
+                ExpressionAttributeNames={'#l': 'lock', '#ct': 'create_timestamp'},
+                ExpressionAttributeValues={':txid': self.transaction_id}
             )
         except ClientError as e:
-            print(f"CRITICAL: Failed to roll back global lock for key '{key}'. Manual cleanup may be required. Error: {e}", flush=True)
+            if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
+                print(f"CRITICAL: Failed to roll back global lock for key '{key}'. Manual cleanup may be required. Error: {e}", flush=True)
 
-    def acquire_lock(self, key):
+    def acquire_lock(self, key, lock_type):
         start_time = time.time()
         
-        # 步骤 1: 检查是否已持有锁 (快速路径)
+        # 步骤 1: 快速路径检查
         if self.lock_shadow_table.get_item(Key={'key': key}).get('Item'):
-            ##print(f"Lock for key '{key}' already exists in shadow table, skipping global lock acquisition.", flush=True)
             return time.time() - start_time
 
-        ##print(f"Acquiring global lock for key: {key}, key type:{type(key)} transaction_id: {self.transaction_id}")
-        # # 步骤 2: 验证 Term 是否有效
+        # 步骤 2: 验证 Term
         try:
             term_item = self.lock_shadow_table.get_item(Key={'key': '_term_'}).get('Item')
-            # 统一使用 'value' 作为存储 term 的属性
             if not term_item or term_item.get('value', -1) != self.term:
                 raise PassiveAbortException(f"Term mismatch. My term: {self.term}, table term: {term_item.get('value', 'N/A')}. Aborting.")
         except ClientError:
@@ -117,74 +111,91 @@ class BeldiStore:
         # 步骤 3: 循环尝试获取全局锁
         max_wait_time = 6
         lock_timeout = 10
+        lock_acquired = False
         while time.time() - start_time < max_wait_time:
+            # --- 尝试加锁 ---
             try:
-                self.data_db.update_item(
-                    Key={'key': key},
-                    UpdateExpression="SET #l = :txid, #ct = :time",
-                    ConditionExpression="attribute_not_exists(#l) OR #l = :none",
-                    ExpressionAttributeNames={'#l': 'lock', '#ct': 'create_timestamp'},
-                    ExpressionAttributeValues={':txid': self.transaction_id, ':none': None, ':time': self.create_timestamp}
-                )
-                break
+                # 读锁逻辑
+                if lock_type == 'R':
+                    # 检查当前锁状态，如果已经是读锁，直接成功
+                    current_lock = self.data_db.get_item(Key={'key': key}, ConsistentRead=True).get('Item', {}).get('lock')
+                    if current_lock and current_lock.get('type') == 'R':
+                        return time.time() - start_time # 共享读锁，直接成功，不记录到 shadow table
+
+                    # 尝试加读锁 (仅当无锁时)
+                    self.data_db.update_item(
+                        Key={'key': key},
+                        UpdateExpression="SET #l = :lock_info, #ct = :time",
+                        ConditionExpression="attribute_not_exists(#l) OR #l = :none",
+                        ExpressionAttributeNames={'#l': 'lock', '#ct': 'create_timestamp'},
+                        ExpressionAttributeValues={
+                            ':lock_info': {'type': 'R', 'txid': self.transaction_id},
+                            ':time': self.create_timestamp,
+                            ':none': None
+                        }
+                    )
+                # 写锁逻辑
+                else: # lock_type == 'W'
+                    self.data_db.update_item(
+                        Key={'key': key},
+                        UpdateExpression="SET #l = :lock_info, #ct = :time",
+                        ConditionExpression="attribute_not_exists(#l) OR #l = :none",
+                        ExpressionAttributeNames={'#l': 'lock', '#ct': 'create_timestamp'},
+                        ExpressionAttributeValues={
+                            ':lock_info': {'type': 'W', 'txid': self.transaction_id},
+                            ':time': self.create_timestamp,
+                            ':none': None
+                        }
+                    )
+                break # 成功获取到新锁，跳出循环
+
             except ClientError as e:
-                if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                    response = self.data_db.get_item(Key={'key': key}, ConsistentRead=True)
-                    self._check_and_handle_expired_lock(key, lock_timeout)
-                    item = response.get('Item')
-                    
-                    if not item: continue
-                    locker_txid = item.get('lock')
-                    current_lock_timestamp = item.get('create_timestamp')
-                    if not locker_txid: 
-                        time.sleep(0.005)
-                        continue
+                if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
+                    raise PassiveAbortException(f"DynamoDB error while acquiring lock for key {key}: {e}")
+                
+                # --- 加锁失败，进入冲突处理逻辑 ---
+                self._check_and_handle_expired_lock(key, lock_timeout)
+                
+                response = self.data_db.get_item(Key={'key': key}, ConsistentRead=True)
+                item = response.get('Item')
+                
+                if not item: continue # 锁被释放了，下一轮循环会尝试加锁
+                
+                lock_info = item.get('lock')
+                current_lock_timestamp = item.get('create_timestamp')
 
-                    if locker_txid == self.transaction_id:
-                        # 这是一个不应该发生的状态，意味着快速路径检查和全局锁状态不一致。
-                        # 可能是由于之前的操作未能完全清理。直接中止以避免死锁。
-                        raise ERRORAbortException(f"CRITICAL: Detected own lock on key '{key}' in global table but not in shadow table. Aborting.")
+                if not lock_info or not current_lock_timestamp:
+                    time.sleep(0.005)
+                    continue
 
-                    if self.create_timestamp > current_lock_timestamp:
-                        raise PassiveAbortException(f"Lock acquisition failed for key {key}: older transaction {locker_txid} holds the lock.")
-                    else:
-                        time.sleep(0.005)
-                        continue
+                locker_txid = lock_info.get('txid')
+                if locker_txid == self.transaction_id:
+                    raise ERRORAbortException(f"CRITICAL: Detected own lock on key '{key}' in global table but not in shadow table.")
+
+                if self.create_timestamp > current_lock_timestamp:
+                    raise PassiveAbortException(f"Lock acquisition failed for key {key}: older transaction {locker_txid} holds the lock.")
                 else:
-                    raise PassiveAbortException(f"DynamoDB error while acquiring global lock for key {key}: {e}")
-        else:
-            raise PassiveAbortException(f"Lock acquisition timeout for key {key} after {max_wait_time}s")
+                    time.sleep(0.005)
+                    continue
 
-        # 步骤 4: 在锁影表中原子地记录已获取的锁
+        # 步骤 4: 在锁影表中记录已获取的锁 (只有成功获取新锁时才执行)
         try:
             self.lock_shadow_table.update_item(
                 Key={'key': '_term_'},
-                # 我们并不真的想更新 _term_ 项，只是想借用它的条件检查功能。
-                # 所以这里做一个无意义的更新。
                 UpdateExpression="SET #last_lock_ts = :ts",
                 ConditionExpression="#v = :current_term",
-                ExpressionAttributeNames={
-                    '#v': 'value',
-                    '#last_lock_ts': 'last_lock_timestamp'
-                },
-                ExpressionAttributeValues={
-                    ':current_term': self.term,
-                    ':ts': self.create_timestamp
-                }
+                ExpressionAttributeNames={'#v': 'value', '#last_lock_ts': 'last_lock_timestamp'},
+                ExpressionAttributeValues={':current_term': self.term, ':ts': self.create_timestamp}
             )
-            # 条件检查通过后，再安全地写入真正的锁记录
+            # 保持 shadow table 结构不变
             self.lock_shadow_table.put_item(Item={'key': key, 'value': 1})
-
         except ClientError as e:
-            # 检查事务是否因为条件检查失败而取消
-            if e.response['Error']['Code'] == 'TransactionCanceledException' and \
-               e.response['CancellationReasons'][0]['Code'] == 'ConditionalCheckFailed':
-                ##print(f"Term changed while trying to record lock for key '{key}'. Rolling back global lock.", flush=True)
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 self._release_global_lock(key)
-                raise PassiveAbortException(f"Term changed while trying to record lock for key '{key}'. Aborting.")
+                raise PassiveAbortException(f"Failed to record lock for key '{key}': term mismatch or transaction is committing.")
             else:
-                ##print(f"DynamoDB transaction error while recording lock for key '{key}': {e}", flush=True)
-                raise Exception(f"DynamoDB transaction error while recording lock for key '{key}': {e}")
+                self._release_global_lock(key)
+                raise Exception(f"DynamoDB error while recording lock for key '{key}': {e}")
 
         return time.time() - start_time
 

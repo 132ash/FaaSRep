@@ -238,10 +238,10 @@ class Repository:
             try:
                 data_db.update_item(
                     Key={'key': key_to_release},
-                    UpdateExpression="SET #l = :none",
-                    ConditionExpression="#l = :txid",
+                    UpdateExpression="REMOVE #l",
+                    ConditionExpression="#l.txid = :txid",
                     ExpressionAttributeNames={'#l': 'lock'},
-                    ExpressionAttributeValues={':none': None, ':txid': transaction_id}
+                    ExpressionAttributeValues={':txid': transaction_id}
                 )
             except ClientError as e:
                 if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
@@ -263,10 +263,10 @@ class Repository:
             try:
                 data_db.update_item(
                     Key={'key': key_to_release},
-                    UpdateExpression="SET #l = :none",
-                    ConditionExpression="#l = :txid",
+                    UpdateExpression="REMOVE #l",
+                    ConditionExpression="#l.txid = :txid",
                     ExpressionAttributeNames={'#l': 'lock'},
-                    ExpressionAttributeValues={':none': None, ':txid': transaction_id}
+                    ExpressionAttributeValues={':txid': transaction_id}
                 )
             except ClientError as e:
                 if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
