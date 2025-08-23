@@ -36,6 +36,31 @@ docker run -d -p 4567:8000 amazon/dynamodb-local:latest
 # docker pull couchdb
  #docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
 # pip install -r requirements.txt
+
+aws dynamodb create-table \
+    --table-name data \
+    --attribute-definitions AttributeName=key,AttributeType=S \
+    --key-schema AttributeName=key,KeyType=HASH \
+    --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1000 \
+    --endpoint-url http://localhost:4567
+
+# 2. 创建全局 shadow_table (使用复合主键)
+aws dynamodb create-table \
+    --table-name shadow_table \
+    --attribute-definitions AttributeName=txid,AttributeType=S AttributeName=key,AttributeType=S \
+    --key-schema AttributeName=txid,KeyType=HASH AttributeName=key,KeyType=RANGE \
+    --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1000 \
+    --endpoint-url http://localhost:4567
+
+# 3. 创建全局 lock_shadow_table (使用复合主键)
+aws dynamodb create-table \
+    --table-name lock_shadow_table \
+    --attribute-definitions AttributeName=txid,AttributeType=S AttributeName=key,AttributeType=S \
+    --key-schema AttributeName=txid,KeyType=HASH AttributeName=key,KeyType=RANGE \
+    --provisioned-throughput ReadCapacityUnits=1000,WriteCapacityUnits=1000 \
+    --endpoint-url http://localhost:4567
+
+
 python $CURRENT_SH_DIR/db_starter.py
 
 declare -A WORKFLOWS_INIT

@@ -25,15 +25,14 @@ class BeldiStore:
     def __init__(self, db_server):
         self.db_server = db_server
         self.data_db = db_server.Table('data')
+        self.shadow_table = self.db_server.Table("shadow_table")
+        self.lock_shadow_table = self.db_server.Table("lock_shadow_table")
         self.dynamo_client = db_server.meta.client
 
     def runtime_init(self, transaction_id, create_timestamp, term):
         self.transaction_id = transaction_id
         self.create_timestamp = Decimal(str(create_timestamp))
         self.term = term
-        self.shadow_table = self.db_server.Table(f"{self.transaction_id}_shadow_table")
-        self.lock_shadow_table = self.db_server.Table(f"{self.transaction_id}_lock_shadow_table")
-
 
     def put(self, key, value, this_func="", upstream_func="", write_set={}, ret=False):
         lock_time = 0
@@ -43,7 +42,8 @@ class BeldiStore:
             lock_time = self.acquire_lock(key, 'W')
         self.shadow_table.put_item(
             Item={
-                'key': key,
+                'txid': self.transaction_id, # 分区键
+                'key': key,                  # 排序键
                 'value': str(value)
             }
         )
@@ -60,7 +60,8 @@ class BeldiStore:
             ## logging.info(f"RYW: {key}, upstream_func: {upstream_func}")
             response = self.shadow_table.get_item(
                     Key={
-                        'key': key
+                        'txid': self.transaction_id, # 分区键
+                        'key': key                   # 排序键
                     }
                 )
             item = response.get('Item')
@@ -97,12 +98,12 @@ class BeldiStore:
         start_time = time.time()
         
         # 步骤 1: 快速路径检查
-        if self.lock_shadow_table.get_item(Key={'key': key}).get('Item'):
+        if self.lock_shadow_table.get_item(Key={'txid': self.transaction_id, 'key': key}).get('Item'):
             return time.time() - start_time
 
         # 步骤 2: 验证 Term
         try:
-            term_item = self.lock_shadow_table.get_item(Key={'key': '_term_'}).get('Item')
+            term_item = self.lock_shadow_table.get_item(Key={'txid': self.transaction_id, 'key': '_term_'}).get('Item')
             if not term_item or term_item.get('value', -1) != self.term:
                 raise PassiveAbortException(f"Term mismatch. My term: {self.term}, table term: {term_item.get('value', 'N/A')}. Aborting.")
         except ClientError:
@@ -181,14 +182,14 @@ class BeldiStore:
         # 步骤 4: 在锁影表中记录已获取的锁 (只有成功获取新锁时才执行)
         try:
             self.lock_shadow_table.update_item(
-                Key={'key': '_term_'},
+                Key={'txid': self.transaction_id, 'key': '_term_'},
                 UpdateExpression="SET #last_lock_ts = :ts",
                 ConditionExpression="#v = :current_term",
                 ExpressionAttributeNames={'#v': 'value', '#last_lock_ts': 'last_lock_timestamp'},
                 ExpressionAttributeValues={':current_term': self.term, ':ts': self.create_timestamp}
             )
             # 保持 shadow table 结构不变
-            self.lock_shadow_table.put_item(Item={'key': key, 'value': 1})
+            self.lock_shadow_table.put_item(Item={'txid': self.transaction_id, 'key': key, 'value': 1})
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 self._release_global_lock(key)

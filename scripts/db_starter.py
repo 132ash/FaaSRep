@@ -24,19 +24,19 @@ import config.config as config
 STORAGE_NODE_IP = config.STORAGE_NODE_IP
 
 couch_db = couchdb.Server(f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984')
-dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STORAGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
+# dynamo_db  = boto3.resource('dynamodb', endpoint_url=f'http://{STORAGE_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
 
 for d in ["workflow_latency", "common", "results", "log"]:
     if d in couch_db:
         del couch_db[d]
     couch_db.create(d)
 
-try:
-    table = dynamo_db.Table('data')
-    table.delete()
-    table.meta.client.get_waiter('table_not_exists').wait(TableName='data')
-except:
-    pass
+# try:
+#     table = dynamo_db.Table('data')
+#     table.delete()
+#     table.meta.client.get_waiter('table_not_exists').wait(TableName='data')
+# except:
+#     pass
 
 project_root = Path(__file__).parent
 while project_root != project_root.parent:
@@ -47,25 +47,25 @@ CONFIG_DIR = project_root / 'config'
 node_info = yaml.load(open(f'{CONFIG_DIR}/worker_info.yaml'), Loader=yaml.FullLoader)["nodes"]
 couch_db['common'].save({'addrs': list(node_info)})
 
-table = dynamo_db.create_table(
-    TableName='data',
-    KeySchema=[
-        {
-            'AttributeName': 'key',
-            'KeyType': 'HASH'  # 主键
-        }
-    ],
-    AttributeDefinitions=[
-        {
-            'AttributeName': 'key',
-            'AttributeType': 'S'
-        }
-    ],
-    ProvisionedThroughput={
-        'ReadCapacityUnits': 100,
-        'WriteCapacityUnits': 100
-    }
-)
+# table = dynamo_db.create_table(
+#     TableName='data',
+#     KeySchema=[
+#         {
+#             'AttributeName': 'key',
+#             'KeyType': 'HASH'  # 主键
+#         }
+#     ],
+#     AttributeDefinitions=[
+#         {
+#             'AttributeName': 'key',
+#             'AttributeType': 'S'
+#         }
+#     ],
+#     ProvisionedThroughput={
+#         'ReadCapacityUnits': 100,
+#         'WriteCapacityUnits': 100
+#     }
+# )
 
 
 

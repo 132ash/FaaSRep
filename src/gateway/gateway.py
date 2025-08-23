@@ -121,7 +121,7 @@ def run():
     term = 0
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(repo, workflow)
-    repo.create_shadow_table(transaction_id)
+    # repo.create_shadow_table(transaction_id)
     log_message('processing request ' + transaction_id + '...')
     aborted = False
     abort_type = ''
@@ -184,5 +184,4 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     repo = Repository()
-    repo.clear_db()
     server.serve_forever()

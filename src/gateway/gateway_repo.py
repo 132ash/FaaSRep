@@ -121,12 +121,14 @@ class Repository:
             return f"{transaction_id}:{mode}:{func}:{key}" 
     
     def store_input(self, transaction_id, ip, input):
-        shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
+        # 使用全局的 shadow_table
+        shadow_table = self.dynamo.Table("shadow_table")
         for k, v in input.items():
             dynamo_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, True)
             shadow_table.put_item(
                 Item={
-                    'key': dynamo_key,
+                    'txid': transaction_id, # 分区键
+                    'key': dynamo_key,      # 排序键
                     'value': str(v)
                 }
             )
@@ -143,13 +145,15 @@ class Repository:
     def fetch_result_from_shadow_table(self, transaction_id, func, output, redis_ip):
         keys = output.keys()
         result = {}
-        shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
-        log_message(f"Fetching result for transaction {transaction_id} from shadow table {transaction_id}_shadow_table")
+        # 使用全局的 shadow_table
+        shadow_table = self.dynamo.Table("shadow_table")
+        log_message(f"Fetching result for transaction {transaction_id} from global shadow_table")
         for k in keys:
             dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
             response = shadow_table.get_item(
                 Key={
-                    'key': dynamo_key
+                    'txid': transaction_id, # 分区键
+                    'key': dynamo_key       # 排序键
                 }
             )
             item = response.get('Item')
@@ -157,27 +161,31 @@ class Repository:
             result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
-    def release_lock(self, transaction_id, lock_set):
-        """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
-        """
-        data_db = self.dynamo.Table('data')
-
-        for key in lock_set.keys():
-            # 更新 lock 属性为 None
-            data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #l = :none",
-                ExpressionAttributeNames={
-                    '#l': 'lock'
-                },
-                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                ExpressionAttributeValues={
-                    ':txid': transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
-            )
+    def _batch_delete_from_partition(self, table, txid):
+        """一个辅助函数，用于高效删除一个分区下的所有条目。"""
+        try:
+            with table.batch_writer() as batch:
+                # 1. 查询分区下的所有 key
+                response = table.query(
+                    KeyConditionExpression='txid = :txid',
+                    ExpressionAttributeValues={':txid': txid}
+                )
+                keys_to_delete = response.get('Items', [])
+                # 处理分页，以防一个分区下的条目超过1MB
+                while 'LastEvaluatedKey' in response:
+                    response = table.query(
+                        KeyConditionExpression='txid = :txid',
+                        ExpressionAttributeValues={':txid': txid},
+                        ExclusiveStartKey=response['LastEvaluatedKey']
+                    )
+                    keys_to_delete.extend(response.get('Items', []))
+                
+                # 2. 批量删除
+                for item in keys_to_delete:
+                    batch.delete_item(Key={'txid': item['txid'], 'key': item['key']})
+            log_message(f"Batch deleted all items for txid '{txid}' from table '{table.name}'.")
+        except Exception as e:
+            log_message(f"Error during batch delete for txid '{txid}' from table '{table.name}': {e}")
 
     def delete_latency(self, transaction_id):
         latency_db = self.couch['workflow_latency']
@@ -189,124 +197,66 @@ class Repository:
             except couchdb.http.ResourceNotFound:
                 log_message(f"Latency document for transaction {transaction_id} not found, skipping deletion.")
 
-    def create_shadow_table(self, transaction_id):
-        # --- 任务 1: 同时创建 data_shadow_table 和 lock_shadow_table ---
-        # 创建数据影子表
-        table_name = f"{transaction_id}_shadow_table"
-        if not self.table_exists(table_name):
-            self.dynamo.create_table(
-                TableName=table_name,
-                KeySchema=[{'AttributeName': 'key', 'KeyType': 'HASH'}],
-                AttributeDefinitions=[{'AttributeName': 'key', 'AttributeType': 'S'}],
-                ProvisionedThroughput={'ReadCapacityUnits': 100, 'WriteCapacityUnits': 100}
-            )
-            self.dynamo.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-        
-        # 创建锁影子表
-        lock_table_name = f"{transaction_id}_lock_shadow_table"
-        if not self.table_exists(lock_table_name):
-            lock_table = self.dynamo.create_table(
-                TableName=lock_table_name,
-                KeySchema=[{'AttributeName': 'key', 'KeyType': 'HASH'}],
-                AttributeDefinitions=[{'AttributeName': 'key', 'AttributeType': 'S'}],
-                ProvisionedThroughput={'ReadCapacityUnits': 100, 'WriteCapacityUnits': 100}
-            )
-            lock_table.wait_until_exists()
-            # 初始化 term 为 0
-            lock_table.put_item(Item={'key': '_term_', 'value': 0})
-
-    def table_exists(self, table_name):
-        try:
-            self.dynamo.meta.client.describe_table(TableName=table_name)
-            return True
-        except self.dynamo.meta.client.exceptions.ResourceNotFoundException:
-            return False
-
     def reset_and_release_locks_for_retry(self, transaction_id):
-        lock_table_name = f"{transaction_id}_lock_shadow_table"
-        lock_table = self.dynamo.Table(lock_table_name)
+        # 使用全局的 lock_shadow_table
+        lock_table = self.dynamo.Table('lock_shadow_table')
         data_db = self.dynamo.Table('data')
-        lock_table.update_item(Key={'key': '_term_'}, UpdateExpression="SET #v = #v + :inc",
-                               ExpressionAttributeNames={'#v': 'value'},
-                               ExpressionAttributeValues={':inc': 1})
-        response = lock_table.scan(FilterExpression="attribute_exists(#k) AND #k <> :state_key",
-                                   ExpressionAttributeNames={"#k": "key"},
-                                   ExpressionAttributeValues={":state_key": "_term_"})
+        
+        # 初始化 term
+        lock_table.update_item(
+            Key={'txid': transaction_id, 'key': '_term_'},
+            UpdateExpression="SET #v = if_not_exists(#v, :start) + :inc",
+            ExpressionAttributeNames={'#v': 'value'},
+            ExpressionAttributeValues={':inc': 1, ':start': 0}
+        )
+        
+        # 查询属于该事务的所有锁
+        response = lock_table.query(
+            KeyConditionExpression="txid = :txid AND #k <> :state_key",
+            ExpressionAttributeNames={"#k": "key"},
+            ExpressionAttributeValues={":txid": transaction_id, ":state_key": "_term_"}
+        )
         old_locks = response.get('Items', [])
         for lock_item in old_locks:
             key_to_release = lock_item['key']
-            try:
-                data_db.update_item(
-                    Key={'key': key_to_release},
-                    UpdateExpression="REMOVE #l",
-                    ConditionExpression="#l.txid = :txid",
-                    ExpressionAttributeNames={'#l': 'lock'},
-                    ExpressionAttributeValues={':txid': transaction_id}
-                )
-            except ClientError as e:
-                if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
-                    log_message(f"Error releasing global lock for {key_to_release}: {e}")
-            lock_table.delete_item(Key={'key': key_to_release})
+            data_db.update_item(
+                Key={'key': key_to_release},
+                UpdateExpression="REMOVE #l",
+                ConditionExpression="#l.txid = :txid",
+                ExpressionAttributeNames={'#l': 'lock'},
+                ExpressionAttributeValues={':txid': transaction_id}
+            )
+        with lock_table.batch_writer() as batch:
+            for item in old_locks:
+                batch.delete_item(Key={'txid': item['txid'], 'key': item['key']})
 
     def release_all_locks(self, transaction_id):
-        """任务 3: 释放一个成功事务持有的所有锁。"""
-        lock_table_name = f"{transaction_id}_lock_shadow_table"
-        lock_table = self.dynamo.Table(lock_table_name)
+        lock_table = self.dynamo.Table('lock_shadow_table')
         data_db = self.dynamo.Table('data')
-
-        response = lock_table.scan(FilterExpression="attribute_exists(#k) AND #k <> :state_key",
-                                   ExpressionAttributeNames={"#k": "key"},
-                                   ExpressionAttributeValues={":state_key": "_term_"})
-        
+        response = lock_table.query(
+            KeyConditionExpression="txid = :txid AND #k <> :state_key",
+            ExpressionAttributeNames={"#k": "key"},
+            ExpressionAttributeValues={":txid": transaction_id, ":state_key": "_term_"}
+        )
         for lock_item in response.get('Items', []):
             key_to_release = lock_item['key']
-            try:
-                data_db.update_item(
-                    Key={'key': key_to_release},
-                    UpdateExpression="REMOVE #l",
-                    ConditionExpression="#l.txid = :txid",
-                    ExpressionAttributeNames={'#l': 'lock'},
-                    ExpressionAttributeValues={':txid': transaction_id}
-                )
-            except ClientError as e:
-                if e.response['Error']['Code'] != 'ConditionalCheckFailedException':
-                    log_message(f"Error releasing global lock for {key_to_release} on commit: {e}")
-
-
-    def delete_shadow_table(self, transaction_id=None):
-        if transaction_id is None:
-            # 删除所有以 "_shadow_table" 结尾的表
-            for table in self.dynamo.tables.all():
-                if table.name.endswith('_shadow_table'):
-                    t = self.dynamo.Table(table.name)
-                    t.delete()
-                    t.meta.client.get_waiter('table_not_exists').wait(TableName=table.name)
-        else:
-            table_name = f"{transaction_id}_shadow_table"
-            existing_tables = self.dynamo.tables.all()
-            if table_name in [table.name for table in existing_tables]:
-                table = self.dynamo.Table(table_name)
-                table.delete()
-                table.meta.client.get_waiter('table_not_exists').wait(TableName=table_name)
-
-    def clear_db(self, transaction_id=''):
-        if transaction_id:
-            db = self.couch['results']
-            if transaction_id in db:
-                doc = db[transaction_id]
-                db.delete(doc)
-
-            table_name = f"{transaction_id}_shadow_table"
-            if self.table_exists(table_name):
-                self.dynamo.Table(table_name).delete()
-
-            lock_table_name = f"{transaction_id}_lock_shadow_table"
-            if self.table_exists(lock_table_name):
-                self.dynamo.Table(lock_table_name).delete()
-        else:
-            for table in self.dynamo.tables.all():
-                if table.name.endswith('_shadow_table'):
-                    t = self.dynamo.Table(table.name)
-                    t.delete()
-                    t.meta.client.get_waiter('table_not_exists').wait(TableName=table.name)
-            log_message("Cleared all shadow tables.")
+            data_db.update_item(
+                Key={'key': key_to_release},
+                UpdateExpression="REMOVE #l",
+                ConditionExpression="#l.txid = :txid",
+                ExpressionAttributeNames={'#l': 'lock'},
+                ExpressionAttributeValues={':txid': transaction_id}
+            )
+            
+    def clear_db(self, transaction_id):
+        db = self.couch['results']
+        if transaction_id in db:
+            doc = db[transaction_id]
+            db.delete(doc)
+        
+        # 从全局表中批量删除该事务的所有条目
+        shadow_table = self.dynamo.Table('shadow_table')
+        self._batch_delete_from_partition(shadow_table, transaction_id)
+        
+        lock_shadow_table = self.dynamo.Table('lock_shadow_table')
+        self._batch_delete_from_partition(lock_shadow_table, transaction_id)
