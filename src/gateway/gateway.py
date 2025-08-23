@@ -122,7 +122,7 @@ def run():
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(repo, workflow)
     repo.create_shadow_table(transaction_id)
-    #log_message('processing request ' + transaction_id + '...')
+    log_message('processing request ' + transaction_id + '...')
     aborted = False
     abort_type = ''
     retry = False
@@ -134,7 +134,7 @@ def run():
         workflow_exec_latency += run_workflow(repo, time.time(), workflow,workflow_metadata, transaction_id, parameters, retry, term)
         aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
-            #log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
+            log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
             repo.reset_and_release_locks_for_retry(transaction_id)
             if abort_type == 'PASSIVE':
                 retry = True
@@ -151,14 +151,14 @@ def run():
         repo.release_all_locks(transaction_id)
         success_term, commit_latency = txTable.finishTX(transaction_id)
         e2e_latency = request_end - request_start
-        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term, "res": res})
+        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term+1, "res": res})
         # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]
         gevent.joinall(clear_jobs)
         repo.clear_db(transaction_id)
     end = time.time()
-    #log_message(f"transaction {transaction_id} finished.")
+    log_message(f"transaction {transaction_id} finished.")
     return message
 
 
@@ -170,7 +170,7 @@ def notify():
     commit_latency = data['commit_latency']
     if data.get('abort', False):
         Abort_type = data.get('Abort_type', 'ACTIVE')
-        #log_message(f"[ABORT ACCEPTED] transaction {transaction_id} aborted, term: {term}, commit_latency: {commit_latency}, Abort_type: {Abort_type}")
+        log_message(f"[ABORT ACCEPTED] transaction {transaction_id} aborted, term: {term}, commit_latency: {commit_latency}, Abort_type: {Abort_type}")
         txTable.notifyTX(transaction_id, term, commit_latency, True, Abort_type)
     else:
         txTable.notifyTX(transaction_id, term,commit_latency, False, '')  

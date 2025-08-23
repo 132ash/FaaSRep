@@ -33,7 +33,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 100
+ROUND = 10
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
@@ -59,7 +59,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     for i in range(ROUND):
         txid, result = analyze_workflow(workflow, parameters_all_round[i])
         result['client_id'] = client_id
-        result['round'] = i + 1
+        result['client_round'] = i + 1
         
         local_results.append(result)
         
@@ -114,10 +114,11 @@ def run_workflow(workflow_name, parameters):
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     return rep['transaction_id'], {
-        "e2e_latency": rep['e2e_latency']
+        "e2e_latency": rep['e2e_latency'],
+        'finish_rounds':rep['rounds']
     }
 
-def write_result_to_file(system_mode, read_ratio, median_latency, p99_latency, avg_throughput):
+def write_result_to_file(system_mode, read_ratio, median_latency, p99_latency, avg_throughput, avg_rounds):
     """将汇总结果追加到最终结果文件"""
     # 每个 mode 对应一个文件夹
     mode_dir = script_dir / "results" / system_mode
@@ -128,15 +129,15 @@ def write_result_to_file(system_mode, read_ratio, median_latency, p99_latency, a
     # 检查文件是否存在，如果不存在则创建并写入表头
     if not result_file.exists():
         with open(result_file, 'w') as f:
-            f.write("read_ratio,median_latency,p99_latency,avg_throughput\n")
+            f.write("read_ratio,median_latency,p99_latency,avg_throughput,avg_rounds\n")
         print(f"📝 创建汇总结果文件: {result_file}", flush=True)
     
     # 追加结果数据
     with open(result_file, 'a') as f:
-        f.write(f"{read_ratio:.2f},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f}\n")
+        f.write(f"{read_ratio:.2f},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f},{avg_rounds:.4f}\n")
     
     print(f"📊 汇总结果已写入文件: {result_file}", flush=True)
-    print(f"📊 数据: read_ratio={read_ratio:.2f}, median_latency={median_latency:.4f}, p99_latency={p99_latency:.4f}, avg_throughput={avg_throughput:.4f}", flush=True)
+    print(f"📊 数据: read_ratio={read_ratio:.2f}, median_latency={median_latency:.4f}, p99_latency={p99_latency:.4f}, avg_throughput={avg_throughput:.4f}, avg_rounds={avg_rounds:.4f}", flush=True)
 
 def analyze_all(workflow_name, system_mode, client_cnt, read_ratio):
     print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}, read_ratio: {read_ratio:.2f}", flush=True)
@@ -150,7 +151,7 @@ def analyze_all(workflow_name, system_mode, client_cnt, read_ratio):
 
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
-    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, micro_workflow=workflow_name, zipf_param=None, read_ratio=read_ratio)
+    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, micro_workflow=workflow_name, zipf_param=0.9, read_ratio=read_ratio)
     # 使用更大的队列或无限大小队列
     result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
     
@@ -214,6 +215,7 @@ def analyze_all(workflow_name, system_mode, client_cnt, read_ratio):
     
     median_e2e_latency = df['e2e_latency'].quantile(0.50)
     p99_e2e_latency = df['e2e_latency'].quantile(0.99) # 新增P99延迟
+    avg_rounds = df['finish_rounds'].mean() # 计算平均完成轮数
     
     # 计算平均吞吐量: client_count / 平均延迟
     avg_e2e_latency = df['e2e_latency'].mean()
@@ -226,10 +228,11 @@ def analyze_all(workflow_name, system_mode, client_cnt, read_ratio):
     print(f"   中位数 E2E 延迟 (P50): {median_e2e_latency:.4f} s", flush=True)
     print(f"   P99 E2E 延迟: {p99_e2e_latency:.4f} s", flush=True)
     print(f"   平均 E2E 延迟: {avg_e2e_latency:.4f} s", flush=True)
+    print(f"   平均完成轮数: {avg_rounds:.4f}", flush=True)
     print(f"   平均吞吐量: {avg_throughput:.4f} RPS", flush=True)
 
     # 直接写入结果文件
-    write_result_to_file(system_mode, read_ratio, median_e2e_latency, p99_e2e_latency, avg_throughput)
+    write_result_to_file(system_mode, read_ratio, median_e2e_latency, p99_e2e_latency, avg_throughput, avg_rounds)
     
     print(f"✅ {workflow_name} 测试完成 (客户端: {client_cnt}, read_ratio: {read_ratio:.2f})", flush=True)
     sys.stdout.flush() 

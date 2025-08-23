@@ -30,7 +30,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 # --- 全局测试参数 ---
 CLIENT_CNT = 16
-ROUND = 10
+ROUND = 100
 all_workflows = ['social_network', 'travel_reservation', 'banking_system']
 # all_workflows = ['social_network']
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
@@ -109,8 +109,11 @@ def run_workflow(workflow_name, parameters):
     transaction_id = parameters.pop('transaction_id', None)
     if transaction_id:
         inputs['transaction_id'] = transaction_id
-    rep = requests.post(url, json = inputs)
-    return rep.json()
+    try:
+        rep = requests.post(url, json = inputs).json()
+        return rep.json()
+    except Exception as e:
+        return {"error": str(e)}
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)

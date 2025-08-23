@@ -7,8 +7,8 @@ WORKFLOW="c4" #c16
 CLIENT_CNT=32
 SYSTEM_MODE="beldi" # 或者 "pessimistic"
 # 定义要测试的 Zipf 参数
-# ZIPF_PARAMS=(1.0 1.25 1.5 2)
-ZIPF_PARAMS=(1.25)
+# ZIPF_PARAMS=(0.5 0.75 1.0 1.25 1.5)
+ZIPF_PARAMS=(0.9)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的数据倾斜度影响"
 
@@ -28,11 +28,5 @@ for ZIPF_PARAM in "${ZIPF_PARAMS[@]}"; do
     echo "✅ 完成 Zipf 参数: $ZIPF_PARAM"
     echo ""
 done
-
-echo "📊 显示 $SYSTEM_MODE 模式的所有测试结果:"
-python3 process_results.py $SYSTEM_MODE --show
-
-echo "🔧 整理 $SYSTEM_MODE 模式的结果文件 (按zipf_param排序):"
-python3 process_results.py $SYSTEM_MODE
 
 echo "✅ $SYSTEM_MODE 模式测试完成"

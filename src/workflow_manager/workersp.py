@@ -153,7 +153,7 @@ class WorkerSPManager:
             self.repo.beldi_commit(state.transaction_id)
             commit_end = time.time()
             self.abort_or_commit_tx(state.transaction_id, False, state.term, '', commit_end-commit_start)
-            #log_message(f"Transaction {state.transaction_id} committed.")
+            log_message(f"Transaction {state.transaction_id} committed.")
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -181,7 +181,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        #log_message(f'txid {state.transaction_id} trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        log_message(f'txid {state.transaction_id} trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             'transaction_id': state.transaction_id,
@@ -231,7 +231,7 @@ class WorkerSPManager:
             return
         if not successful:
            # logging.error(f"function {function_name} failed to run")
-            #log_message(f"function {function_name} in {state.transaction_id} failed to run, trigger abort.")
+            log_message(f"function {function_name} in {state.transaction_id} failed to run, trigger abort.")
             self.abort_or_commit_tx(state.transaction_id, True, state.term, Abort_type, 0)
             return
         # trigger downstream functions, including the ones in write relation table.
@@ -244,15 +244,15 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        #log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
+        log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.term)
         end = time.time()
-        #log_message(f"function {name} in {state.transaction_id} done, res:{res}")
+        log_message(f"function {name} in {state.transaction_id} done, res:{res}")
         if res.get("Abort", False):
            # logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}")
             if res['Abort_type'] == 'ERROR':
-                #log_message(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
-            #log_message(f"Function {name} in {state.transaction_id} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
+                log_message(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
+            log_message(f"Function {name} in {state.transaction_id} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
             return False, res['Abort_type']
             
         state.lock.acquire()

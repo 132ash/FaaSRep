@@ -113,14 +113,13 @@ def run_workflow(workflow_name, parameters):
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
+    # 关键修改：提取 e2e_latency 和 rounds
     return rep['transaction_id'], {
-        "validate_time_inside_validator": rep['validate_time_inside_validator'],
-        "validate_latency": rep['validate_latency'],
         "e2e_latency": rep['e2e_latency'],
-        "first_run_latency": rep['first_run_latency'],
+        'finish_rounds': rep['rounds']
     }
 
-def write_result_to_file(system_mode, zipf_param, median_latency, p99_latency, avg_throughput):
+def write_result_to_file(system_mode, zipf_param, median_latency, p99_latency, avg_throughput, avg_rounds):
     """将汇总结果追加到最终结果文件"""
     # 每个 mode 对应一个文件夹
     mode_dir = script_dir / "results" / system_mode
@@ -131,15 +130,17 @@ def write_result_to_file(system_mode, zipf_param, median_latency, p99_latency, a
     # 检查文件是否存在，如果不存在则创建并写入表头
     if not result_file.exists():
         with open(result_file, 'w') as f:
-            f.write("zipf_param,median_latency,p99_latency,avg_throughput\n")
+            # 关键修改：在表头中添加 avg_rounds
+            f.write("zipf_param,median_latency,p99_latency,avg_throughput,avg_rounds\n")
         print(f"📝 创建汇总结果文件: {result_file}", flush=True)
     
     # 追加结果数据
     with open(result_file, 'a') as f:
-        f.write(f"{zipf_param:.2f},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f}\n")
+        # 关键修改：写入 avg_rounds 的值
+        f.write(f"{zipf_param:.2f},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f},{avg_rounds:.4f}\n")
     
     print(f"📊 汇总结果已写入文件: {result_file}", flush=True)
-    print(f"📊 数据: zipf_param={zipf_param:.2f}, median_latency={median_latency:.4f}, p99_latency={p99_latency:.4f}, avg_throughput={avg_throughput:.4f}", flush=True)
+    print(f"📊 数据: zipf_param={zipf_param:.2f}, median_latency={median_latency:.4f}, p99_latency={p99_latency:.4f}, avg_throughput={avg_throughput:.4f}, avg_rounds={avg_rounds:.4f}", flush=True)
 
 def analyze_all(workflow_name, system_mode, client_cnt, zipf_param):
     print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}, zipf_param: {zipf_param:.2f}", flush=True)
@@ -217,6 +218,8 @@ def analyze_all(workflow_name, system_mode, client_cnt, zipf_param):
     
     median_e2e_latency = df['e2e_latency'].quantile(0.50)
     p99_e2e_latency = df['e2e_latency'].quantile(0.99) # 新增P99延迟
+    # 关键修改：计算平均完成轮数
+    avg_rounds = df['finish_rounds'].mean()
     
     # 计算平均吞吐量: client_count / 平均延迟
     avg_e2e_latency = df['e2e_latency'].mean()
@@ -229,10 +232,12 @@ def analyze_all(workflow_name, system_mode, client_cnt, zipf_param):
     print(f"   中位数 E2E 延迟 (P50): {median_e2e_latency:.4f} s", flush=True)
     print(f"   P99 E2E 延迟: {p99_e2e_latency:.4f} s", flush=True)
     print(f"   平均 E2E 延迟: {avg_e2e_latency:.4f} s", flush=True)
+    # 关键修改：打印平均轮数
+    print(f"   平均完成轮数: {avg_rounds:.4f}", flush=True)
     print(f"   平均吞吐量: {avg_throughput:.4f} RPS", flush=True)
 
     # 直接写入结果文件
-    write_result_to_file(system_mode, zipf_param, median_e2e_latency, p99_e2e_latency, avg_throughput)
+    write_result_to_file(system_mode, zipf_param, median_e2e_latency, p99_e2e_latency, avg_throughput, avg_rounds)
     
     print(f"✅ {workflow_name} 测试完成 (客户端: {client_cnt}, zipf_param: {zipf_param:.2f})", flush=True)
     sys.stdout.flush() 

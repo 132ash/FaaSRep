@@ -144,7 +144,7 @@ class Repository:
         keys = output.keys()
         result = {}
         shadow_table = self.dynamo.Table(f"{transaction_id}_shadow_table")
-        #log_message(f"Fetching result for transaction {transaction_id} from shadow table {transaction_id}_shadow_table")
+        log_message(f"Fetching result for transaction {transaction_id} from shadow table {transaction_id}_shadow_table")
         for k in keys:
             dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
             response = shadow_table.get_item(
@@ -153,7 +153,7 @@ class Repository:
                 }
             )
             item = response.get('Item')
-            #log_message(f"Fetched item for key {dynamo_key}: {item}")
+            log_message(f"Fetched item for key {dynamo_key}: {item}")
             result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
@@ -309,4 +309,4 @@ class Repository:
                     t = self.dynamo.Table(table.name)
                     t.delete()
                     t.meta.client.get_waiter('table_not_exists').wait(TableName=table.name)
-            #log_message("Cleared all shadow tables.")
+            log_message("Cleared all shadow tables.")

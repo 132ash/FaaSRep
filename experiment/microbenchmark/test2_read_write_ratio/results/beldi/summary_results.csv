@@ -1,2 +1,5 @@
-read_ratio,median_latency,p99_latency,avg_throughput
-1.00,5.5065,39.9741,3.7677
+read_ratio,median_latency,p99_latency,avg_throughput,avg_rounds
+1.00,1.3678,1.7328,25.4194,1.0000
+0.66,1.6175,48.1532,6.2657,23.7094
+0.33,3.4957,105.7125,3.1818,50.7656
+0.00,3.5431,86.7288,3.0940,50.0812
