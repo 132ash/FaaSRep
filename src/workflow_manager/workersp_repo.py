@@ -108,17 +108,31 @@ class Repository:
         return key
 
     def sync_shadow_to_data_db_with_version(self, transaction_id, version=''):
-        shadow_table_name = f"{transaction_id}_shadow_table"
-        shadow_table = self.dynamo.Table(shadow_table_name)
+        # 关键修改：使用全局的 shadow_table
+        shadow_table = self.dynamo.Table('shadow_table')
 
-        # 扫描 shadow table 中的所有数据
-        response = shadow_table.scan()
+        # 关键修改：使用 query 代替 scan，高效查询属于该事务的所有条目
+        response = shadow_table.query(
+            KeyConditionExpression='txid = :txid',
+            ExpressionAttributeValues={':txid': transaction_id}
+        )
         items = response.get('Items', [])
 
+        # 处理分页，以防一个事务的写入集超过1MB
+        while 'LastEvaluatedKey' in response:
+            response = shadow_table.query(
+                KeyConditionExpression='txid = :txid',
+                ExpressionAttributeValues={':txid': transaction_id},
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
         for item in items:
+            # shadow_table 中的 'key' 字段现在是排序键
             key = item['key']
-            value = item['value']  # Ensure value is stored as a string
-            # only flush the items func write.
+            value = item['value']
+            
+            # 只将函数写入的数据（非RET前缀）同步到主数据表
             if not key.startswith('RET'):
                 self.data_db.update_item(
                     Key={'key': key},
@@ -133,7 +147,7 @@ class Repository:
                     },
                     ReturnValues="UPDATED_NEW"
                 )
-
+                
     def beldi_commit(self, transaction_id):
         self.sync_shadow_to_data_db_with_version(transaction_id)
 

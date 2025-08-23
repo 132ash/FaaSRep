@@ -147,7 +147,7 @@ class Repository:
         result = {}
         # 使用全局的 shadow_table
         shadow_table = self.dynamo.Table("shadow_table")
-        log_message(f"Fetching result for transaction {transaction_id} from global shadow_table")
+        #log_message(f"Fetching result for transaction {transaction_id} from global shadow_table")
         for k in keys:
             dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
             response = shadow_table.get_item(
@@ -157,7 +157,7 @@ class Repository:
                 }
             )
             item = response.get('Item')
-            log_message(f"Fetched item for key {dynamo_key}: {item}")
+            #log_message(f"Fetched item for key {dynamo_key}: {item}")
             result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
@@ -183,7 +183,7 @@ class Repository:
                 # 2. 批量删除
                 for item in keys_to_delete:
                     batch.delete_item(Key={'txid': item['txid'], 'key': item['key']})
-            log_message(f"Batch deleted all items for txid '{txid}' from table '{table.name}'.")
+            #log_message(f"Batch deleted all items for txid '{txid}' from table '{table.name}'.")
         except Exception as e:
             log_message(f"Error during batch delete for txid '{txid}' from table '{table.name}': {e}")
 
@@ -212,11 +212,12 @@ class Repository:
         
         # 查询属于该事务的所有锁
         response = lock_table.query(
-            KeyConditionExpression="txid = :txid AND #k <> :state_key",
-            ExpressionAttributeNames={"#k": "key"},
-            ExpressionAttributeValues={":txid": transaction_id, ":state_key": "_term_"}
+            KeyConditionExpression="txid = :txid",
+            ExpressionAttributeValues={":txid": transaction_id}
         )
-        old_locks = response.get('Items', [])
+        all_items = response.get('Items', [])
+        old_locks = [item for item in all_items if item.get('key') != '_term_']
+
         for lock_item in old_locks:
             key_to_release = lock_item['key']
             data_db.update_item(
@@ -234,11 +235,14 @@ class Repository:
         lock_table = self.dynamo.Table('lock_shadow_table')
         data_db = self.dynamo.Table('data')
         response = lock_table.query(
-            KeyConditionExpression="txid = :txid AND #k <> :state_key",
-            ExpressionAttributeNames={"#k": "key"},
-            ExpressionAttributeValues={":txid": transaction_id, ":state_key": "_term_"}
+            KeyConditionExpression="txid = :txid",
+            ExpressionAttributeValues={":txid": transaction_id}
         )
-        for lock_item in response.get('Items', []):
+
+        all_items = response.get('Items', [])
+        locks_to_release = [item for item in all_items if item.get('key') != '_term_']
+
+        for lock_item in locks_to_release:
             key_to_release = lock_item['key']
             data_db.update_item(
                 Key={'key': key_to_release},
@@ -247,7 +251,7 @@ class Repository:
                 ExpressionAttributeNames={'#l': 'lock'},
                 ExpressionAttributeValues={':txid': transaction_id}
             )
-            
+
     def clear_db(self, transaction_id):
         db = self.couch['results']
         if transaction_id in db:

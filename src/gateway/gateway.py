@@ -122,11 +122,20 @@ def run():
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(repo, workflow)
     # repo.create_shadow_table(transaction_id)
-    log_message('processing request ' + transaction_id + '...')
+    #log_message('processing request ' + transaction_id + '...')
     aborted = False
     abort_type = ''
     retry = False
     term = 0
+    lock_table = repo.dynamo.Table('lock_shadow_table')
+    lock_table.put_item(
+        Item={
+            'txid': transaction_id,
+            'key': '_term_',
+            'value': 0
+        },
+        ConditionExpression='attribute_not_exists(txid)' # 确保只在首次创建
+    )
     workflow_exec_latency=0
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
@@ -134,7 +143,7 @@ def run():
         workflow_exec_latency += run_workflow(repo, time.time(), workflow,workflow_metadata, transaction_id, parameters, retry, term)
         aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
-            log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
+            #log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
             repo.reset_and_release_locks_for_retry(transaction_id)
             if abort_type == 'PASSIVE':
                 retry = True
@@ -158,7 +167,7 @@ def run():
         gevent.joinall(clear_jobs)
         repo.clear_db(transaction_id)
     end = time.time()
-    log_message(f"transaction {transaction_id} finished.")
+    #log_message(f"transaction {transaction_id} finished.")
     return message
 
 
@@ -170,7 +179,7 @@ def notify():
     commit_latency = data['commit_latency']
     if data.get('abort', False):
         Abort_type = data.get('Abort_type', 'ACTIVE')
-        log_message(f"[ABORT ACCEPTED] transaction {transaction_id} aborted, term: {term}, commit_latency: {commit_latency}, Abort_type: {Abort_type}")
+        #log_message(f"[ABORT ACCEPTED] transaction {transaction_id} aborted, term: {term}, commit_latency: {commit_latency}, Abort_type: {Abort_type}")
         txTable.notifyTX(transaction_id, term, commit_latency, True, Abort_type)
     else:
         txTable.notifyTX(transaction_id, term,commit_latency, False, '')  
