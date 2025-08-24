@@ -121,7 +121,7 @@ def run():
         success_term, commit_latency = txTable.finishTX(transaction_id)
         success_run_latency = (request_end - running_start) - commit_latency
         e2e_latency = request_end - request_start
-        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'success_run_latency': success_run_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'success_term':success_term, "res": res})
+        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'success_run_latency': success_run_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term+1, "res": res})
         # clear memory and other stuff
     if config.CLEAR_MEM:
         worker_addrs = workflow_metadata['all_addrs']

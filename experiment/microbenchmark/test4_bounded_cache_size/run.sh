@@ -6,7 +6,7 @@ cd "$CURRENT_SH_DIR"
 WORKFLOW="c4"
 CLIENT_CNT=32
 SYSTEM_MODE="Concord" # 或者 "pessimistic"
-ZIPF_PARAM=1 # 固定一个数据倾斜度
+ZIPF_PARAM=0.9 # 固定一个数据倾斜度
 
 # --- 缓存大小配置 ---
 # 定义一个基准的最大缓存使用量 (单位: MB)，例如预先测出 c4 在无限制下大约使用 41MB
