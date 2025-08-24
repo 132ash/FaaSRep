@@ -140,8 +140,9 @@ def run():
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         running_start = time.time()
-        workflow_exec_latency += run_workflow(repo, time.time(), workflow,workflow_metadata, transaction_id, parameters, retry, term)
-        aborted, abort_type = txTable.waitTX(transaction_id)
+        run_workflow(repo, running_start, workflow,workflow_metadata, transaction_id, parameters, retry, term)
+        aborted, abort_type, finish_time = txTable.waitTX(transaction_id)
+        workflow_exec_latency += (finish_time - running_start)
         if aborted:
             #log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
             repo.reset_and_release_locks_for_retry(transaction_id)

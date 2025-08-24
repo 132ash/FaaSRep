@@ -220,13 +220,22 @@ class Repository:
 
         for lock_item in old_locks:
             key_to_release = lock_item['key']
-            data_db.update_item(
-                Key={'key': key_to_release},
-                UpdateExpression="REMOVE #l",
-                ConditionExpression="#l.txid = :txid",
-                ExpressionAttributeNames={'#l': 'lock'},
-                ExpressionAttributeValues={':txid': transaction_id}
-            )
+            try:
+                # 关键修改：重新引入条件检查，并捕获异常
+                data_db.update_item(
+                    Key={'key': key_to_release},
+                    UpdateExpression="REMOVE #l",
+                    ConditionExpression="#l.txid = :txid",
+                    ExpressionAttributeNames={'#l': 'lock'},
+                    ExpressionAttributeValues={':txid': transaction_id}
+                )
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                    log_message(f"Lock for key '{key_to_release}' was already released on commit. Skipping.")
+                    continue
+                else:
+                    raise Exception(f"Unexpected DynamoDB error when releasing lock for key '{key_to_release}' on commit: {e}")
+
         with lock_table.batch_writer() as batch:
             for item in old_locks:
                 batch.delete_item(Key={'txid': item['txid'], 'key': item['key']})
@@ -244,13 +253,21 @@ class Repository:
 
         for lock_item in locks_to_release:
             key_to_release = lock_item['key']
-            data_db.update_item(
-                Key={'key': key_to_release},
-                UpdateExpression="REMOVE #l",
-                ConditionExpression="#l.txid = :txid",
-                ExpressionAttributeNames={'#l': 'lock'},
-                ExpressionAttributeValues={':txid': transaction_id}
-            )
+            try:
+                # 关键修改：重新引入条件检查，并捕获异常
+                data_db.update_item(
+                    Key={'key': key_to_release},
+                    UpdateExpression="REMOVE #l",
+                    ConditionExpression="#l.txid = :txid",
+                    ExpressionAttributeNames={'#l': 'lock'},
+                    ExpressionAttributeValues={':txid': transaction_id}
+                )
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                    log_message(f"Lock for key '{key_to_release}' was already released on commit. Skipping.")
+                    continue
+                else:
+                    raise Exception(f"Unexpected DynamoDB error when releasing lock for key '{key_to_release}' on commit: {e}")
 
     def clear_db(self, transaction_id):
         db = self.couch['results']

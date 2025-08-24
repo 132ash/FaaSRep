@@ -182,13 +182,17 @@ def analyze_all_workflows(system_mode):
         avg_throughput = len(df) / total_time if total_time > 0 else 0
 
         avg_rounds = df['rounds'].mean()
+        # 关键修改：计算 p99 rounds
+        p99_rounds = df['rounds'].quantile(0.99)
         
         summary_dict = {
             'application': workflow,
             'p50_e2e_latency': p50_latency,
             'p99_e2e_latency': p99_latency,
             'avg_throughput': avg_throughput,
-            'avg_rounds': avg_rounds
+            'avg_rounds': avg_rounds,
+            # 关键修改：添加 p99_rounds 到汇总字典
+            'p99_rounds': p99_rounds
         }
         final_summary_list.append(summary_dict)
         
@@ -208,7 +212,6 @@ def analyze_all_workflows(system_mode):
     
     return summary_df
 
-system_modes = ["PESSIMISTIC", "OPTIMISTIC"]
 
 if __name__ == '__main__':
     # 为主进程设置一个通用的日志记录器

@@ -248,26 +248,21 @@ class WorkerSPManager:
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.term)
         end = time.time()
         #log_message(f"function {name} in {state.transaction_id} done, res:{res}")
-        if res.get("Abort", False):
-           # logging.error(f"txid {state.transaction_id} function {name} trigger abort: {res['error']}")
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency'], 'term':state.term})
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start, 'term':state.term})
+        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency'], 'term':state.term}) 
+        if res.get("Abort", False): 
             if res['Abort_type'] == 'ERROR':
-                log_message(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
+                raise Exception(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
             #log_message(f"Function {name} in {state.transaction_id} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
             return False, res['Abort_type']
-            
+        ## logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         state.lock.acquire()
-        # in first run, modify read/write set, func port, and update RYW relation.
-        # only count the function latency in first run.
         if not state.valid:
             state.lock.release()
             return None, None
         state.write_set.update(res["write_set"])
         state.lock.release()
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency'], 'term':state.term})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start, 'term':state.term})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency'], 'term':state.term}) 
-        ## logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
-
         return True,  ''
 
     def clear_db(self, transaction_id):

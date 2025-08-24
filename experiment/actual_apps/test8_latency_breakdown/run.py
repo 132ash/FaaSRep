@@ -36,7 +36,7 @@ RENTAL_START = config.RENTAL_START
 RENTAL_END = config.RENTAL_END
 DATE_FORMAT = config.DATE_FORMAT
 
-CLIENT_CNT = 16
+CLIENT_CNT = 32
 ROUND = 100
 parameters_inputs = {}
 # all_workflows = ['banking_system']
@@ -53,13 +53,13 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     for i in range(ROUND):
         # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
         # 这里假设 analyze_workflow 返回一个包含结果的字典
-        txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
+        result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
         if tx_status == 'aborted':
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
             continue
         local_results.append(result)
-        # if i % 10 == 0:
-        #     logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
+        if i % (ROUND // 10) == 0:
+            logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}")
         # # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
     result_queue.put(local_results)
@@ -82,10 +82,13 @@ def analyze_workflow(workflow, parameters_input):
         "e2e_latency": rep.get('e2e_latency', 0),
         "workflow_exec_latency": rep.get('workflow_exec_latency', 0),
         "commit_latency": rep.get('commit_latency', 0),
+        "rounds": rep.get('rounds', 1), # 关键修改：提取 rounds 信息
         "status": rep.get('status', 'aborted')
-    }
+    }, rep['status']
 
-def analyze_all(system_mode="beldi", compute_mode='avg'):
+
+
+def analyze_all(system_mode="beldi"):
     repo.flush_couchdb_workflow_latency()
     for workflow in all_workflows:
         parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
@@ -116,7 +119,7 @@ def analyze_all(system_mode="beldi", compute_mode='avg'):
 
         # 1. 将网关返回的结果转换为DataFrame
         gateway_df = pd.DataFrame(all_results)
-        successful_txs = gateway_df[gateway_df['status'] == 'success']
+        successful_txs = gateway_df[gateway_df['status'] == 'ok']
         if successful_txs.empty:
             print(f"No successful transactions for workflow {workflow}. Skipping analysis.")
             continue
@@ -133,17 +136,26 @@ def analyze_all(system_mode="beldi", compute_mode='avg'):
         # 4. 计算派生延迟
         df['function_exec_latency'] = df['exec_latency'] - df['io_latency']
         df['scheduling_latency'] = df['workflow_exec_latency'] - df['exec_latency']
-        
+        df['io_latency'] = df['io_latency'] - df['lock_latency']
+        p99_rounds_val = df['rounds'].quantile(0.99)
         # 5. 统计所需指标的平均值
-        avg_latency = df.mean()
+        numeric_columns = [
+            'e2e_latency', 'workflow_exec_latency', 'commit_latency', 'rounds',
+            'exec_latency', 'io_latency', 'lock_latency', 
+            'function_exec_latency', 'scheduling_latency'
+        ]
+        avg_latency = df[numeric_columns].mean()
         summary = {
-            "mode": f"{system_mode}_{compute_mode}",
+            "mode": f"{system_mode}",
             "e2e_latency": avg_latency.get("e2e_latency"),
             "scheduling_latency": avg_latency.get("scheduling_latency"),
             "lock_latency": avg_latency.get("lock_latency"),
             "io_latency": avg_latency.get("io_latency"),
             "function_exec_latency": avg_latency.get("function_exec_latency"),
-            "commit_latency": avg_latency.get("commit_latency")
+            "commit_latency": avg_latency.get("commit_latency"),
+            # 关键修改：添加 avg_rounds 和 p99_rounds
+            "avg_rounds": avg_latency.get("rounds"),
+            "p99_rounds": p99_rounds_val
         }
 
         summary_df = pd.DataFrame([summary])
@@ -158,5 +170,5 @@ def analyze_all(system_mode="beldi", compute_mode='avg'):
 if __name__ == '__main__':
     # 简化了main函数的参数处理，使其更清晰
     system_mode_arg = sys.argv[1] if len(sys.argv) > 1 else 'beldi'
-    compute_mode_arg = sys.argv[3] if len(sys.argv) > 3 else 'avg'
-    analyze_all(system_mode=system_mode_arg, compute_mode=compute_mode_arg)
+    
+    analyze_all(system_mode=system_mode_arg)

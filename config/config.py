@@ -20,17 +20,17 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                     # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    #'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                    #'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                    #'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    #'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                    #'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                    #'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                    #'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                   # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
-                     'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                  #   'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                  #   'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                  #   'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                  #   'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                  #   'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                  #   'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                  #   'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                  #  'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
+                  #   #  'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
 # app configuration
@@ -42,15 +42,15 @@ DB_SIZE = 10000
 DATA_ITEM_SIZE = 4 * 1024
 
 # travel reservation
-FLIGHT_IDS = 100
-FLIGHT_CAPACITY = "100"
+FLIGHT_IDS = 50
+FLIGHT_CAPACITY = "1000"
 RENTAL_START = '2025-07-01'
 RENTAL_END = '2025-07-31'
 CAR_NUM = '1000'
 DATE_FORMAT = "%Y-%m-%d"
 
 # banking system
-BANKING_ACCOUNTS = 100
+BANKING_ACCOUNTS = 50
 BANKING_ORIGINAL_BALANCE = "10000"
 LOGIN_FAIL_PROB = 0
 

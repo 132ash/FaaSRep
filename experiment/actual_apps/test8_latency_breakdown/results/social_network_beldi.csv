@@ -1,0 +1,2 @@
+mode,e2e_latency,scheduling_latency,lock_latency,io_latency,function_exec_latency,commit_latency,avg_rounds,p99_rounds
+beldi,2.1486064968258143,1.2488294625282288,0.07051570475101471,0.00985495038330555,0.05887616284191608,0.012537484839558601,4.7346875,28.0

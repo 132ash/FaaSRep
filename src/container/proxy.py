@@ -78,7 +78,7 @@ class Runner:
                                 'term':self.term
                               }
         aborted = False
-        msg = ''
+        msg = {}
         
         # not in fast-path mode, not in repair mode or the fucntion is dirty: need re-run.
         ## logging.info(f"Running function: {self.function}, transaction_id: {transaction_id}, input: {self.input}, output: {self.output}, write_set: {self.write_set}")
@@ -93,17 +93,19 @@ class Runner:
         except ActiveAbortException as e:
             aborted = True
             #print(f"Error executing function {self.function}: {e}", flush=True)
-            msg = json.dumps({'Abort': True,  'Abort_type':'ACTIVE', 'error': str(e)})
+            msg ={'Abort': True,  'Abort_type':'ACTIVE', 'error': str(e)}
         except PassiveAbortException as e:
             aborted = True
             #print(f"Error executing function {self.function}: {e}", flush=True)
-            msg = json.dumps({'Abort': True, 'Abort_type':'PASSIVE', 'error': str(e)})
+            msg = {'Abort': True, 'Abort_type':'PASSIVE', 'error': str(e)}
         except ERRORAbortException as e:
             #print(f"Error executing function {self.function}: {e}", flush=True)
-            msg = json.dumps({'Abort': True,  'Abort_type':'ERROR', 'error': str(e)})
+            msg = {'Abort': True,  'Abort_type':'ERROR', 'error': str(e)}
     
-        io_latency = store.io_latency
-        lock_latency = store.lock_latency
+        io_latency = store.beldi_store.io_latency
+        lock_latency = store.beldi_store.lock_latency
+        msg['io_latency'] = io_latency
+        msg['lock_latency'] = lock_latency
 
         return aborted, msg, TxMetaData_thisFunc["write_set"], io_latency, lock_latency
 
