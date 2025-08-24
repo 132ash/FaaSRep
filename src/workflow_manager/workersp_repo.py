@@ -190,7 +190,7 @@ class Repository:
     # commit keys to DB, flush cache, and delete shadow table entries.
     def commit_tx_writes(self, commit_keys):
         for redis_key in commit_keys:
-            log_message(f"Committing write for key: {redis_key}")
+            #log_message(f"Committing write for key: {redis_key}")
             value = self.cache_redis.get(redis_key)
             # 调用 store_key_to_db 存储到数据库中
             self.data_db.store_data_to_db(redis_key, value)

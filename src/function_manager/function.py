@@ -110,11 +110,11 @@ class Function:
         req = self.rq.pop(0)
         self.num_processing -= 1
         # 2. send request to the container
-        log_message(self.logger, f"function {self.info.function_name} in transaction {req.transaction_id} send request to container port {container.port}")
+        #log_message(self.logger, f"function {self.info.function_name} in transaction {req.transaction_id} send request to container port {container.port}")
         res = container.send_request(req.data)
         res['port'] = container.port
         req.result.set(res)
-        log_message(self.logger, f"function {self.info.function_name} in transaction {req.transaction_id} got response from container port {container.port}")
+        #log_message(self.logger, f"function {self.info.function_name} in transaction {req.transaction_id} got response from container port {container.port}")
         # 3. in fastpath, reserve the container into reserve pool
         # else, return the container to pool
         self.container_pool.put(container)

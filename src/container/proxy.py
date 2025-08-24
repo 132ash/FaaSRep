@@ -105,11 +105,11 @@ class Runner:
             out = eval('main()', self.ctx)               
         except ActiveAbortException as e:
             aborted = True
-            print(f"function {self.function} in {self.transaction_id} aborted, error:{str(e)}")
+            #print(f"function {self.function} in {self.transaction_id} aborted, error:{str(e)}")
             msg = json.dumps({'Abort': True, 'Abort_type':'ACTIVE', 'error': str(e)})
         except PassiveAbortException as e:
             aborted = True
-            print(f"function {self.function} in {self.transaction_id} aborted, error:{str(e)}")
+            #print(f"function {self.function} in {self.transaction_id} aborted, error:{str(e)}")
             msg = json.dumps({'Abort': True, 'Abort_type':'PASSIVE', 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..       
         io_latency = store.io_latency

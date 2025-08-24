@@ -137,7 +137,7 @@ class Store:
     def concord_get(self, key):
         url = f"http://{self.concord_cache_addr}"
         data = {'mode':'read', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name, 'term':self.term}
-        print(f"func {self.function_name} in {self.transaction_id} concord get key:{key}")
+        #print(f"func {self.function_name} in {self.transaction_id} concord get key:{key}")
         response = requests.post(url, json=data).json()
         if not response['success']:
             logging.error(f"Concord cache get failed for key {key} in transaction {self.transaction_id}.")
@@ -148,7 +148,7 @@ class Store:
     def concord_put(self, key, value):
         url = f"http://{self.concord_cache_addr}"
         data = {'mode':'write', 'key': key, 'trigger_tx': self.transaction_id, 'workflow': self.workflow_name, 'value': value, 'term':self.term}
-        print(f"func {self.function_name} in {self.transaction_id} concord put key:{key}")
+        #print(f"func {self.function_name} in {self.transaction_id} concord put key:{key}")
         response = requests.post(url, json=data).json()
         if not response['success']:
             logging.error(f"Concord cache put failed for key {key} in transaction {self.transaction_id}.")

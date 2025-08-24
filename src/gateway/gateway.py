@@ -79,7 +79,7 @@ def reset_on_worker(workflow_name, transaction_id, node_list, term):
         pure_ip = extract_ip(ip)
         cache_url = 'http://{}:6000/reset'.format(pure_ip)
         state_url = 'http://{}:7500/clear'.format(pure_ip)
-        reset_jobs.append(gevent.spawn(requests.post, cache_url, json={'workflow_name':workflow_name, 'term':term,'transaction_id':transaction_id}))
+        reset_jobs.append(gevent.spawn(requests.post, cache_url, json={'workflow':workflow_name, 'term':term,'transaction_id':transaction_id}))
         reset_jobs.append(gevent.spawn(requests.post, state_url, json={'workflow_name':workflow_name, 'transaction_id':transaction_id, 'clear':False}))
     gevent.joinall(reset_jobs)  
 

@@ -144,7 +144,7 @@ class WorkerSPManager:
         self.lock.release()
 
     def commit_tx(self, transaction_id: str, write_set: Dict[str, int], term) -> None:
-        log_message(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
+        #log_message(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
         commit_set = {}
         commit_jobs = []
         commit_start = time.time()
@@ -169,7 +169,7 @@ class WorkerSPManager:
 
     def clear_access_log_on_worker(self, transaction_id: str) -> None:
         clear_jobs = []
-        log_message(f"[CLEAR ACCESS LOG] clear access log of tx {transaction_id} on all workers {self.node_list}")
+        #log_message(f"[CLEAR ACCESS LOG] clear access log of tx {transaction_id} on all workers {self.node_list}")
         for ip in self.node_list:
             clear_url = 'http://{}:6000/clear_state'.format(ip)
             data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'commit':True}
@@ -266,9 +266,9 @@ class WorkerSPManager:
         name = info['function_name']
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.term)
         end = time.time()
-        log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}, port:{res['port']}")
+        #log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}, port:{res['port']}")
         if res.get("Abort", False):
-            log_message(f"function {name} trigger abort: {res['error']}")
+            #log_message(f"function {name} trigger abort: {res['error']}")
             return False, res['Abort_type']
 
         state.lock.acquire()
