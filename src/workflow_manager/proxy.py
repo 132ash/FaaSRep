@@ -67,8 +67,8 @@ class Dispatcher:
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
     
-    def del_state(self, workflow_name, transaction_id):
-        self.managers[workflow_name].del_state(transaction_id)
+    def del_state(self, workflow_name, transaction_id, clear):
+        self.managers[workflow_name].del_state(transaction_id, clear)
 
 
 dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
@@ -107,11 +107,11 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    clear_mem = data.get('clear_mem', True)
+    clear_mem = data.get('clear', False)
+    dispatcher.del_state(workflow_name, transaction_id, clear_mem)
     if clear_mem:
         # logging.info(f"Clearing memory for workflow {workflow_name}, transaction {transaction_id}")
-        dispatcher.clear_mem(workflow_name, transaction_id)
-    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
+        dispatcher.clear_mem(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
 

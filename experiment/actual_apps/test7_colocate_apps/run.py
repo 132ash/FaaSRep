@@ -31,8 +31,8 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 # --- 全局测试参数 ---
 CLIENT_CNT = 32
 ROUND = 100
-all_workflows = ['social_network', 'travel_reservation', 'banking_system']
-
+all_workflows = ['social_network']
+# all_workflows = ['social_network']
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
     client_logs.setup_logging_for_process(script_dir, client_id)
@@ -112,11 +112,13 @@ def run_workflow(workflow_name, parameters):
     rep = requests.post(url, json = inputs)
     return rep.json()
 
+
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     transaction_id = rep.get('transaction_id', '')
     return transaction_id, {
-        "e2e_latency": rep.get('e2e_latency', 0)
+        "e2e_latency": rep.get('e2e_latency', 0),
+        "rounds": rep.get('rounds', 0)
     }, rep['status']
 
 def analyze_all_workflows(system_mode):
@@ -178,12 +180,19 @@ def analyze_all_workflows(system_mode):
         p99_latency = df['e2e_latency'].quantile(0.99)
         # 吞吐量 = 成功事务数 / 总时间
         avg_throughput = len(df) / total_time if total_time > 0 else 0
+
+        avg_rounds = df['rounds'].mean()
+        # 关键修改：计算 p99 rounds
+        p99_rounds = df['rounds'].quantile(0.99)
         
         summary_dict = {
             'application': workflow,
             'p50_e2e_latency': p50_latency,
             'p99_e2e_latency': p99_latency,
-            'avg_throughput': avg_throughput
+            'avg_throughput': avg_throughput,
+            'avg_rounds': avg_rounds,
+            # 关键修改：添加 p99_rounds 到汇总字典
+            'p99_rounds': p99_rounds
         }
         final_summary_list.append(summary_dict)
         
@@ -202,6 +211,7 @@ def analyze_all_workflows(system_mode):
     print(f"Summary for {system_mode} mode saved to: {summary_output_file}")
     
     return summary_df
+
 
 if __name__ == '__main__':
     # 为主进程设置一个通用的日志记录器

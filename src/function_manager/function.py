@@ -1,6 +1,7 @@
 import logging
 import time
 import math
+import os
 from gevent import event
 import sys
 from function_info import FunctionInfo
@@ -8,6 +9,41 @@ from container import Container, ContainerPool
 sys.path.append('../../config')
 import config
 # data structure for request info
+
+
+
+def setup_logger(func_name):
+    log_file = f'../../logging/func_{func_name}.log'
+
+    # 删除旧的日志文件（如果存在）
+    if os.path.exists(log_file):
+        os.remove(log_file)
+    logger = logging.getLogger(f'func_{func_name}')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+def log_message(logger, message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
+
+
 class RequestInfo:
     def __init__(self, transaction_id, data):
         self.transaction_id = transaction_id
@@ -28,6 +64,7 @@ class Function:
         self.input = input
         self.output = output    
         self.function_pos = function_pos
+        self.logger = setup_logger(self.info.function_name)
         
         self.num_processing = 0
         self.rq = []
@@ -43,8 +80,8 @@ class Function:
             print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
     
     # put the request into request queue
-    def send_request(self, transaction_id, write_set):
-        data = {'transaction_id': transaction_id,'write_set':write_set}
+    def send_request(self, transaction_id, write_set, term):
+        data = {'transaction_id': transaction_id,'write_set':write_set, 'term':term}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()
@@ -73,11 +110,11 @@ class Function:
         req = self.rq.pop(0)
         self.num_processing -= 1
         # 2. send request to the container
-        # logging.info('send request to: %s of: %s, rq len: %d, data: %s', self.info.function_name, req.transaction_id, len(self.rq), str(req.data))
+        log_message(self.logger, f"function {self.info.function_name} in transaction {req.transaction_id} send request to container port {container.port}")
         res = container.send_request(req.data)
         res['port'] = container.port
         req.result.set(res)
-        
+        log_message(self.logger, f"function {self.info.function_name} in transaction {req.transaction_id} got response from container port {container.port}")
         # 3. in fastpath, reserve the container into reserve pool
         # else, return the container to pool
         self.container_pool.put(container)

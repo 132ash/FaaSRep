@@ -41,6 +41,7 @@ class RunningTXTable:
             if term != self.running_txs[tx_id]['term']:
                 return
             self.running_txs[tx_id]['abort'] = True
+            self.running_txs[tx_id]
             self.running_txs[tx_id]["Abort_type"] = Abort_type
             self.running_txs[tx_id]['finished'] = True
             self.running_txs[tx_id]['cond'].set()

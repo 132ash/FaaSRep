@@ -77,17 +77,18 @@ class Runner:
 
         # logging.info('init finished...')
 
-    def save(self, transaction_id, write_set ):
+    def save(self, transaction_id, write_set, term):
         self.transaction_id = transaction_id
         self.write_set = write_set
-        
+        self.term = term
 
     def run(self, transaction_id):
         # in first run, collect read/write set, and RYW subjection
         # in repair, use the metadata from redis.
 
         TxMetaData_thisFunc = {
-                                "write_set": self.write_set
+                                "write_set": self.write_set,
+                                'term':self.term
                               }
         aborted = False
         msg = ''
@@ -104,9 +105,11 @@ class Runner:
             out = eval('main()', self.ctx)               
         except ActiveAbortException as e:
             aborted = True
+            print(f"function {self.function} in {self.transaction_id} aborted, error:{str(e)}")
             msg = json.dumps({'Abort': True, 'Abort_type':'ACTIVE', 'error': str(e)})
         except PassiveAbortException as e:
             aborted = True
+            print(f"function {self.function} in {self.transaction_id} aborted, error:{str(e)}")
             msg = json.dumps({'Abort': True, 'Abort_type':'PASSIVE', 'error': str(e)})
         # the function finished repair, not abort, send data to waiting functions in fastpath..       
         io_latency = store.io_latency
@@ -151,7 +154,7 @@ def run():
     transaction_id = inp['transaction_id']
     # first run, or not the reserved container. Save the info for this container.
     # set the state to running.
-    runner.save(transaction_id, inp['write_set'])
+    runner.save(transaction_id, inp['write_set'], inp['term'])
    
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)

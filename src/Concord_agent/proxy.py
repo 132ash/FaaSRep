@@ -42,7 +42,8 @@ def clear_state():
     data = request.get_json(force=True, silent=True)
     transaction_id = data['transaction_id']
     workflow = data['workflow_name']
-    dispatcher.concord_cache_agent[workflow].clean_access_set_of_tx(transaction_id)
+    commit = data.get('commit', False)
+    dispatcher.concord_cache_agent[workflow].clean_access_set_of_tx(transaction_id, commit)
     return {'status': 'success'}
 
 @app.route('/concord_data', methods = ['POST'])
@@ -54,15 +55,26 @@ def concord_data():
     trigger_tx = data.get('trigger_tx', '')
     success = True
     value = data.get('value', '')
+    term = data.get('term', '')
     if mode == 'invalidate':
         success = dispatcher.concord_cache_agent[workflow].invalidated_by_home(key, trigger_tx)
     elif mode == "downgrade":
         success, value = dispatcher.concord_cache_agent[workflow].downgrade_by_home(key)
     else:
-        success, value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx, key, value, mode)
+        success, value = dispatcher.concord_cache_agent[workflow].data_access(trigger_tx,term, key, value, mode)
     dispatcher.concord_cache_agent[workflow].mark_key_access(trigger_tx, key)
     return {'success':success, 'value': value}
-    
+
+@app.route('/reset', methods = ['POST'])
+def reset():
+    data = request.get_json(force=True, silent=True)
+    workflow = data['workflow']
+    transaction_id = data['transaction_id']
+    term = data['term']
+    dispatcher.concord_cache_agent[workflow].reset(transaction_id, term)
+    dispatcher.concord_cache_agent[workflow].clean_access_set_of_tx(transaction_id, False)
+    return {'status': 'success'}
+
 @app.route('/concord_home', methods = ['POST'])
 def concord_home():
     data = request.get_json(force=True, silent=True)

@@ -1,4 +1,5 @@
-import logging
+
+
 import sys
 from gevent import monkey
 monkey.patch_all()
@@ -8,6 +9,8 @@ from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
 import re
+import os
+import logging
 
 sys.path.append('../../config')
 import config
@@ -18,6 +21,41 @@ from function_manager import FunctionManager
 
 REPAIRED = 1
 ABORTED = 2
+
+log_file = '../../logging/workersp.log'
+
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('workersp')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -39,6 +77,7 @@ class TransactionState:
         self.parent_executed: Dict[str, int] = {}
         self.retry = retry
         self.term = term
+        self.valid = True
         for f in all_func:
             self.executed[f] = False
             self.parent_executed[f] = 0
@@ -78,7 +117,7 @@ class WorkerSPManager:
     def get_state(self, transaction_id, write_set, retry, term) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
-        if transaction_id not in self.states:
+        if transaction_id not in self.states or not self.states[transaction_id].valid:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, write_set, retry, term)
         else:
             state = self.states[transaction_id]
@@ -92,15 +131,20 @@ class WorkerSPManager:
         return state
 
     # delete state
-    def del_state(self, transaction_id: str):
+    def del_state(self, transaction_id: str, clear: bool):
         self.lock.acquire()
         if transaction_id in self.states:
             # logging.info('delete state of: %s', transaction_id)
-            del self.states[transaction_id]
+            if clear:
+                del self.states[transaction_id]
+            else:
+                self.states[transaction_id].lock.acquire()
+                self.states[transaction_id].valid = False
+                self.states[transaction_id].lock.release()
         self.lock.release()
 
     def commit_tx(self, transaction_id: str, write_set: Dict[str, int], term) -> None:
-        # logging.info(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
+        log_message(f"[COMMIT] committing transaction {transaction_id}, write_set: {write_set}")
         commit_set = {}
         commit_jobs = []
         commit_start = time.time()
@@ -121,22 +165,14 @@ class WorkerSPManager:
     def abort_tx(self, transaction_id, term, Abort_type):
         # trigger next run of the transaction under pessimistic repair mode
         # logging.info(f"[ABORT] aborting transaction {transaction_id}")
-        abort_jobs = []
-        for ip in self.node_list:
-            clear_url = 'http://{}:6000/clear_state'.format(ip)
-            data = {'transaction_id':transaction_id, 'workflow_name': self.workflow_name}
-            abort_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
-            clear_state_url = 'http://{}:7500/clear'.format(ip)
-            clear_state_data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'clear_mem': False}
-            abort_jobs.append(gevent.spawn(requests.post, clear_state_url, json=clear_state_data))
-        gevent.joinall(abort_jobs)
         self.notify_gateway(transaction_id, term, 0, True, Abort_type)
 
     def clear_access_log_on_worker(self, transaction_id: str) -> None:
         clear_jobs = []
+        log_message(f"[CLEAR ACCESS LOG] clear access log of tx {transaction_id} on all workers {self.node_list}")
         for ip in self.node_list:
             clear_url = 'http://{}:6000/clear_state'.format(ip)
-            data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name}
+            data = {'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'commit':True}
             clear_jobs.append(gevent.spawn(requests.post, clear_url, json=data))
         gevent.joinall(clear_jobs)
 
@@ -170,6 +206,9 @@ class WorkerSPManager:
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         state.lock.acquire()
+        if not state.valid:
+            state.lock.release()
+            return
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         runnable = self.check_runnable(state, function_name)
@@ -225,16 +264,19 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        # logging.info(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}")
-        res = self.function_manager.run(name, state.transaction_id, state.write_set)
+        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.term)
         end = time.time()
+        log_message(f"running function {name}, transaction_id: {state.transaction_id}, write_set: {state.write_set}, port:{res['port']}")
         if res.get("Abort", False):
-            #logging.error(f"function {name} trigger abort: {res['error']}")
+            log_message(f"function {name} trigger abort: {res['error']}")
             return False, res['Abort_type']
 
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
+        if not state.valid:
+            state.lock.release()
+            return None, None
         state.write_set.update(res["write_set"])
         state.lock.release()
         self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start, 'term':state.term})

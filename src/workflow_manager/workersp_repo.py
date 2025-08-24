@@ -7,9 +7,46 @@ import boto3
 from datetime import datetime
 import sys
 import json
+import logging
+import os
 
 sys.path.append('../../config')
 import config
+
+log_file = '../../logging/workersp_repo.log'
+
+# 删除旧的日志文件（如果存在）
+if os.path.exists(log_file):
+    os.remove(log_file)
+
+def setup_logger():
+    logger = logging.getLogger('workersp_repo')
+    logger.setLevel(logging.INFO)
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
+                                datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    # 添加处理器到logger
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+# 全局logger实例
+logger = setup_logger()
+
+def log_message(message):
+    logger.info(message)
+    for handler in logger.handlers:
+        handler.flush()
 
 couchdb_url = config.COUCHDB_URL
 dynamodb_url = config.DYNAMODB_URL
@@ -153,6 +190,7 @@ class Repository:
     # commit keys to DB, flush cache, and delete shadow table entries.
     def commit_tx_writes(self, commit_keys):
         for redis_key in commit_keys:
+            log_message(f"Committing write for key: {redis_key}")
             value = self.cache_redis.get(redis_key)
             # 调用 store_key_to_db 存储到数据库中
             self.data_db.store_data_to_db(redis_key, value)

@@ -37,9 +37,7 @@ class PortController:
             else:
                 occupied_count += 1
         
-        logging.info(f"[PORT_CONTROLLER] Initialized with {len(available_ports)} available ports "
-                    f"(range: {min_port}-{max_port-1}, {occupied_count} ports occupied)")
-        
+      
         if len(available_ports) == 0:
             logging.error(f"[PORT_CONTROLLER] No available ports in range {min_port}-{max_port-1}")
             raise Exception(f"No available ports in range {min_port}-{max_port-1}")

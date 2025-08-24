@@ -4,6 +4,7 @@ from gevent import monkey
 import uuid
 import sys
 import logging
+import re
 # 配置日志记录
 logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(
@@ -32,6 +33,14 @@ CLEAR_MEM = config.CLEAR_MEM
 app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
+
+def extract_ip(address: str) -> str:
+    # 使用正则表达式匹配 IP 地址和可选的端口号
+    match = re.match(r'^(.*?)(:\d+)?$', address)
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError("Invalid address format")
 
 workflow_metadata  =  {}
 workflow_metadata_lock = gevent.lock.BoundedSemaphore()
@@ -62,8 +71,17 @@ def clear_mem(ip, transaction_id, workflow_name):
     if not ip.endswith(':7500'):
         ip += ':7500'
     clear_url = 'http://{}/clear'.format(ip)
-    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name})
+    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'clear':True})
 
+def reset_on_worker(workflow_name, transaction_id, node_list, term):
+    reset_jobs = []
+    for ip in node_list:
+        pure_ip = extract_ip(ip)
+        cache_url = 'http://{}:6000/reset'.format(pure_ip)
+        state_url = 'http://{}:7500/clear'.format(pure_ip)
+        reset_jobs.append(gevent.spawn(requests.post, cache_url, json={'workflow_name':workflow_name, 'term':term,'transaction_id':transaction_id}))
+        reset_jobs.append(gevent.spawn(requests.post, state_url, json={'workflow_name':workflow_name, 'transaction_id':transaction_id, 'clear':False}))
+    gevent.joinall(reset_jobs)  
 
 def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry, term):
     if not retry:
@@ -100,6 +118,7 @@ def run():
     abort_type = ''
     retry = False
     term = 0
+    node_list = workflow_metadata['all_addrs']
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         running_start = time.time()
@@ -110,6 +129,7 @@ def run():
                 retry = True
                 term += 1
                 txTable.resetTX(transaction_id, term)
+                reset_on_worker(workflow, transaction_id, node_list, term)
             else:
                 break
     request_end = time.time()
@@ -161,6 +181,7 @@ def clear_container():
         jobs.append(gevent.spawn(requests.get, clear_url))
     gevent.joinall(jobs)
     return json.dumps({'status': 'ok'})
+    
 
 from gevent.pywsgi import WSGIServer
 import logging
