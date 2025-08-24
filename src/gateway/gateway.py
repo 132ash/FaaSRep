@@ -125,11 +125,11 @@ def run():
         exec_first_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry, term)
         aborted, abort_type = txTable.waitTX(transaction_id)
         if aborted:
+            term += 1
+            txTable.resetTX(transaction_id, term)
+            reset_on_worker(workflow, transaction_id, node_list, term)
             if abort_type == 'PASSIVE':
                 retry = True
-                term += 1
-                txTable.resetTX(transaction_id, term)
-                reset_on_worker(workflow, transaction_id, node_list, term)
             else:
                 break
     request_end = time.time()
