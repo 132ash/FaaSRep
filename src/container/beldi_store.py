@@ -55,14 +55,14 @@ class BeldiStore:
             write_set[key] = this_func
         return lock_time    
 
-    def get(self, key, upstream_func):
+    def get(self, key, upstream_func, log=True):
         item = None
         value = None
         lock_time = 0
         # RYW. not acquire lock, read from shadow table.
-        start = time.time()
         if upstream_func:
             ## logging.info(f"RYW: {key}, upstream_func: {upstream_func}")
+            start = time.time()
             response = self.shadow_table.get_item(
                     Key={
                         'txid': self.transaction_id, # 分区键
@@ -70,17 +70,20 @@ class BeldiStore:
                     }
                 )
             item = response.get('Item')
+            if log:
+                self.io_latency += time.time() - start
         else:
             # get 操作需要获取读锁 ('R')
             lock_time = self.acquire_lock(key, 'R')
+            start = time.time()
             response = self.data_db.get_item(
                 Key={
                     'key': key
                 }
             )
             item = response.get('Item')
+            self.io_latency += time.time() - start
         value = item['value'] if item else None
-        self.io_latency += time.time() - start
         if item:
             return value, lock_time
         else:

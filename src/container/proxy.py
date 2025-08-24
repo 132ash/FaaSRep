@@ -9,9 +9,11 @@ import boto3
 from flask import Flask, request
 from gevent.pywsgi import WSGIServer
 from Store import Store
+import gevent.lock
 import container_config
 from beldi_store import ActiveAbortException, PassiveAbortException, ERRORAbortException
 
+running_lock = gevent.lock.Semaphore()
 # 配置日志记录
 logging.basicConfig(
     level=logging.INFO,  # 设置日志级别为 INFO

@@ -54,10 +54,16 @@ class Store:
 
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
-        value, _ = self.beldi_store.get(param_key, upstream)
+        value, _ = self.beldi_store.get(param_key, upstream, log=False)
         if param_type == 'int':
             value = int(value)
         self.fetch_dict[k] = value
+
+    # return to local redis.
+    def put_to_mem(self, k, target_func, mode):
+        dynamo_key = self.param_wrapper(target_func, k, mode)
+        self.beldi_store.put(dynamo_key, self.ret_dict[k], "", self.function_name,{}, True)
+
 
     def fetch_input(self):
         return self.fetch(self.input.keys())
@@ -78,12 +84,7 @@ class Store:
             thread_.join()
         # ## logging.info(f"fetch input from mem: {self.fetch_dict}")
         return self.fetch_dict
-
-    # return to local redis.
-    def put_to_mem(self, k, target_func, mode):
-        dynamo_key = self.param_wrapper(target_func, k, mode)
-        self.beldi_store.put(dynamo_key, self.ret_dict[k], "", self.function_name,{}, True)
-
+    
     # output_result: {'k': 'value'}
     # output_content_type: default application/json, just specify one when you need to
     def ret(self, output_result):

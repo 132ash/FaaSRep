@@ -40,7 +40,7 @@ CLIENT_CNT = 32
 ROUND = 100
 parameters_inputs = {}
 # all_workflows = ['banking_system']
-all_workflows = ['social_network']
+all_workflows = ['travel_reservation']
 result_dict = {}
 
 
@@ -58,7 +58,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
             continue
         local_results.append(result)
-        if i % (ROUND // 10) == 0:
+        if i % (max(ROUND // 10, 1)) == 0:
             logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}")
         # # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
 
@@ -134,9 +134,8 @@ def analyze_all(system_mode="beldi"):
         df = pd.merge(successful_txs, repo_df, on='transaction_id', how='left').fillna(0)
 
         # 4. 计算派生延迟
-        df['function_exec_latency'] = df['exec_latency'] - df['io_latency']
+        df['function_exec_latency'] = df['exec_latency'] - df['io_latency'] - df['lock_latency']
         df['scheduling_latency'] = df['workflow_exec_latency'] - df['exec_latency']
-        df['io_latency'] = df['io_latency'] - df['lock_latency']
         p99_rounds_val = df['rounds'].quantile(0.99)
         # 5. 统计所需指标的平均值
         numeric_columns = [
@@ -148,7 +147,9 @@ def analyze_all(system_mode="beldi"):
         summary = {
             "mode": f"{system_mode}",
             "e2e_latency": avg_latency.get("e2e_latency"),
+            'workflow_exec_latency': avg_latency.get("workflow_exec_latency"),
             "scheduling_latency": avg_latency.get("scheduling_latency"),
+            'func_e2e_latency': avg_latency.get("exec_latency"),
             "lock_latency": avg_latency.get("lock_latency"),
             "io_latency": avg_latency.get("io_latency"),
             "function_exec_latency": avg_latency.get("function_exec_latency"),

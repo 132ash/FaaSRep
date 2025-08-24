@@ -30,8 +30,8 @@ def check_data_db_values():
         keys_to_fetch.append({'key': f'flight_{i}'})
         
     # 生成 2025-07-01 到 2025-07-31
-    start_date = date(2025, 7, 1)
-    end_date = date(2025, 7, 31)
+    start_date = date(2025, 8, 1)
+    end_date = date(2025, 8, 31)
     delta = timedelta(days=1)
     current_date = start_date
     while current_date <= end_date:
