@@ -3,11 +3,11 @@
 CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 cd "$CURRENT_SH_DIR"
 
-WORKFLOW="c16"
+WORKFLOW="c4"
 CLIENT_CNT=32
 SYSTEM_MODE="Concord" 
 # READ_RATIO=(1 0.66 0.33 0\
-READ_RATIOS=(1)
+READ_RATIOS=(0)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的吞吐量"
 
