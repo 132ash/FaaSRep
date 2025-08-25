@@ -80,7 +80,7 @@ class Dispatcher:
                     except Exception as e:
                         log_message(f"Failed to remove container {container.id}: {e}")
                 time.sleep(1)  # Wait a moment for cleanup to complete
-            log_message("All workflow containers have been cleared.")
+            #log_message("All workflow containers have been cleared.")
         except Exception as e:
             log_message(f"Error during container cleanup: {e}")
         self.host_addr = sys.argv[1] + ':' + sys.argv[2]

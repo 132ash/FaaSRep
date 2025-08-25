@@ -182,10 +182,12 @@ class ValidatorProcess(Process):
             aborted_txs = []
             txid_lists = []
             timestamps = []
+            pes_transactions = []
             for batch_id in data:
                 aborted_txs.extend(self.aborted_tx_list_per_batch[batch_id])
                 txid_lists.append(self.successed_tx_list_per_batch[batch_id])
                 timestamps.append(self.time_tuple_per_batch[batch_id])
+                pes_transactions.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
             if FAST_PATH_ENABLED:
                 jobs = [
                     gevent.spawn(requests.post, url=f"http://{worker_ip}/release", json={"tx_lists":txid_lists, 'workflow_name':self.workflow_name})
@@ -193,7 +195,7 @@ class ValidatorProcess(Process):
                     ]
                 gevent.joinall(jobs)
             #log_message(self.logger, f"[CASCADED COMMIT] : {data} WITH {txid_lists}")
-            self.notify_gateway(txid_lists, True, timestamps, aborted_txs)
+            self.notify_gateway(txid_lists, True, timestamps, aborted_txs, pes_transactions)
             self.clean_batch_info(data)
 
     def serializer_request(self, batch_id, op, data):
@@ -236,7 +238,7 @@ class ValidatorProcess(Process):
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
         if commit_batch_list:
-            txid_lists, timestamps, abort_txs = [], [], []
+            txid_lists, timestamps, abort_txs, pes_txs = [], [], [], []
             worker_commit_set = {worker_ip:{'keys':[], 'txs':[], 'aborted_txs': []} for worker_ip in self.worker_ip_set}
             for key, commit_key_info in keys_for_commit_per_ip.items():
                 writer_tx_id, writer_func, version = commit_key_info
@@ -248,7 +250,8 @@ class ValidatorProcess(Process):
                 successed_tx_list = self.successed_tx_list_per_batch[batch_id]
                 txid_lists.append(successed_tx_list)
                 aborted_txs_this_batch = self.aborted_tx_list_per_batch.get(batch_id, [])
-                abort_txs.extend(aborted_txs_this_batch)
+                abort_txs.extend(self.aborted_tx_list_per_batch.get(batch_id, []))
+                pes_txs.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
                 for worker_ip in self.worker_ip_set:
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
                     worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
@@ -260,7 +263,7 @@ class ValidatorProcess(Process):
             ]
             gevent.joinall(jobs)
             self.repair_engine.sink_release_optimistic_info(commit_batch_list)
-            self.notify_gateway(txid_lists, True, timestamps, abort_txs)
+            self.notify_gateway(txid_lists, True, timestamps, abort_txs, pes_txs)
             self.clean_batch_info(commit_batch_list)
 
 
@@ -277,14 +280,15 @@ class ValidatorProcess(Process):
 
         requests.post(url, json=data)
 
-    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs=[]):
+    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs, pessi_txs):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
-        #log_message(self.logger, f"[NOTIFY] Notify gateway: {url}, transaction_id_lists: {txid_lists}, timestamps:{timestamps}")
+        #log_message(self.logger, f"[NOTIFY] Notify gateway: {url}, transaction_id_lists: {txid_lists}, timestamps:{timestamps}, pessimistic_txs:{pessi_txs}")
         data = {
             'transaction_id_lists': txid_lists,
             'success': success,
             'timestamps':timestamps,
-            'aborted_txs': aborted_txs
+            'aborted_txs': aborted_txs,
+            'pessimistic_txs': pessi_txs
         }
         r = requests.post(url, json=data)
         return r.json() 

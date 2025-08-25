@@ -89,7 +89,8 @@ def abort():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    # logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}")
+    error = data.get("error", "")
+    logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}, error:{error}")
     if data.get('repair', False):
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED)
     else:
@@ -97,7 +98,8 @@ def abort():
         payload = {
             'transaction_id_lists': [[transaction_id]],
             'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
-            'abort': True
+            'abort': True,
+            'pessimistic_txs':[{}]
         }
         requests.post(notify_url, json=payload)
     return json.dumps({'status': 'ok'})

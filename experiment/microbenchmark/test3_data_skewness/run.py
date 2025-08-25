@@ -114,10 +114,7 @@ def run_workflow(workflow_name, parameters):
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     return rep['transaction_id'], {
-        "validate_time_inside_validator": rep['validate_time_inside_validator'],
-        "validate_latency": rep['validate_latency'],
         "e2e_latency": rep['e2e_latency'],
-        "first_run_latency": rep['first_run_latency'],
     }
 
 def write_result_to_file(system_mode, zipf_param, median_latency, p99_latency, avg_throughput):

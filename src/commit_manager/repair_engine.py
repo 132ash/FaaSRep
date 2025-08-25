@@ -34,6 +34,7 @@ class RepairEngine:
         self.function_pos = function_pos
         self.worker_ip_set = worker_ip_set
         self.pessi_register_lock = gevent.lock.BoundedSemaphore()
+        self.pessimistic_repair_txs_per_batch = {}
 
         self.repo = repo
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
@@ -43,6 +44,7 @@ class RepairEngine:
         # allocate works
         start = time.time()
         self.pessi_register_lock.acquire()
+        self.pessimistic_repair_txs_per_batch[batch_id] = {}
         self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
         ready_txs, opt_txs_become_pessi = self.register_on_sink(batch_id, pessi_sink_info)
         self.pessi_register_lock.release()    
@@ -61,6 +63,8 @@ class RepairEngine:
         repair_jobs = []
         if txs_for_pessimistic_repair:
             expired_keys_pessi = {}
+            for tx_id in txs_for_pessimistic_repair:
+                self.pessimistic_repair_txs_per_batch[batch_id][tx_id] = True
             self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys_pessi, txs_for_pessimistic_repair)
             repair_jobs.append(gevent.spawn(self.repair_transactions, batch_id, txs_for_pessimistic_repair, expired_keys_pessi, container_port, PESSI_REPAIR))
         if txs_for_optimistic_repair:
@@ -72,6 +76,8 @@ class RepairEngine:
         expired_keys = {}
         #log_message(self.logger, f"[PESSIMISTIC REPAIR] Sending repair request for batch {batch_id}, cascaded ready transactions: {cascaded_ready_txs}")
         self.PessimisticRepairer.prepare_pessimistic_info(batch_id, expired_keys, cascaded_ready_txs)
+        for tx_id in cascaded_ready_txs:
+            self.pessimistic_repair_txs_per_batch[batch_id][tx_id] = True
         self.repair_transactions(batch_id, cascaded_ready_txs, expired_keys, container_port_per_batch, PESSI_REPAIR)
 
     def repair_transactions(self, batch_id, ready_transactions, expired_keys, container_port, mode=OPT_REPAIR):
@@ -162,3 +168,4 @@ class RepairEngine:
         """
         self.PessimisticRepairer.clean_table_of_batch(batch_id)
         self.repair_info.clean_table_of_batch(batch_id)
+        self.pessimistic_repair_txs_per_batch.pop(batch_id, None)

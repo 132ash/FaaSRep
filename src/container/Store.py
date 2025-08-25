@@ -90,7 +90,7 @@ class Store:
             thread_.start()
         for thread_ in threads:
             thread_.join()
-        # #print(f"fetch input from mem: {self.fetch_dict}")
+        #print(f"fetch input from mem: {self.fetch_dict}", flush=True)
         return self.fetch_dict
 
     # return to local redis.
@@ -113,6 +113,7 @@ class Store:
         value = None
         start = time.time()
         # first run, check RYW subjection.
+        #print(f"function {self.function_name} in transaction {self.transaction_id} get {key}", flush=True)
         if not self.is_repair:
             upstream_func = self.write_set.get(key, "")
             if upstream_func:
@@ -145,6 +146,7 @@ class Store:
         return value
     
     def put(self, key, value):
+        #print(f"function {self.function_name} in transaction {self.transaction_id} put {key}", flush=True)
         start = time.time()
         #print(f"{self.transaction_id}, func {self.function_name} Putting key: {key}, value: {value}", flush=True)
         self.put_to_mem(key, self.function_name, 'PUT', value)

@@ -138,13 +138,14 @@ def run():
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
     else:
         res = repo.get_result(transaction_id, workflow)
-        first_run_finish_time, repair_start_time, repair_finish_time = txTable.finishTX(transaction_id)
+        first_run_finish_time, repair_start_time, repair_finish_time, pessimistic = txTable.finishTX(transaction_id)
         end = time.time()
         first_run_latency = first_run_finish_time - start
         time_inside_validator = repair_start_time - first_run_finish_time
         time_repair = repair_finish_time - repair_start_time
         time_commit = end - repair_finish_time
-        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit})
+        rounds = 3 if pessimistic else 2
+        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit, 'rounds':rounds})
     #log_message(f"transaction {transaction_id} in {workflow} aborted: {aborted}, clearing states")
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
@@ -158,15 +159,16 @@ def notify():
     transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     aborted_txs_from_validator = data.get('aborted_txs', [])
+    pessimistic_txs = data.get('pessimistic_txs', [])
     #log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
     if aborted_txs_from_validator:
-        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True)
-    for transaction_id_list, timestamp_per_batch in zip(transaction_id_lists, timestamps):
+        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True, {})
+    for transaction_id_list, timestamp_per_batch, pessimistic_txs_per_batch in zip(transaction_id_lists, timestamps, pessimistic_txs):
         if data.get('abort', False):
-            txTable.notifyTX(transaction_id_list, 0,0, 0, True)
+            txTable.notifyTX(transaction_id_list, 0,0, 0, True, {})
         else:
             first_run_finish_time, repair_start_time, repair_finish_time = timestamp_per_batch[0], timestamp_per_batch[1], timestamp_per_batch[2]
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time)  
+            txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, False, pessimistic_txs_per_batch)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

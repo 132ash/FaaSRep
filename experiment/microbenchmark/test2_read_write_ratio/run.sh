@@ -3,11 +3,11 @@
 CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 cd "$CURRENT_SH_DIR"
 
-WORKFLOW="c16"
+WORKFLOW="c4"
 CLIENT_CNT=32
-SYSTEM_MODE="optimistic" # 或者 "pessimistic"
-# READ_RATIO=(1 0.75 0.5 0.25 0)\
-READ_RATIOS=(1)
+SYSTEM_MODE="repair" # 或者 "pessimistic"
+# READ_RATIO=(1 0.66 0.33 0)\
+READ_RATIOS=(0)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的吞吐量"
 
@@ -24,11 +24,5 @@ for READ_RATIO in "${READ_RATIOS[@]}"; do
     echo "✅ 完成读比例: $READ_RATIO"
     echo ""
 done
-
-echo "📊 显示 $SYSTEM_MODE 模式的所有测试结果:"
-python3 process_results.py $SYSTEM_MODE --show
-
-echo "🔧 整理 $SYSTEM_MODE 模式的结果文件 (排序):"
-python3 process_results.py $SYSTEM_MODE
 
 echo "✅ $SYSTEM_MODE 模式测试完成"
