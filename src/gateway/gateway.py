@@ -145,7 +145,7 @@ def run():
         time_repair = repair_finish_time - repair_start_time
         time_commit = end - repair_finish_time
         rounds = 3 if pessimistic else 2
-        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'first_run_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit, 'rounds':rounds})
+        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'workflow_exec_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit, 'rounds':rounds})
     #log_message(f"transaction {transaction_id} in {workflow} aborted: {aborted}, clearing states")
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]

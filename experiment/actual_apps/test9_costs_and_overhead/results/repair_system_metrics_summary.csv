@@ -1,0 +1,2 @@
+duration_seconds,avg_sink_cpu_cores,avg_sink_mem_mb,avg_workersp_cpu_cores,avg_workersp_mem_mb,avg_net_rx_kbps,avg_net_tx_kbps
+103.46999999999998,0.0948,43.093333333333334,0.8522000000000002,72.34333333333332,2181.46,2176.693333333333

@@ -2,8 +2,14 @@ import boto3
 import logging
 import json
 import sys
-
+import time
+import pandas as pd
+import multiprocessing
+import requests
 from pathlib import Path
+from collections import defaultdict
+
+# --- 项目路径设置 ---
 script_dir = Path(__file__).parent
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -16,158 +22,147 @@ def get_root_dir(script_dir: Path) -> Path:
 ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
 
-import pandas as pd
-import multiprocessing
-import requests
 import config.config as config
-from experiment.common import repository, client_logs
-from experiment.common import generate_param
+from experiment.common import repository, client_logs, generate_param
+
+# --- 实验配置 ---
+CLIENT_CNT = 32
+ROUND_PER_CLIENT = 100
+TARGET_WORKFLOW = 'travel_reservation'
+
+# --- 初始化 ---
 repo = repository.Repository()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
-DB_NODE_IP = config.STORAGE_NODE_IP
-dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
-# table_name = f"{transaction_id}_shadow_table"
-
-# travel_reservation_config
-FLIGHT_IDS = config.FLIGHT_IDS
-FLIGHT_CAPACITY = config.FLIGHT_CAPACITY
-RENTAL_START = config.RENTAL_START
-RENTAL_END = config.RENTAL_END
-DATE_FORMAT = config.DATE_FORMAT
-
-CLIENT_CNT = 16
-ROUND = 50
-parameters_inputs = {}
-# all_workflows = ['banking_system']
-all_workflows = ['social_network']
-result_dict = {}
-
-
-def worker_task(client_id, workflow, parameters_all_round, result_queue):
-    """子进程执行的任务。"""
-    client_logs.setup_logging_for_process(script_dir, client_id)
-    # logging.info(f"Process started for workflow: {workflow}")
-    
-    local_results = []
-    for i in range(ROUND):
-        # 注意：analyze_workflow 需要能被子进程调用，并且其内部逻辑是进程安全的
-        # 这里假设 analyze_workflow 返回一个包含结果的字典
-        txid, result, tx_status = analyze_workflow(workflow, parameters_all_round[i])
-        if tx_status == 'aborted':
-            logging.info(f"[{client_id}] Round {i+1}/{ROUND} aborted for workflow {workflow}")
-            continue
-        local_results.append(result)
-        # if i % 10 == 0:
-        #     logging.info(f"[{client_id}] Round {i+1}/{ROUND} completed for workflow {workflow}, txid: {txid}, e2e_latency: {result['e2e_latency']}")
-        # # logging.info(f"[{txid}] Finished, tx_res: {tx_res}")
-
-    result_queue.put(local_results)
-    logging.info("Process finished.")
-
-def run_workflow(workflow_name, parameters):
+def run_workflow_request(workflow_name, parameters):
+    """向网关发送运行工作流的请求。"""
     url = f'http://{config.GATEWAY_ADDR}/run'
-    inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters)}
-    transaction_id = parameters.pop('transaction_id', None)
-    if transaction_id:
-        inputs['transaction_id'] = transaction_id
-    rep = requests.post(url, json = inputs)
-    return rep.json()
+    inputs = {'workflow': workflow_name, 'parameters': parameters}
+    try:
+        rep = requests.post(url, json=inputs)
+        return rep.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Request to gateway failed: {e}")
+        return None
 
-def get_function_latency(txid):
-    func_exec_latency, func_io_latency = repo.get_latencies(txid, 'exec'), repo.get_latencies(txid, 'io')
-    exec_time = sum(func_exec_latency) 
-    io_time = sum(func_io_latency) 
-    return exec_time, io_time
+def worker_task(client_id, parameters_all_round, result_queue):
+    """
+    子进程执行的任务：运行指定轮数的事务，并将原始结果放入队列。
+    """
+    client_logs.setup_logging_for_process(script_dir, client_id)
+    local_results = []
+    for i, params in enumerate(parameters_all_round):
+        gateway_response = run_workflow_request(TARGET_WORKFLOW, params)
+        if (i + 1) % 10 == 0:
+            logging.info(f"Client {client_id}, Round {i+1}")
+        if gateway_response and gateway_response.get('status') != 'aborted':
+            local_results.append(gateway_response)
+    result_queue.put(local_results)
 
-def analyze_workflow(workflow, parameters_input):
-    rep = run_workflow(workflow, parameters_input)
-    # func_exec_time_test, func_io_time_test = get_function_latency(rep['transaction_id'])
-    # func_io_time = func_io_time_test
-    # func_exec_time = func_exec_time_test 
-    # rep['func_io_time'] = func_io_time
-    # rep['func_exec_time'] = func_exec_time
-    return rep.get('transaction_id', ''), {
-        "validate_time_inside_validator": rep.get('validate_time_inside_validator', 0),
-        "validate_latency": rep.get('validate_latency', 0),
-        "e2e_latency": rep.get('e2e_latency', 0),
-        "first_run_latency": rep.get('first_run_latency', 0),
-    }, rep['status']
+def analyze_and_save_results(all_gateway_results, system_mode):
+    """
+    对所有成功事务的结果进行分析、计算派生指标并保存。
+    """
+    if not all_gateway_results:
+        logging.error("No successful transactions were collected. Aborting analysis.")
+        return
 
-def analyze_all(system_mode,opt, compute_mode='avg'):
+    gateway_df = pd.DataFrame(all_gateway_results)
+    successful_txids = gateway_df['transaction_id'].tolist()
+
+    # 1. 从CouchDB批量获取函数级别的延迟数据
+    logging.info(f"Fetching function-level latencies for {len(successful_txids)} successful transactions...")
+    exec_latencies = repo.get_latencies_for_txs_by_phase(successful_txids, 'exec')
+    io_latencies = repo.get_latencies_for_txs_by_phase(successful_txids, 'io')
+
+    # 2. 将函数级延迟整合到DataFrame中
+    gateway_df['func_e2e_latency'] = gateway_df['transaction_id'].map(exec_latencies).fillna(0)
+    gateway_df['io_latency'] = gateway_df['transaction_id'].map(io_latencies).fillna(0)
+    # 3. 计算派生延迟指标
+    # scheduling_latency: 工作流总执行时间 - 所有函数执行时间的算术和
+    gateway_df['scheduling_latency'] = gateway_df['workflow_exec_latency'] - gateway_df['func_e2e_latency']
+    # function_exec_latency: 函数执行时间中的纯计算部分
+    gateway_df['function_exec_latency'] = gateway_df['func_e2e_latency'] - gateway_df['io_latency']
+
+    numeric_columns = [
+        'e2e_latency', 'workflow_exec_latency', 'rounds',
+        'func_e2e_latency', 'io_latency', 'time_commit', 'time_repair',
+        'function_exec_latency', 'scheduling_latency', 'time_inside_validator'
+    ]
+    avg_metrics = gateway_df[numeric_columns].mean()
+
+    #log_message(f"transactio
+
+    # 5. 整理最终的汇总报告
+    summary = {
+        "e2e_latency": avg_metrics.get("e2e_latency"),
+        "scheduling_latency": avg_metrics.get("scheduling_latency"),
+        "function_io_latency": avg_metrics.get("io_latency"),
+        "function_exec_latency": avg_metrics.get("function_exec_latency"),
+        "time_inside_validator": avg_metrics.get("time_inside_validator", 0),
+        "time_repair": avg_metrics.get("time_repair", 0),
+        "time_commit": avg_metrics.get("time_commit", 0),
+        "rounds": avg_metrics.get("rounds"),
+    }
+    
+    summary_df = pd.DataFrame([summary])
+    
+    # 6. 保存结果到CSV
+    mode_name = f"{system_mode}"
+    output_dir = script_dir / 'results'
+    output_dir.mkdir(exist_ok=True)
+    output_file = output_dir / f"{TARGET_WORKFLOW}_{mode_name}_latency_breakdown.csv"
+    
+    summary_df.to_csv(output_file, index=False)
+    logging.info(f"Latency breakdown summary saved to {output_file}")
+    print("\n--- Latency Breakdown Summary ---")
+    print(summary_df.to_string(index=False))
+    print("---------------------------------")
+
+
+def main(system_mode):
+    """主执行函数"""
+    logging.info(f"Starting latency breakdown experiment for '{TARGET_WORKFLOW}'")
+    logging.info(f"Config: mode={system_mode}, clients={CLIENT_CNT}, rounds={ROUND_PER_CLIENT}")
+
+    # 1. 清理环境
     repo.flush_couchdb_workflow_latency()
-    for workflow in all_workflows:
-        parameters_all = generate_param.generate_workflow_inputs_for_clients(workflow, CLIENT_CNT, ROUND)
-        result_queue = multiprocessing.Queue()
-        # 创建4个线程
-        processes = []
-        for i in range(CLIENT_CNT):
-            process = multiprocessing.Process(
-                target=worker_task, 
-                args=(i, workflow, parameters_all[i], result_queue)
-            )
-            processes.append(process)
-        
-        for i in range(CLIENT_CNT):
-            processes[i].start()
-            print(f"Started process {processes[i].pid} for client {i}")
+    logging.info("Flushed workflow_latency database.")
 
-        # 等待所有子进程运行结束
-        for process in processes:
-            process.join()
+    # 2. 生成所有客户端和轮次的参数
+    parameters_all_clients = generate_param.generate_workflow_inputs_for_clients(
+        TARGET_WORKFLOW, CLIENT_CNT, ROUND_PER_CLIENT
+    )
 
-        # 从队列中收集所有结果
-        all_results = []
-        while not result_queue.empty():
-            all_results.extend(result_queue.get())
+    # 3. 并发执行所有事务
+    result_queue = multiprocessing.Queue()
+    processes = [
+        multiprocessing.Process(target=worker_task, args=(i, parameters_all_clients[i], result_queue))
+        for i in range(CLIENT_CNT)
+    ]
+    
+    start_time = time.time()
+    for p in processes:
+        p.start()
+    
+    all_gateway_results = []
+    for _ in range(CLIENT_CNT):
+        # get() 会阻塞，直到一个子进程完成任务并将结果放入队列
+        all_gateway_results.extend(result_queue.get())
+    
+    end_time = time.time()
+    logging.info(f"All {CLIENT_CNT} clients finished and results collected in {end_time - start_time:.2f} seconds.")
 
-        # 统计 result_dict 中的结果
-        if not all_results:
-            print(f"No results collected for workflow {workflow}. Skipping.")
-            continue
+    # 5. 现在所有子进程都已完成其核心任务，可以安全地 join 它们
+    for p in processes:
+        p.join()
 
-        df = pd.DataFrame(all_results)
-        
-        # 计算99%-ile延迟
-        mode = f"{system_mode}_{opt}_{compute_mode}"
-        if compute_mode == 'avg':
-            avg_latency = df.mean()
+    # 6. 分析并保存结果
+    analyze_and_save_results(all_gateway_results, system_mode)
 
-            summary = {
-                "mode": mode,
-                "validator overhead": avg_latency.get("validate_time_inside_validator"),
-                "overall validate latency": avg_latency.get("validate_latency"),
-                "e2e latency": avg_latency.get("e2e_latency"),
-                "workflow run latency": avg_latency.get("first_run_latency")
-            }
-
-            summary_df = pd.DataFrame([summary])
-            output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
-            summary_df.to_csv(output_file, index=False)
-        elif compute_mode == '99p':
-            p99_latency = df.quantile(0.99)
-
-            summary = {
-                "mode": mode,
-                "validator overhead": p99_latency.get("validate_time_inside_validator"),
-                "overall validate latency": p99_latency.get("validate_latency"),
-                "e2e latency": p99_latency.get("e2e_latency"),
-                "workflow run latency": p99_latency.get("first_run_latency")
-            }
-
-            summary_df = pd.DataFrame([summary])
-            output_file = script_dir / 'results' /f"{workflow}_{mode}.csv"
-            summary_df.to_csv(output_file, index=False)
-        print(f"[{workflow}] Results summary saved to {output_file}")
-
-system_mode = ["PESSIMISTIC", "OPTIMISTIC"]
-opt = ['basic', 'fast-path']
 
 if __name__ == '__main__':
-    _system_mode= system_mode[1]
-    _opt = opt[0] 
-    compute_mode = sys.argv[1] if len(sys.argv) > 1 else 'avg'
-    analyze_all(_system_mode, _opt, compute_mode=compute_mode)
-
-
-
+    # --- 可在此处修改运行模式 ---
+    # system_mode: "PESSIMISTIC", "OPTIMISTIC"
+    # opt_level: 'basic', 'fast-path'
+    main('repair')

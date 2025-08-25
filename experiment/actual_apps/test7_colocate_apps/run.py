@@ -35,7 +35,6 @@ all_workflows = ['social_network', 'banking_system', 'travel_reservation']
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
-    client_logs.setup_logging_for_process(script_dir, client_id)
     local_results = []
     for i in range(ROUND):
         transaction_id = parameters_all_round[i]['transaction_id']

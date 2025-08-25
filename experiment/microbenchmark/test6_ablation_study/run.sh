@@ -126,16 +126,4 @@ echo "🎉 所有测试完成!"
 echo "结束时间: $(date)"
 echo "结果文件位于: $CURRENT_SH_DIR/results/"
 echo "日志文件位于: $CURRENT_SH_DIR/logs/"
-
-# 显示最终结果汇总
-echo ""
-echo "📊 最终结果汇总:"
-echo "================================"
-for WORKFLOW in "${WORKFLOWS[@]}"; do
-    FINAL_RESULT_FILE="results/${WORKFLOW}_results.csv"
-    if [ -f "$FINAL_RESULT_FILE" ]; then
-        echo "📈 工作流 $WORKFLOW 结果:"
-        cat "$FINAL_RESULT_FILE"
-        echo ""
-    fi
 done
