@@ -29,14 +29,14 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    # 'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                    'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
                      'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                    #    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    # 'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                    #   'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                    #    'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                    #    'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    #    'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
+                       'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                    'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                      'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                       'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                       'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                       'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
                     # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                     # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
@@ -48,7 +48,7 @@ FILLUP_CACHE = False
 EXPIRED_CACHE = True
 
 # validator setting
-VALIDATORS_PER_POOL = 7
+VALIDATORS_PER_POOL = 4
 VALIDATE_INTERVAL = 0.015
 BATCH_TIMEOUT = 0.045
 
@@ -68,7 +68,7 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
-DEFAULT_CONTAINER_NUM = 64
+DEFAULT_CONTAINER_NUM = 4
 CLEAR_MEM = True
 
 # used in scalabiliy test.

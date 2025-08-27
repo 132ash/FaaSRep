@@ -70,6 +70,7 @@ class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
         print("Clearing previous containers.")
         os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
+        time.sleep(3)
     # Ensure no related containers exist before continuing
         try:
             containers = docker_client.containers.list(all=True, filters={'label': 'workflow'})

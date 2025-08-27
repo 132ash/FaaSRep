@@ -23,4 +23,4 @@ PESSI_REPAIR = 2
 
 # workflow setting
 
-REMOTE_PROB = 1
+REMOTE_PROB = 0
