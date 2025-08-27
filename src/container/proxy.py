@@ -56,7 +56,7 @@ class Runner:
         self.output = output
         self.function_pos = function_pos
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
+        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr, cache_enable)
         # local cache
         self.cache = RedisCache(container_config.REDIS_CACHE_PORT, container_config.REDIS_CACHE_DB, db_server, cache_enable)
         os.chdir(work_dir)
@@ -77,6 +77,7 @@ class Runner:
         TxMetaData_thisFunc = {
                                 "read_set": {}, 
                                 "write_set": self.write_set, 
+                                'cache_enable':self.cache_enable
                               }
         aborted = False
         msg = ''

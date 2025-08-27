@@ -38,6 +38,35 @@ STARTUP_POSTS = config.STARTUP_POSTS
 SOCIAL_PWD_DIR = actual_apps_dir / "social_pwd.json"
 SOCIAL_POST_IDS_DIR = actual_apps_dir / "social_posts.json"
 
+class ZipfGenerator:
+
+    def __init__(self, n, alpha):
+
+        if alpha < 0:
+            raise ValueError("alpha must >= 0")
+        self.n = n
+        self.alpha = alpha
+        
+        if alpha == 0:
+
+            self.probabilities = np.full(n, 1/n)
+        else:
+            weights = np.power(np.arange(1, n + 1, dtype=float), -alpha)
+            self.probabilities = weights / np.sum(weights)
+        
+        # 预计算累积分布函数 (CDF)
+        self.cdf = np.cumsum(self.probabilities)
+
+    def sample(self, k=1):
+        # 生成 k 个 [0, 1) 之间的随机数
+        random_values = np.random.rand(k)
+        
+        # 使用 searchsorted 找到随机数在 CDF 中的位置，这等价于逆变换采样
+        # 返回的是基于 0 的索引
+        samples = np.searchsorted(self.cdf, random_values)
+        
+        return samples if k > 1 else samples[0]
+
 
 def generate_banking_system_parameters(client_cnt, round_cnt):
     parameters_inputs = {}
@@ -158,18 +187,24 @@ def generate_social_media_parameters(client_cnt, round_cnt):
     return parameters_inputs
 
 def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param, read_ratio):
-    text_size = 4 * 1024 # Default to 8B if not specified
+    text_size = 4 * 1024
     dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)
-    client_round_inputs = []
     dataset_len = len(dataset)
-    weights_one = [1 / (i + 1) for i in range(dataset_len)]
+    
+    # --- 使用新的 ZipfGenerator ---
+    # 如果 zipf_param 为 None，则使用均匀分布 (alpha=0)
+    alpha = zipf_param if zipf_param is not None else 0
+    zipf_sampler = ZipfGenerator(dataset_len, alpha)
+    
+    client_round_inputs = []
     for client_id in range(client_cnt):
         round_inputs = []
         for round_id in range(round_cnt):
             parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
             
-            # 根据read_ratio生成操作列表
+            # 根据 read_ratio 生成操作列表
+            ops_list = None
             if read_ratio is not None:
                 num_functions = len(all_func)
                 total_ops = num_functions * 3
@@ -181,34 +216,20 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
             
             op_idx_counter = 0
             for func in all_func:
+                # 使用 ZipfGenerator 高效地抽取3个不重复的索引
                 indices = set()
-
-                population = list(range(dataset_len))
-
                 while len(indices) < 3:
-                    if zipf_param is None:
-                        # 随机抽样 (Uniform)
-                        idx = random.randint(0, dataset_len - 1)
-                    elif zipf_param == 1.0:
-                        # 当 alpha=1 时，使用加权随机抽样
-                        # random.choices 返回一个列表，我们取第一个元素
-                        idx = random.choices(population, weights=weights_one, k=1)[0]
-                    else: # zipf_param > 1.0
-                        # 使用numpy的zipf分布抽样
-                        # numpy.random.zipf 生成的样本从1开始，需要减1来匹配0-based的索引
-                        idx = np.random.zipf(zipf_param) - 1
-                        # 如果生成的索引超出范围，则重新采样
-                        if idx >= dataset_len:
-                            continue
-                    
+                    # 每次只抽一个样本
+                    idx = zipf_sampler.sample()
                     indices.add(idx)
+                
                 keys = [dataset[i] for i in indices]
                 
                 if read_ratio is None:
                     # 默认行为：R, R, W
                     parameters_input['f1']['keys'][func] = {keys[0]: 'R', keys[1]: 'R', keys[2]: 'W'}
                 else:
-                    # 根据read_ratio随机分配
+                    # 根据 read_ratio 随机分配
                     func_ops = {}
                     for i in range(3):
                         func_ops[keys[i]] = ops_list[op_idx_counter]

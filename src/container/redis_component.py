@@ -5,27 +5,46 @@ import container_config
 import json
 
 class RedisShadowTable:
-    def __init__(self, host_list, port, db, ip):
+    def __init__(self, host_list, port, db, ip, db_server, cache_enable):
         self.redis = {
                     host:redis.StrictRedis(host=host, port=port, db=db, decode_responses=True)
                         for host in host_list
                     }
         self.ip = ip
+        self.cache_enable = cache_enable
+        self.shadow_table_db = db_server.Table("shadow_table")
+        self.transaction_id = None
+
+    def runtime_init(self, transaction_id): 
+        self.transaction_id = transaction_id
         
     def put(self, key, ip, value):
-        self.redis[ip][key] = value
-
-    def self_put(self, key, value):
-        self.redis[self.ip].set(key, value)
-
-    def self_get(self, key):
-        value = self.redis[self.ip].get(key)
-        return value
+        if self.cache_enable:
+            self.redis[ip][key] = value
+        else:
+            self.shadow_table_db.put_item(Item={
+                'txid': self.transaction_id,
+                'key': key,
+                'value': value,
+            })
 
     def raw_fetch_data(self, redis_key, ip):
-        return self.redis[ip][redis_key]
-            
-# data in cache: value and version 
+        if self.cache_enable:
+            return self.redis[ip][redis_key]
+        else:
+            response = self.shadow_table_db.get_item(
+                Key={
+                    'txid': self.transaction_id,
+                    'key': redis_key
+                }
+            )
+            item = response.get('Item')
+            if item:
+                return item['value']
+            else:
+                return None
+
+# data in cache: value and version
 class RedisCache:
     def __init__(self, port, db, db_server, cache_enable):
         self.redis = redis.StrictRedis(host=container_config.CACHE_HOST, port=port, db=db)

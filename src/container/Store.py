@@ -40,16 +40,21 @@ class Store:
 
     def runtime_init(self, transaction_id, metadata):
         self.transaction_id = transaction_id
+        self.redis_shadow_table.runtime_init(transaction_id)
         self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
+        self.cache_enable = metadata.get('cache_enable', False)
 
     # mode: 'RET', 'PUT'
-    def param_wrapper(self, func , key, mode, txid=None):
-        if txid:
-            return f"{txid}:{mode}:{func}:{key}" 
+    def param_wrapper(self, func, key, mode, txid=None):
+        if self.cache_enable:
+            if txid:
+                return f"{txid}:{mode}:{func}:{key}" 
+            else:
+                return f"{self.transaction_id}:{mode}:{func}:{key}" 
         else:
-            return f"{self.transaction_id}:{mode}:{func}:{key}" 
-    
+            return f"{mode}:{func}:{key}"
+        
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
             return self.function_pos[self.function_name]

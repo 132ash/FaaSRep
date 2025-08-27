@@ -24,6 +24,8 @@ dynamodb_key_id = config.DYNAMODB_KEY_ID
 dynamodb_access_key = config.DYNAMODB_ACCESS_KEY
 dynamodb_area = config.DYNAMODB_AREA
 
+CACHE_ENABLED = config.CACHE_ENABLED
+
 # interact with couchdb node
 
 class Repository:
@@ -85,9 +87,21 @@ class Repository:
             return f"{transaction_id}:{mode}:{func}:{key}" 
     
     def store_input(self, transaction_id, ip, input):
-        for k, v in input.items():
-            redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, False)
-            self.redis[extract_ip(ip)][redis_key] = v
+        if CACHE_ENABLED:
+            for k, v in input.items():
+                redis_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, False)
+                self.redis[extract_ip(ip)][redis_key] = v
+        else:
+            shadow_table = self.dynamo.Table("shadow_table")
+            for k, v in input.items():
+                dynamo_key = self.param_wrapper(transaction_id, 'RET','GLOBAL', k, True)
+                shadow_table.put_item(
+                    Item={
+                        'txid': transaction_id, # 分区键
+                        'key': dynamo_key,      # 排序键
+                        'value': str(v)
+                    }
+                )
 
     def get_result(self, request_id: str, workflow_name) -> Any:
         end_func = self.get_end_function(workflow_name + '_workflow_metadata')
@@ -100,55 +114,57 @@ class Repository:
     def fetch_result_from_shadow_table(self, transaction_id, func, output, redis_ip):
         keys = output.keys()
         result = {}
-        for k in keys:
-            redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
-            result[k] = int(self.redis[redis_ip][redis_key].decode('utf-8')) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key].decode('utf-8')
+        if CACHE_ENABLED:   
+            for k in keys:
+                redis_key = self.param_wrapper(transaction_id, 'RET', func, k, False)
+                result[k] = int(self.redis[redis_ip][redis_key].decode('utf-8')) if output[k]["type"] == "int" else self.redis[redis_ip][redis_key].decode('utf-8')
+        else:
+            shadow_table = self.dynamo.Table("shadow_table")
+            for k in keys:
+                dynamo_key = self.param_wrapper(transaction_id, 'RET',func, k, True)
+                response = shadow_table.get_item(
+                    Key={
+                        'txid': transaction_id, # 分区键
+                        'key': dynamo_key       # 排序键
+                    }
+                )
+                item = response.get('Item')
+                #log_message(f"Fetched item for key {dynamo_key}: {item}")
+                result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
-    def release_lock(self, transaction_id, lock_set):
-        """
-        释放 lock_set 中每个 key 的锁，将其 lock 属性设置为 None。
-        """
-        data_db = self.dynamo.Table('data')
+   
+    def clear_db(self, transaction_id):
+        db = self.couch['results']
+        if transaction_id in db:
+            doc = db[transaction_id]
+            db.delete(doc)
+        # 从全局表中批量删除该事务的所有条目
+        shadow_table = self.dynamo.Table('shadow_table')
+        self._batch_delete_from_partition(shadow_table, transaction_id)
+        
 
-        for key in lock_set.keys():
-            # 更新 lock 属性为 None
-            data_db.update_item(
-                Key={'key': key},
-                UpdateExpression="SET #l = :none",
-                ExpressionAttributeNames={
-                    '#l': 'lock'
-                },
-                ConditionExpression="#l = :txid",  # 确保当前锁属于 transaction_id
-                ExpressionAttributeValues={
-                    ':txid': transaction_id,
-                    ':none': None
-                },
-                ReturnValues="UPDATED_NEW"
-            )
 
-    def create_shadow_table(self, transaction_id):
-        table_name = f"{transaction_id}_shadow_table"
-        existing_tables = self.dynamo.tables.all()
-        if table_name not in [table.name for table in existing_tables]:
-        # 创建表
-            table = self.dynamo.create_table(
-                TableName=table_name,
-                KeySchema=[
-                    {
-                        'AttributeName': 'key',
-                        'KeyType': 'HASH'  # 主键
-                    }
-                ],
-                AttributeDefinitions=[
-                    {
-                        'AttributeName': 'key',
-                        'AttributeType': 'S'  # 字符串类型
-                    }
-                ],
-                ProvisionedThroughput={
-                    'ReadCapacityUnits': 100,
-                    'WriteCapacityUnits': 100
-                }
+    def _batch_delete_from_partition(self, table, txid):
+        """一个辅助函数，用于高效删除一个分区下的所有条目。"""
+        with table.batch_writer() as batch:
+            # 1. 查询分区下的所有 key
+            response = table.query(
+                KeyConditionExpression='txid = :txid',
+                ExpressionAttributeValues={':txid': txid}
             )
-            table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+            keys_to_delete = response.get('Items', [])
+            # 处理分页，以防一个分区下的条目超过1MB
+            while 'LastEvaluatedKey' in response:
+                response = table.query(
+                    KeyConditionExpression='txid = :txid',
+                    ExpressionAttributeValues={':txid': txid},
+                    ExclusiveStartKey=response['LastEvaluatedKey']
+                )
+                keys_to_delete.extend(response.get('Items', []))
+            
+            # 2. 批量删除
+            for item in keys_to_delete:
+                batch.delete_item(Key={'txid': item['txid'], 'key': item['key']})
+            #log_message(f"Batch deleted all items for txid '{txid}' from table '{table.name}'.")
+ 

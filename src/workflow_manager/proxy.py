@@ -71,6 +71,8 @@ default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:
 REPAIRED = 1
 ABORTED = 2
 
+CACHE_ENABLED = config.CACHE_ENABLED    
+
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
         print("Clearing previous containers.")
@@ -153,7 +155,8 @@ def clear():
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
-    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
+    if CACHE_ENABLED:
+        dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
 
 @app.route('/commit', methods = ['POST'])

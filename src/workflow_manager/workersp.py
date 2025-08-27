@@ -67,6 +67,7 @@ class TransactionState:
         self.lock = gevent.lock.BoundedSemaphore() # guard the whole state
         self.executed: Dict[str, bool] = {}
         self.parent_executed: Dict[str, int] = {}
+        self.valid = True
         for f in all_func:
             self.executed[f] = False
             self.parent_executed[f] = 0
@@ -103,10 +104,10 @@ class WorkerSPManager:
         min_port += 5000
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id: str, read_set, write_set) -> TransactionState:
+    def get_state(self, transaction_id: str, read_set, write_set) -> TransactionState:
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
-        if transaction_id not in self.states or retry_after_abort:
+        if transaction_id not in self.states or not self.states[transaction_id].valid:
             self.states[transaction_id] = TransactionState(transaction_id, self.func, read_set, write_set)
         else:
             state = self.states[transaction_id]
@@ -122,11 +123,16 @@ class WorkerSPManager:
         self.function_manager.clear_containers()
 
     # delete state
-    def del_state(self, transaction_id: str):
+    def del_state(self, transaction_id: str, fin):
         self.lock.acquire()
         if transaction_id in self.states:
-            #log_message(f'delete state of: {transaction_id}')
-            del self.states[transaction_id]
+            if fin:
+                del self.states[transaction_id]
+            else:
+                state = self.states[transaction_id]
+                state.lock.acquire()
+                state.valid = False
+                state.lock.release()
         self.lock.release()
     
     def validate_tx(self, transaction_id, read_set, write_set) -> None:
@@ -141,7 +147,7 @@ class WorkerSPManager:
 
     def active_abort_tx(self,transaction_id):
         url = 'http://{}/notify'.format(config.GATEWAY_ADDR)
-        data = {"aborted_txs":[transaction_id]}
+        data = {"aborted_txs":[transaction_id], 'timestamps':[0,0]}
         requests.post(url, json=data)
 
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
@@ -159,6 +165,9 @@ class WorkerSPManager:
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
         #log_message(f'trigger local function: {function_name} of: {state.transaction_id}, repair:{state.repair}, repair_mode:{state.repair_mode}, repair_mode_changed:{state.repair_mode_changed[function_name]}')
         state.lock.acquire()
+        if not state.valid:
+            state.lock.release()
+            return
         if not no_parent_execution:
             state.parent_executed[function_name] += 1
         runnable = self.check_runnable(state, function_name)
@@ -218,16 +227,18 @@ class WorkerSPManager:
         #log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set)
         end = time.time()
+        self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
+        self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")
-            return False
-            
+            return False     
         state.lock.acquire()
+        if not state.valid:
+            state.lock.release()
+            return None
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
         state.write_set.update(res["write_set"])
-        self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-        self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         # #log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
         state.read_set[info["function_name"]] = res["read_set"]
         state.lock.release()

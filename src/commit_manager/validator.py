@@ -29,6 +29,7 @@ REPAIR_FINISH = 2
 COMMIT = 3
 CASCADED_COMMIT = 4
 GATEWAY_ADDR = config.GATEWAY_ADDR
+CACHE_ENABLED = config.CACHE_ENABLED    
 DISPATCH_INTERVAL = 0.005 
 import re
 Serializer_timeout = 10  # seconds
@@ -133,11 +134,9 @@ class ValidatorProcess(Process):
         last_task_time = time.time()
         if op == VALIDATE:
             batch = data['batch'] 
-            first_run_finish_time = data['first_run_finish_time']
             inside_validator_time, version, commitable_keys, expired_set, succeeded_txs, abort_txs = self.validate(batch_id, batch, last_task_time)
-            validate_time_tuple = (first_run_finish_time, last_task_time, inside_validator_time)
-            self.commit_tx_list(version, commitable_keys, expired_set)
-            self.notify_gateway(succeeded_txs, validate_time_tuple, abort_txs)
+            commit_time = self.commit_tx_list(version, commitable_keys, expired_set)
+            self.notify_gateway(succeeded_txs, [inside_validator_time, commit_time], abort_txs)
 
                         
     def serializer_request(self, batch_id, op, data):
@@ -155,20 +154,37 @@ class ValidatorProcess(Process):
         return time.time() - start_time,  version, commitable_keys, expired_set, succeeded_txs, abort_txs
 
     def commit_tx_list(self, version, commitable_keys, expired_set):
-        worker_commit_set = {worker_ip:{'commit_keys':[], 'expired_keys':[]} for worker_ip in self.worker_ip_set}
-        for key, expired_func_info in expired_set.items():
-            for expired_func in expired_func_info:
-                worker_commit_set[self.function_pos[expired_func]]['expired_keys'].append(key)
-        for key, key_info in commitable_keys.items():
-            txid = key_info[0]
-            func = key_info[1]
-            worker_commit_set[self.function_pos[func]]['commit_keys'].append([f'{txid}:PUT:{func}:{key}', version])
-        #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
-        jobs = [
-            gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
-            for ip in worker_commit_set
-        ]
-        gevent.joinall(jobs)
+        start = time.time()
+        if CACHE_ENABLED:
+            worker_commit_set = {worker_ip:{'commit_keys':[], 'expired_keys':[]} for worker_ip in self.worker_ip_set}
+            for key, expired_func_info in expired_set.items():
+                for expired_func in expired_func_info:
+                    worker_commit_set[self.function_pos[expired_func]]['expired_keys'].append(key)
+            for key, key_info in commitable_keys.items():
+                txid = key_info[0]
+                func = key_info[1]
+                worker_commit_set[self.function_pos[func]]['commit_keys'].append([f'{txid}:PUT:{func}:{key}', version])
+            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+            jobs = [
+                gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
+                for ip in worker_commit_set
+            ]
+            gevent.joinall(jobs)
+        else:
+            txs_to_commit = {}
+            for key, key_info in commitable_keys.items():
+                txid = key_info[0]
+                func = key_info[1]
+                if txid not in txs_to_commit:
+                    txs_to_commit[txid] = []
+                txs_to_commit[txid].append([key, func])
+            commit_jobs = [
+                gevent.spawn(self.repo.sync_shadow_to_data_db_with_version, txid, keys, version)
+                for txid, keys in txs_to_commit.items()
+            ]
+            gevent.joinall(commit_jobs)
+        return time.time() - start
+            
 
     def trigger_worker_commit(self, ip, worker_commit_set):
         if not ip.endswith(":7500"):
@@ -194,3 +210,4 @@ class ValidatorProcess(Process):
         }
         r = requests.post(url, json=data)
         return r.json() 
+

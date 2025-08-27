@@ -71,21 +71,22 @@ class Repository:
         latency_db = self.couch['workflow_latency']
         latency_db.save(log)
 
-    def sync_shadow_to_data_db_with_version(self, transaction_id, version):
-        shadow_table_name = f"{transaction_id}_shadow_table"
-        shadow_table = self.dynamo.Table(shadow_table_name)
-        data_db = self.dynamo.Table('data')
-
-        # 扫描 shadow table 中的所有数据
-        response = shadow_table.scan()
-        items = response.get('Items', [])
-
-        for item in items:
-            key = item['key']
-            value = item['value']  # Ensure value is stored as a string
-            # only flush the items func write.
-            if not key.startswith('RET'):
-                data_db.update_item(
+    def sync_shadow_to_data_db_with_version(self, transaction_id, keys_to_sync, version=''):
+        shadow_table = self.dynamo.Table('shadow_table')
+        data_table = self.dynamo.Table('data') 
+        for key_info in keys_to_sync:
+            key = key_info[0]
+            func = key_info[1]
+            response = shadow_table.get_item(
+                Key={
+                    'txid': transaction_id,
+                    'key': f"PUT:{func}:{key}"
+                }
+            )
+            item = response.get('Item')
+            if item:
+                value = item['value']
+                data_table.update_item(
                     Key={'key': key},
                     UpdateExpression="SET #v = :value, #ver = :version",
                     ExpressionAttributeNames={
@@ -95,8 +96,7 @@ class Repository:
                     ExpressionAttributeValues={
                         ':value': value,
                         ':version': version
-                    },
-                    ReturnValues="UPDATED_NEW"
+                    }
                 )
 
     
