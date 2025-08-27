@@ -21,3 +21,6 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
+# workflow setting
+
+REMOTE_PROB = 1

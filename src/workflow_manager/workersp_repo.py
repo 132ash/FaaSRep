@@ -162,7 +162,10 @@ class Repository:
             for key in keys:
                 version, value = self.data_db.get_data_from_db(key)
                 data = {"value": value, "version": version}
-                self.cache_redis[key] = json.dumps(data)
+                try:
+                    self.cache_redis[key] = json.dumps(data)
+                except redis.exceptions.OutOfMemoryError:
+                    continue
         else:
             pipe = self.cache_redis.pipeline()
             for key in keys:
@@ -187,17 +190,26 @@ class Repository:
 
     # commit keys to DB, flush cache, and delete shadow table entries.
     def commit_tx_writes(self, commit_key_list):
-        cache_pipe = self.cache_redis.pipeline()
-        cache_pipe.multi()
         for key_info in commit_key_list:
             redis_key = key_info[0]
             version = key_info[1]
             key = self.param_decode(redis_key)
             value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
-            cache_pipe.set(redis_key, json.dumps({"value": value, "version": version}))
-            # 调用 store_key_to_db 存储到数据库中
             self.data_db.store_data_to_db(key, version, value)
-        cache_pipe.execute()
+            # 更新缓存
+            try:
+                # 直接使用 SET 命令而不是 pipeline，以便单独捕获每个键的OOM错误
+                data_to_cache = json.dumps({"value": value, "version": version})
+                self.cache_redis.set(redis_key, data_to_cache)
+            except redis.exceptions.OutOfMemoryError:
+                # 当缓存内存不足时，记录错误并跳过这次写入
+                # print(f"OOMError: Skipping cache write for key {redis_key} due to maxmemory limit.")
+                # 可选：在这里可以触发一些缓存清理策略
+                continue
+            except redis.exceptions.RedisError as e:
+                # 捕获其他可能的 Redis 错误
+                print(f"RedisError on SET for key {redis_key}: {e}")
+                continue
 
     def clear_aborted_txs(self, aborted_txs):
         self_shadow_table_pipe = self.shadowtable_redis_all_addr[self.ip].pipeline()

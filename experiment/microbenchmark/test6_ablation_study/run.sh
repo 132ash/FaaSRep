@@ -8,7 +8,8 @@ WORKFLOWS=(c4)
 # CLIENT_COUNTS=(4 8 12 16 24 32 40 48 56 64)
 CLIENT_COUNTS=(64)
 TEXT_SIZE=4096  # 固定为 4KB
-SYSTEM_MODE="PESSIMISTIC"
+SYSTEM_MODE="repair-fast-64"
+ZIPF=0.75
 
 echo "=== 开始微基准测试 ==="
 echo "测试时间: $(date)"
@@ -17,6 +18,7 @@ echo "客户端数量: ${CLIENT_COUNTS[*]}"
 echo "数据大小: ${TEXT_SIZE} bytes (4KB)"
 echo "系统模式: $SYSTEM_MODE"
 echo "延迟指标: P50"
+echo "ZIPF: $ZIPF"
 echo "================================"
 
 # 创建结果目录
@@ -66,8 +68,8 @@ for WORKFLOW in "${WORKFLOWS[@]}"; do
         
         # 使用 stdbuf -oL 确保行缓冲，-eL 确保错误输出也是行缓冲
         # tee 命令将输出同时显示在终端和保存到文件
-        stdbuf -oL -eL python3 run.py "$WORKFLOW" "$SYSTEM_MODE" "$CLIENT_COUNT" 2>&1 | tee "$LOG_FILE"
-        
+        stdbuf -oL -eL python3 run.py "$WORKFLOW" "$SYSTEM_MODE" "$CLIENT_COUNT" "$ZIPF" 2>&1 | tee "$LOG_FILE"
+
         # 检查执行结果
         PYTHON_EXIT_CODE=${PIPESTATUS[0]}  # 获取 python 命令的退出码
         

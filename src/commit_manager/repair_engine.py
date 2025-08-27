@@ -24,6 +24,9 @@ OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
 OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
 
+SCALABILITY_TEST = config.SCALABILITY_TEST
+FAKE_SINK_URL = config.FAKE_SINK_URL    
+
 class RepairEngine:
 
     def __init__(self, logger, repair_info:RepairInfo, function_pos, worker_ip_set, workflow_name, tx_sink_addr, repo: Repository):
@@ -46,6 +49,10 @@ class RepairEngine:
         self.pessi_register_lock.acquire()
         self.pessimistic_repair_txs_per_batch[batch_id] = {}
         self.PessimisticRepairer.register_repair_info(batch_id, read_set, write_set, tx_list, pessi_sink_info['last_tx'])
+        if SCALABILITY_TEST:
+            requests.post(FAKE_SINK_URL, json={'batch_id': batch_id})
+            self.pessi_register_lock.release() 
+            return
         ready_txs, opt_txs_become_pessi = self.register_on_sink(batch_id, pessi_sink_info)
         self.pessi_register_lock.release()    
         txs_for_optimistic_repair = []

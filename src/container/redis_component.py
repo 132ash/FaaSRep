@@ -3,18 +3,29 @@ monkey.patch_all()
 import redis
 import container_config
 import json
+import random
 import threading
 RUNNING = container_config.RUNNING
 ABORTED = container_config.ABORTED
 REPAIRED = container_config.REPAIRED
 
+REMOTE_PROB = container_config.REMOTE_PROB
+
+def simulate_remote_visit(data_db):
+    try:
+        # 这个操作的目的是模拟一次完整的远程数据库 get 调用
+        data_db.get_item(Key={'key': 'test_value'}, ConsistentRead=True)
+    except Exception as e:
+        pass
+
 class RedisShadowTable:
-    def __init__(self, host_list, port, db, ip):
+    def __init__(self, host_list, port, db, ip, db_server):
         self.redis = {
                     host:redis.StrictRedis(host=host, port=port, db=db, decode_responses=True)
                         for host in host_list
                     }
         self.ip = ip
+        self.data_db = db_server.Table('data')
         
     def put(self, key, ip, value):
         self.redis[ip][key] = value
@@ -24,9 +35,13 @@ class RedisShadowTable:
 
     def self_get(self, key):
         value = self.redis[self.ip].get(key)
+        if random.random() < REMOTE_PROB:
+            simulate_remote_visit(self.data_db)
         return value
 
     def raw_fetch_data(self, redis_key, ip):
+        if random.random() < REMOTE_PROB:
+            simulate_remote_visit(self.data_db)
         return self.redis[ip][redis_key]
             
 # data in cache: value and version 
@@ -40,6 +55,8 @@ class RedisCache:
         if value_tuple == None:
             value_tuple = self.update_and_fetch(key)
         else:
+            if random.random() < REMOTE_PROB:
+                simulate_remote_visit(self.data_db)
             value_tuple = json.loads(value_tuple.decode('utf-8'))
         return value_tuple
     
@@ -60,17 +77,21 @@ class RedisCache:
     def update_and_fetch(self, key):
         version, value = self.db_get(key)
         data = {"value": value, "version": version}
-        self.redis[key] = json.dumps(data)
+        try:
+            self.redis[key] = json.dumps(data)
+        except redis.exceptions.OutOfMemoryError:
+            pass
         return data
     
 class RepairSidecar:
-    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, function_pos, port):
+    def __init__(self, function, shadow_table: RedisShadowTable, cache: RedisCache, function_pos, port, db_server):
         self.shadow_table = shadow_table
         self.cache = cache
         self.function_pos = function_pos
         self.ip = function_pos[function]
         self.port = port
         self.function = function
+        self.data_db = db_server.Table('data')
 
     def set_state_and_get_waiting_downstream(self, tx_id, state):
         if state == RUNNING:
@@ -140,6 +161,8 @@ class RepairSidecar:
 
         def fetch_and_fill(ip):
             responses = upstream_redis_pipelines[ip].execute()
+            if random.random() < REMOTE_PROB:
+                simulate_remote_visit(self.data_db)
             idx = 0
             for upstream_txid, upstream_func_dict in upstream_fetch_results[ip].items():
                 for upstream_func, func_result_info in upstream_func_dict.items():

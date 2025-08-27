@@ -1,7 +1,7 @@
 import couchdb
 import boto3
 import sys
-from datetime import datetime
+import random
 import yaml
 import string
 from pathlib import Path
@@ -64,6 +64,20 @@ table = dynamo_db.create_table(
     ProvisionedThroughput={
         'ReadCapacityUnits': 100,
         'WriteCapacityUnits': 100
+    }
+)
+table.meta.client.get_waiter('table_exists').wait(TableName='data')
+print("Table 'data' created successfully.")
+
+# 生成 4KB 的随机文本
+print(f"Generating {TEXT_SIZE // 1024}KB random text for 'test_value'...")
+random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=TEXT_SIZE))
+
+# 将生成的随机文本存入 data 表
+table.put_item(
+    Item={
+        'key': 'test_value',
+        'value': random_text
     }
 )
 

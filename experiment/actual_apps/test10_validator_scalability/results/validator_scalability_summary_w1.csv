@@ -1,0 +1,4 @@
+validator_workers,client_count,throughput_txns_per_sec
+1,32,354.48
+1,64,352.32
+1,128,354.82

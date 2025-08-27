@@ -92,10 +92,10 @@ class Runner:
         self.fast_path_enabled = fast_path_enabled
         self.optimistic_repair = optimistic_repair
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr)
+        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr, db_server)
         # local cache
         self.cache = RedisCache(container_config.REDIS_CACHE_PORT, container_config.REDIS_CACHE_DB, db_server)
-        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.function_pos, self.port)
+        self.repair_sidecar = RepairSidecar(self.function, self.shadow_table, self.cache, self.function_pos, self.port, db_server)
         self.container_state = RUNNING
         os.chdir(work_dir)
 

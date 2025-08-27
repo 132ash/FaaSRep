@@ -35,6 +35,7 @@ table = dynamodb.Table(table_name)
 
 ROUND = 100
 TEXT_SIZE = 4 * 1024
+ZIPF = 0.75
 parameters_inputs = {}
 result_dict = {}
 
@@ -117,29 +118,29 @@ def analyze_workflow(workflow, parameters_input):
         "e2e_latency": rep['e2e_latency']
     }
 
-def write_result_to_file(system_mode, workflow_name, client_cnt, median_latency, p99_latency, avg_throughput):
+def write_result_to_file(system_mode, workflow_name, client_cnt, median_latency, p99_latency, avg_throughput, zipf):
     """将汇总结果追加到最终结果文件"""
     # 每个 mode 对应一个文件夹
     mode_dir = script_dir / "results" / system_mode
     mode_dir.mkdir(parents=True, exist_ok=True)
-    
-    result_file = mode_dir / "summary_results.csv"
-    
+
+    result_file = mode_dir / f"{system_mode}_summary_results.csv"
+
     # 检查文件是否存在，如果不存在则创建并写入表头
     if not result_file.exists():
         with open(result_file, 'w') as f:
-            f.write("workflow,client_count,median_latency,p99_latency,avg_throughput\n")
+            f.write(f"{system_mode},workflow,client_count,ZIPF,median_latency,p99_latency,avg_throughput\n")
         print(f"📝 创建汇总结果文件: {result_file}", flush=True)
     
     # 追加结果数据
     with open(result_file, 'a') as f:
-        f.write(f"{workflow_name},{client_cnt},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f}\n")
+        f.write(f"{system_mode},{workflow_name},{client_cnt},{zipf},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f}\n")
     
     print(f"📊 汇总结果已写入文件: {result_file}", flush=True)
-    print(f"📊 数据: {workflow_name},{client_cnt},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f}", flush=True)
+    print(f"📊 数据: {workflow_name},{client_cnt},{zipf},{median_latency:.4f},{p99_latency:.4f},{avg_throughput:.4f}", flush=True)
 
-def analyze_all(workflow_name, system_mode, client_cnt):
-    print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}", flush=True)
+def analyze_all(workflow_name, system_mode, client_cnt, zipf):
+    print(f"🚀 开始测试 - 工作流: {workflow_name}, 模式: {system_mode}, 客户端: {client_cnt}. zipf:{zipf}", flush=True)
     
     # --- 设置结果目录 ---
     mode_dir = script_dir / "results" / system_mode
@@ -151,7 +152,7 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
     #repo.clear_all_memory_and_container()
-    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, 0.9)
+    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, zipf)
     print("Parameters ready.")
     # 使用更大的队列或无限大小队列
     result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
@@ -208,7 +209,7 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     df = pd.DataFrame(all_results)
     
     # --- 保存原始结果 ---
-    raw_result_filename = raw_results_dir / f"{workflow_name}_{client_cnt}_raw.csv"
+    raw_result_filename = raw_results_dir / f"{system_mode}_{workflow_name}_{client_cnt}_raw.csv"
     df.to_csv(raw_result_filename, index=False)
     print(f"📝 原始结果已保存到: {raw_result_filename}", flush=True)
     # --- 结束保存 ---
@@ -227,7 +228,7 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     print(f"   平均吞吐量: {avg_throughput:.4f} RPS", flush=True)
 
     # 直接写入结果文件
-    write_result_to_file(system_mode, workflow_name, client_cnt, median_e2e_latency, p99_e2e_latency, avg_throughput)
+    write_result_to_file(system_mode, workflow_name, client_cnt, median_e2e_latency, p99_e2e_latency, avg_throughput, zipf)
     
     print(f"✅ {workflow_name} 测试完成 (客户端: {client_cnt})", flush=True)
     sys.stdout.flush()  # 确保所有输出都被刷新
@@ -238,16 +239,17 @@ if __name__ == '__main__':
     # 设置日志配置
     setup_logging()
     
-    if len(sys.argv) != 4:
-        print("用法: python run.py <workflow_name> <system_mode> <client_count>", flush=True)
+    if len(sys.argv) != 5:
+        print("用法: python run.py <workflow_name> <system_mode> <client_count> <ZIPF>", flush=True)
         sys.exit(1)
         
     workflow_name = sys.argv[1]
     system_mode = sys.argv[2]
     client_cnt = int(sys.argv[3])
+    zipf = float(sys.argv[4])
     
     try:
-        analyze_all(workflow_name, system_mode, client_cnt)
+        analyze_all(workflow_name, system_mode, client_cnt, zipf)
     except Exception as e:
         print(f"❌ 测试过程中发生错误: {e}", flush=True)
         import traceback

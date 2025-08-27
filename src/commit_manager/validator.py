@@ -5,7 +5,7 @@ from gevent import event
 import sys
 import gevent.lock
 import gevent.queue
-import logging
+import re
 from subprocess_log import log_message, setup_validator_logger
 import time
 from serializer import SerializerProcess
@@ -35,7 +35,9 @@ COMMIT = 3
 CASCADED_COMMIT = 4
 GATEWAY_ADDR = config.GATEWAY_ADDR
 DISPATCH_INTERVAL = 0.005 
-import re
+SCALABILITY_TEST = config.SCALABILITY_TEST
+FAKE_NOTIFY_URL = config.FAKE_NOTIFY_URL
+
 Serializer_timeout = 10  # seconds
 
 
@@ -183,6 +185,10 @@ class ValidatorProcess(Process):
             txid_lists = []
             timestamps = []
             pes_transactions = []
+            if SCALABILITY_TEST:
+                self.clean_batch_info(data)
+                requests.post(FAKE_NOTIFY_URL, json={'batch_id_list': data})
+                return
             for batch_id in data:
                 aborted_txs.extend(self.aborted_tx_list_per_batch[batch_id])
                 txid_lists.append(self.successed_tx_list_per_batch[batch_id])
@@ -237,6 +243,13 @@ class ValidatorProcess(Process):
 
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
+        if SCALABILITY_TEST:
+            txid_lists = []
+            for batch_id in commit_batch_list:
+                txid_lists.append(self.tx_list_per_batch[batch_id])
+            self.clean_batch_info(commit_batch_list)
+            requests.post(FAKE_NOTIFY_URL, json={'batch_id_list': commit_batch_list})
+            return
         if commit_batch_list:
             txid_lists, timestamps, abort_txs, pes_txs = [], [], [], []
             worker_commit_set = {worker_ip:{'keys':[], 'txs':[], 'aborted_txs': []} for worker_ip in self.worker_ip_set}
