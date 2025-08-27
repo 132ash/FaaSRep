@@ -100,8 +100,8 @@ class Dispatcher:
         log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, read_set, write_set) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, read_set, write_set)
+    def get_state(self, workflow_name, transaction_id, read_set, write_set) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -112,8 +112,8 @@ class Dispatcher:
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
 
-    def del_state(self, workflow_name, transaction_id):
-        self.managers[workflow_name].del_state(transaction_id)
+    def del_state(self, workflow_name, transaction_id, fin):
+        self.managers[workflow_name].del_state(transaction_id, fin)
 
     def clear_containers(self):
         for workflow_name in self.all_workflows:
@@ -136,7 +136,6 @@ def req():
     workflow_name = data['workflow_name']
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
-    retry_after_abort = data.get('retry', False)
     # collected repair metadata, transported between functions. 
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
@@ -144,7 +143,7 @@ def req():
     batch_id = data.get('batch_id', "")
     # if repair:
         ##log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, read_set, write_set)
+    state = dispatcher.get_state(workflow_name, transaction_id, read_set, write_set)
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -154,8 +153,9 @@ def clear():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
-    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
-    if CACHE_ENABLED:
+    fin = data['fin']
+    dispatcher.del_state(workflow_name, transaction_id, fin) # and remove state for every node
+    if CACHE_ENABLED and fin:
         dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
 

@@ -8,8 +8,8 @@ WORKFLOWS=(c4)
 # CLIENT_COUNTS=(4 8 12 16 24 32 40 48 56 64)
 CLIENT_COUNTS=(64)
 TEXT_SIZE=4096  # 固定为 4KB
-SYSTEM_MODE="OCC"
-ZIPF=0.75 # 0.75， 0.9， 1.25
+SYSTEM_MODE="OCC_caching"
+ZIPF=0.9 # 0.75， 0.9， 1.25
 
 echo "=== 开始微基准测试 ==="
 echo "测试时间: $(date)"

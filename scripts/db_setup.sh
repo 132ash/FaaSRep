@@ -59,7 +59,23 @@ MICROBENCHMARK_WORKFLOWS=(c2 c4 c8 c16 w2 w4 w8 w16)
 # Read workflow name from argument
 WORKFLOW_NAME="$1"
 
-if [ -n "$WORKFLOW_NAME" ] && [ -n "${WORKFLOWS_INIT[$WORKFLOW_NAME]}" ]; then
+
+if [ "$WORKFLOW_NAME" == "app" ]; then
+    echo "Initializing actual application workflows: travel_reservation, banking_system, social_network"
+    
+    ACTUAL_WORKFLOWS=("travel_reservation" "banking_system" "social_network")
+    
+    # 运行每个工作流的 init.sh 脚本
+    for wf in "${ACTUAL_WORKFLOWS[@]}"; do
+        echo "Running init script for: $wf"
+        bash "${WORKFLOWS_INIT[$wf]}"
+    done
+    
+    # 调用 initialize.py 来初始化这三个工作流
+    echo "Running initialize.py for: ${ACTUAL_WORKFLOWS[@]}"
+    python $CURRENT_SH_DIR/../src/initializer/initialize.py "${ACTUAL_WORKFLOWS[@]}"
+
+elif [ -n "$WORKFLOW_NAME" ] && [ -n "${WORKFLOWS_INIT[$WORKFLOW_NAME]}" ]; then
     echo "Initializing workflow: $WORKFLOW_NAME"
     bash "${WORKFLOWS_INIT[$WORKFLOW_NAME]}"
     

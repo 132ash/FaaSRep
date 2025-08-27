@@ -187,7 +187,7 @@ def clear_container():
 from gevent.pywsgi import WSGIServer
 import logging
 
-#  python gateway.py  10.3.96.150  8000
+#  python gateway.py  10.2.29.142  8000
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)

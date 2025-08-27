@@ -56,7 +56,7 @@ class Runner:
         self.output = output
         self.function_pos = function_pos
         # shadow table on each host
-        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr, cache_enable)
+        self.shadow_table = RedisShadowTable(node_list, container_config.REDIS_PORT, container_config.REDIS_SHADOW_TABLE_DB, self.host_addr, db_server, cache_enable)
         # local cache
         self.cache = RedisCache(container_config.REDIS_CACHE_PORT, container_config.REDIS_CACHE_DB, db_server, cache_enable)
         os.chdir(work_dir)
@@ -92,7 +92,7 @@ class Runner:
             out = eval('main()', self.ctx)               
         except Exception as e:
             aborted = True
-            msg = json.dumps({'Abort': True, 'error': str(e)})
+            msg = json.dumps({'Abort': True, 'error': str(e), 'io_latency':store.io_latency})
             logging.error(f"Function {self.function} execution failed: {msg}")
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         io_latency = store.io_latency

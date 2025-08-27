@@ -1,0 +1,4 @@
+OCC_basic,workflow,client_count,ZIPF,median_latency,p99_latency,avg_throughput
+OCC_basic,c4,64,0.75,0.9912,11.6583,34.2950
+OCC_basic,c4,64,0.9,1.3937,26.5421,20.1479
+OCC_basic,c4,64,1.25,2.9541,104.1511,7.1150

@@ -83,11 +83,11 @@ def analyze_and_save_results(all_gateway_results, system_mode):
     gateway_df['scheduling_latency'] = gateway_df['workflow_exec_latency'] - gateway_df['func_e2e_latency']
     # function_exec_latency: 函数执行时间中的纯计算部分
     gateway_df['function_exec_latency'] = gateway_df['func_e2e_latency'] - gateway_df['io_latency']
-
+    #'e2e_latency' 'workflow_exec_latency' 'validate_latency' 'commit_latency'
     numeric_columns = [
         'e2e_latency', 'workflow_exec_latency', 'rounds',
-        'func_e2e_latency', 'io_latency', 'time_commit', 'time_repair',
-        'function_exec_latency', 'scheduling_latency', 'time_inside_validator'
+        'func_e2e_latency', 'io_latency', 'commit_latency', 
+        'function_exec_latency', 'scheduling_latency', 'validate_latency'
     ]
     avg_metrics = gateway_df[numeric_columns].mean()
 
@@ -99,9 +99,8 @@ def analyze_and_save_results(all_gateway_results, system_mode):
         "scheduling_latency": avg_metrics.get("scheduling_latency"),
         "function_io_latency": avg_metrics.get("io_latency"),
         "function_exec_latency": avg_metrics.get("function_exec_latency"),
-        "time_inside_validator": avg_metrics.get("time_inside_validator", 0),
-        "time_repair": avg_metrics.get("time_repair", 0),
-        "time_commit": avg_metrics.get("time_commit", 0),
+        "time_inside_validator": avg_metrics.get("validate_latency", 0),
+        "time_commit": avg_metrics.get("commit_latency", 0),
         "rounds": avg_metrics.get("rounds"),
     }
     

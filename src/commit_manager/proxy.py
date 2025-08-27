@@ -29,7 +29,7 @@ def validate_tx():
     validator_pools[workflow].submit(batch_id, VALIDATE, data)
     return json.dumps({'status': 'processing'})  
 
-# python proxy.py  10.3.96.150  9000
+# python proxy.py  10.2.29.142  9000
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':

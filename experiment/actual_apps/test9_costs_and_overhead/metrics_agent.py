@@ -175,7 +175,9 @@ def stop_metrics():
             print(f"指标分析过程中出错: {e}", file=sys.stderr)
             return jsonify({"error": f"指标分析失败: {e}"}), 500
 
-# --- 主程序入口 ---
+# python3 metrics_agent.py  10.2.30.50 5001
+# python3 metrics_agent.py  10.2.27.23 5001
+# python3 metrics_agent.py  10.2.30.62 5001
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         print("用法: python metrics_agent.py <ip_address> <port>")

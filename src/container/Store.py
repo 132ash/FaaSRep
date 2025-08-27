@@ -19,10 +19,8 @@ class Store:
     def __init__(self):
         self.fetch_dict = {}
         self.ret_dict = {}
-        self.io_latency = 0
         self.redis_shadow_table: RedisShadowTable = None
         self.redis_cache: RedisCache = None
-        self.lock_latency = 0
 
 
         if os.path.exists('work'):
@@ -44,6 +42,7 @@ class Store:
         self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
         self.cache_enable = metadata.get('cache_enable', False)
+        self.io_latency = 0
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func, key, mode, txid=None):
