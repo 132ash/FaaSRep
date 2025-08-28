@@ -1,6 +1,6 @@
 import couchdb
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime
 import random
 import json
 import string

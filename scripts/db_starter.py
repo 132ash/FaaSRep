@@ -2,6 +2,7 @@ import couchdb
 import boto3
 import sys
 import random
+from datetime import datetime
 import yaml
 import string
 from pathlib import Path
@@ -46,7 +47,7 @@ while project_root != project_root.parent:
 CONFIG_DIR = project_root / 'config'
 node_info = yaml.load(open(f'{CONFIG_DIR}/worker_info.yaml'), Loader=yaml.FullLoader)["nodes"]
 couch_db['common'].save({'addrs': list(node_info)})
-
+startup_version = datetime(2025, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')
 table = dynamo_db.create_table(
     TableName='data',
     KeySchema=[
@@ -77,7 +78,8 @@ random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=TEX
 table.put_item(
     Item={
         'key': 'test_value',
-        'value': random_text
+        'value': random_text,
+        'version': startup_version
     }
 )
 

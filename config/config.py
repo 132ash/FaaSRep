@@ -29,18 +29,19 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                     'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                       'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                      'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                       'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                       'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                       'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
+                     #'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                     # 'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                     #  'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                     'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                      # 'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                       # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                        #'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                      #  'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
                     # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                     # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
+DEFAULT_CONTAINER_NUM = 4
 # cache setting
 CACHE_ENABLED = True
 CLEAR_MEM = True
@@ -68,11 +69,10 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
-DEFAULT_CONTAINER_NUM = 4
 CLEAR_MEM = True
 
 # used in scalabiliy test.
-SCALABILITY_TEST = True
+SCALABILITY_TEST = False
 FAKE_SINK_URL =  f'http://{STORAGE_NODE_IP}:6000/fake_repair_pessi'
 FAKE_NOTIFY_URL = f'http://{STORAGE_NODE_IP}:8000/fake_notify'
 FAKE_REQUEST_URL = f'http://{STORAGE_NODE_IP}:8000/fake_request'

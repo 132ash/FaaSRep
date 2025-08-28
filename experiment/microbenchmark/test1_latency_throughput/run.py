@@ -37,20 +37,6 @@ ROUND = 100
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
-
-def setup_logging():
-    """设置日志配置，确保实时输出到终端"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ],
-        force=True
-    )
-    # 确保立即刷新输出
-    logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
-
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程执行的任务。"""
     local_results = []
@@ -151,7 +137,7 @@ def analyze_all(workflow_name, system_mode, client_cnt):
     sys.stdout.flush()  # 强制刷新输出缓冲区
     repo.flush_couchdb_workflow_latency()
     #repo.clear_all_memory_and_container()
-    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, 0.5)
+    parameters_all = generate_param.generate_workflow_inputs_for_clients('microbenchmark', client_cnt, ROUND, workflow_name, 0.9)
     print("Parameters ready.")
     # 使用更大的队列或无限大小队列
     result_queue = multiprocessing.Queue(maxsize=1000)  # 设置较大的队列大小
@@ -236,7 +222,6 @@ def analyze_all(workflow_name, system_mode, client_cnt):
 
 if __name__ == '__main__':
     # 设置日志配置
-    setup_logging()
     
     if len(sys.argv) != 4:
         print("用法: python run.py <workflow_name> <system_mode> <client_count>", flush=True)
