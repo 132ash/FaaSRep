@@ -3,10 +3,10 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 cd "$CURRENT_SH_DIR"
 
 # 定义测试参数
-WORKFLOWS=(c4)
-# WORKFLOWS=(c2 c4 c8 c16 w2 w4 w8 w16)
-# CLIENT_COUNTS=(16 32 48)
-CLIENT_COUNTS=(32)
+WORKFLOWS=(w6)
+# WORKFLOWS=(c2 c4 c8 c16 w2 w4 w6 w8)
+# CLIENT_COUNTS=(4 8 12 16 24 32 48 64)
+CLIENT_COUNTS=(64)
 TEXT_SIZE=4096  # 固定为 4KB
 SYSTEM_MODE="beldi"
 
@@ -81,49 +81,8 @@ for WORKFLOW in "${WORKFLOWS[@]}"; do
         
         echo "   - 结束时间: $(date '+%H:%M:%S')"
         echo "--------------------------------"
-        
-        # 等待一段时间让系统稳定
-        echo "⏳ 等待系统稳定..."
-        sleep 2
     done
-
-    # 处理该工作流的结果
-    echo ""
-    echo "📈 处理工作流 $WORKFLOW 的结果..."
-    TEMP_RESULT_FILE="results/${WORKFLOW}_temp.csv"
-    
-    if [ -f "$TEMP_RESULT_FILE" ]; then
-        echo "📊 发现结果文件: $TEMP_RESULT_FILE"
-        echo "📋 文件内容:"
-        cat "$TEMP_RESULT_FILE"
-        
-        # 调用结果处理脚本
-        python3 process_results.py "$WORKFLOW" "$TEMP_RESULT_FILE"
-        
-        if [ $? -eq 0 ]; then
-            echo "✅ 工作流 $WORKFLOW 结果处理完成"
-            # 删除临时文件
-            rm -f "$TEMP_RESULT_FILE"
-            echo "🗑️  已删除临时文件: $TEMP_RESULT_FILE"
-        else
-            echo "❌ 工作流 $WORKFLOW 结果处理失败"
-            echo "🔍 保留临时文件以供调试: $TEMP_RESULT_FILE"
-        fi
-    else
-        echo "⚠️  未找到结果文件: $TEMP_RESULT_FILE"
-        echo "🔍 检查测试是否正确执行"
-    fi
     
     echo "✅ 工作流 $WORKFLOW 测试完成"
 done
 
-echo ""
-echo "✅ 4KB 数据大小的所有测试完成"
-
-echo ""
-echo "🎉 所有测试完成!"
-echo "结束时间: $(date)"
-echo "结果文件位于: $CURRENT_SH_DIR/results/"
-echo "日志文件位于: $CURRENT_SH_DIR/logs/"
-
-done
