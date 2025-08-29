@@ -129,7 +129,7 @@ class Repository:
                     }
                 )
                 item = response.get('Item')
-                #log_message(f"Fetched item for key {dynamo_key}: {item}")
+                ##log_message(f"Fetched item for key {dynamo_key}: {item}")
                 result[k] = int(item['value']) if output[k]["type"] == "int" else item['value'] 
         return result
     
@@ -166,5 +166,5 @@ class Repository:
             # 2. 批量删除
             for item in keys_to_delete:
                 batch.delete_item(Key={'txid': item['txid'], 'key': item['key']})
-            #log_message(f"Batch deleted all items for txid '{txid}' from table '{table.name}'.")
+            ##log_message(f"Batch deleted all items for txid '{txid}' from table '{table.name}'.")
  

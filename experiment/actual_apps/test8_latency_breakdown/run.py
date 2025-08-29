@@ -91,7 +91,7 @@ def analyze_and_save_results(all_gateway_results, system_mode):
     ]
     avg_metrics = gateway_df[numeric_columns].mean()
 
-    #log_message(f"transactio
+    ##log_message(f"transactio
 
     # 5. 整理最终的汇总报告
     summary = {

@@ -164,7 +164,7 @@ class ValidatorProcess(Process):
                 txid = key_info[0]
                 func = key_info[1]
                 worker_commit_set[self.function_pos[func]]['commit_keys'].append([f'{txid}:PUT:{func}:{key}', version])
-            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
+            ##log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set

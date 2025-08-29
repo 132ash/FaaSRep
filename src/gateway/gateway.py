@@ -83,7 +83,7 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'repair': False,
         'retry': retry
     }
-    #log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
+    ##log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
     requests.post(url, json=data)
 
 def clear_mem(ip, transaction_id, workflow_name, fin):
@@ -119,13 +119,15 @@ def run():
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    #log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
+    #log_message(f'processing request {transaction_id}')
     start = time.time()
     aborted = False
     retry = False
     active_abort=False
     workflow_exec_latency=0
     validate_latency=0
+    rounds=0
+    success_exec_latency=0
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         running_start = time.time()
@@ -138,18 +140,21 @@ def run():
             if not active_abort:
                 clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, False) for ip in workflow_metadata['all_addrs']]
                 gevent.joinall(clear_jobs)
-                txTable.resetTX(transaction_id)   
+                txTable.resetTX(transaction_id)
+                rounds += 1
             else:
                 break
+        else:
+            success_exec_latency = finish_time - running_start
         retry = True
     end = time.time()
     if aborted and active_abort: 
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
     else:
-        #log_message(f"[FINISH] transaction {transaction_id} finished, e2e latency: {end-start}, exec_first_latency: {exec_first_latency}")
+        #log_message(f"[FINISH] transaction {transaction_id} finished, e2e latency: {end-start}")
         res = repo.get_result(transaction_id, workflow)
         commit_latency = txTable.finishTX(transaction_id)
-        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'workflow_exec_latency':workflow_exec_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'commit_latency': commit_latency})
+        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'workflow_exec_latency':workflow_exec_latency, 'validate_latency': validate_latency,'transaction_id': transaction_id, "res": res, 'commit_latency': commit_latency, 'rounds':rounds+1, 'success_exec_latency':success_exec_latency})
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
         gevent.joinall(clear_jobs)

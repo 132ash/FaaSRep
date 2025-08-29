@@ -77,7 +77,7 @@ class TransactionSink:
         # 确定本次处理的事务数量
         batch_count = min(queue_size, self.batch_size)
         
-       # log_message(f"[BATCH CHECK] workflow: {self.workflow_name}, queue_size: {queue_size}, processing: {batch_count}")
+       # #log_message(f"[BATCH CHECK] workflow: {self.workflow_name}, queue_size: {queue_size}, processing: {batch_count}")
         
         # 收集事务
         batch = []
@@ -103,7 +103,7 @@ class TransactionSink:
         transformed_batch = self.transform_batch(batch)
         # 发送验证请求
         self.send_validate_request(transformed_batch, first_run_finish_time)
-        # log_message(f"[PROCESS BATCH] workflow: {self.workflow_name}, batch_id: {transformed_batch['batch_id']}, size: {len(batch)}, queue remaining: {self.queue.qsize()}")
+        # #log_message(f"[PROCESS BATCH] workflow: {self.workflow_name}, batch_id: {transformed_batch['batch_id']}, size: {len(batch)}, queue remaining: {self.queue.qsize()}")
         
    
     def append(self, transaction_id: str, read_set: Dict[str, Dict], write_set: Dict[str, int]):
@@ -117,12 +117,12 @@ class TransactionSink:
         try:
             # 使用非阻塞的方式添加到队列
             self.queue.put_nowait(transaction_data)
-            #log_message(f"[APPEND] workflow: {self.workflow_name}, transaction_id: {transaction_id}, queue size: {self.queue.qsize()}")
+            ##log_message(f"[APPEND] workflow: {self.workflow_name}, transaction_id: {transaction_id}, queue size: {self.queue.qsize()}")
         except gevent.queue.Full:
             # 如果队列满了，使用阻塞方式等待
-            log_message(f"[QUEUE FULL] workflow: {self.workflow_name}, waiting to append transaction: {transaction_id}")
+            #log_message(f"[QUEUE FULL] workflow: {self.workflow_name}, waiting to append transaction: {transaction_id}")
             self.queue.put(transaction_data)
-            log_message(f"[APPEND DELAYED] workflow: {self.workflow_name}, transaction_id: {transaction_id}, queue size: {self.queue.qsize()}")
+            #log_message(f"[APPEND DELAYED] workflow: {self.workflow_name}, transaction_id: {transaction_id}, queue size: {self.queue.qsize()}")
 
     # transform the batch from a list of txs to a dict, for the convenience of validation.
     # readset and writeset are lists for locking in sequence, so they are not transformed.
@@ -143,7 +143,7 @@ class TransactionSink:
 
     def validate_batch(self):
         """保留旧的 validate_batch 方法以保持兼容性（已弃用）"""
-        log_message(f"[DEPRECATED] validate_batch() called directly for workflow: {self.workflow_name}")
+        #log_message(f"[DEPRECATED] validate_batch() called directly for workflow: {self.workflow_name}")
         self.validate_batch_check()
 
     def send_validate_request(self, batch, first_run_finish_time):
@@ -154,5 +154,5 @@ class TransactionSink:
             "batch_id": batch["batch_id"],
             "first_run_finish_time": first_run_finish_time
         }
-        #log_message(f"[VALIDATE] batch_id:{batch['batch_id']}, transaction_list:{batch['transaction_list']}, first_run_finish_time: {first_run_finish_time}")
+        ##log_message(f"[VALIDATE] batch_id:{batch['batch_id']}, transaction_list:{batch['transaction_list']}, first_run_finish_time: {first_run_finish_time}")
         requests.post(remote_url, json=data)

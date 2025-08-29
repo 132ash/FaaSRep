@@ -4,6 +4,8 @@ from gevent import event
 from src.function_manager.function_info import FunctionInfo
 from  src.function_manager.container import Container, ContainerPool
 import sys
+import logging
+import gevent   
 sys.path.append('../../config')
 import config
 # data structure for request info
@@ -83,23 +85,31 @@ class Function:
         self.container_pool.put(container)
 
 
-    # create a new container
     def create_container(self):
         # do not create new exec container
         # when the number of execs hits the limit
         if not self.container_pool.check_pool_full_and_occupy():
             return None
 
-        # #logging.info('create container of function: %s', self.info.function_name)
-        try:
-            container = Container.create(self.client, self.info.img_name, self.port_controller.get(), 'exec', self.container_pool)
-        except Exception as e:
-            print(e)
-            self.container_pool.num_exec -= 1
-            return None
-        # #logging.info('function: %s container created', self.info.function_name)
-        self.init_container(container)
-        return container
+        max_retries = 10  # 设置最大重试次数，防止无限循环
+        for attempt in range(max_retries):
+            port = -1  # 初始化端口号
+            try:
+                # 步骤 1: 从控制器获取一个端口
+                port = self.port_controller.get()
+                
+                # 步骤 2: 尝试使用该端口创建容器
+                container = Container.create(self.client, self.info.img_name, port, 'exec', self.container_pool)
+                
+                # 如果成功，初始化并返回容器
+                self.init_container(container)
+                return container
+
+            except Exception as e:
+                # 步骤 3: 如果创建失败（很可能是端口冲突）
+                logging.warning(f"创建容器失败 (端口: {port}, 尝试: {attempt + 1}/{max_retries})")
+                # 短暂等待后重试，给操作系统一点时间清理端口
+                gevent.sleep(0.1)
 
     # after the destruction of container
     # its port should be give back to port manager

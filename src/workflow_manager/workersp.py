@@ -163,7 +163,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
-        #log_message(f'trigger local function: {function_name} of: {state.transaction_id}, repair:{state.repair}, repair_mode:{state.repair_mode}, repair_mode_changed:{state.repair_mode_changed[function_name]}')
+        ##log_message(f'trigger local function: {function_name} of: {state.transaction_id}, repair:{state.repair}, repair_mode:{state.repair_mode}, repair_mode_changed:{state.repair_mode_changed[function_name]}')
         state.lock.acquire()
         if not state.valid:
             state.lock.release()
@@ -180,7 +180,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        #log_message(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        ##log_message(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             # basic infomation
@@ -224,7 +224,7 @@ class WorkerSPManager:
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        #log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
+        ##log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set)
         end = time.time()
         self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
@@ -239,7 +239,7 @@ class WorkerSPManager:
         # in first run, modify read/write set, func port, and update RYW relation.
         # only count the function latency in first run.
         state.write_set.update(res["write_set"])
-        # #log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
+        # ##log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
         state.read_set[info["function_name"]] = res["read_set"]
         state.lock.release()
         return True

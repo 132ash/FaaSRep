@@ -87,17 +87,17 @@ class Dispatcher:
                     except Exception as e:
                         log_message(f"Failed to remove container {container.id}: {e}")
                 time.sleep(1)  # Wait a moment for cleanup to complete
-            log_message("All workflow containers have been cleared.")
+            #log_message("All workflow containers have been cleared.")
         except Exception as e:
             log_message(f"Error during container cleanup: {e}")
         self.host_addr = sys.argv[1] + ':' + sys.argv[2]
         repo.shadowtable_init(sys.argv[1])
         repo.clear_mem()
         self.node_list = repo.get_all_addrs('common')
-        ##log_message(f"Node list: {self.node_list}")
+        ###log_message(f"Node list: {self.node_list}")
         self.all_workflows = info_addrs.keys()
         self.managers = {name: WorkerSPManager(self.host_addr, name, addr, repo, self.node_list) for name, addr in info_addrs.items()}
-        log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
+        #log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
     def get_state(self, workflow_name, transaction_id, read_set, write_set) -> TransactionState:
@@ -142,7 +142,7 @@ def req():
     # data for repair
     batch_id = data.get('batch_id', "")
     # if repair:
-        ##log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
+        ###log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
     state = dispatcher.get_state(workflow_name, transaction_id, read_set, write_set)
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -166,7 +166,7 @@ def commit():
     expired_keys = data['expired_keys']
     repo.update_cache(expired_keys)
     repo.commit_tx_writes(commit_keys)
-    #log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")
+    ##log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")
     return json.dumps({'status': 'ok'})
 
 
