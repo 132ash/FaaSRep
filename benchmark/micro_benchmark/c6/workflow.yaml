@@ -1,0 +1,107 @@
+functions:
+- input:
+    keys:
+      from: GLOBAL
+      type: str
+    payload_size:
+      from: GLOBAL
+      type: int
+  name: f1
+  next:
+    nodes:
+    - f2
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f1
+- input:
+    keys:
+      from: f1
+      type: str
+    payload_size:
+      from: f1
+      type: int
+  name: f2
+  next:
+    nodes:
+    - f3
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f2
+- input:
+    keys:
+      from: f2
+      type: str
+    payload_size:
+      from: f2
+      type: int
+  name: f3
+  next:
+    nodes:
+    - f4
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f3
+- input:
+    keys:
+      from: f3
+      type: str
+    payload_size:
+      from: f3
+      type: int
+  name: f4
+  next:
+    nodes:
+    - f5
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f4
+- input:
+    keys:
+      from: f4
+      type: str
+    payload_size:
+      from: f4
+      type: int
+  name: f5
+  next:
+    nodes:
+    - f6
+    type: pass
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f5
+- input:
+    keys:
+      from: f5
+      type: str
+    payload_size:
+      from: f5
+      type: int
+  name: f6
+  next:
+    type: FINISH
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f6
