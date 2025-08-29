@@ -258,7 +258,7 @@ def main():
     print(f"基础路径: {base_path}")
     
     # 为n=[2,4,8,16]生成配置
-    n_values = [2, 4, 8, 16]
+    n_values = [2, 4, 6, 8]
     
     # 生成链式结构的Cn文件夹
     print("\n=== 生成链式结构配置 (cn) ===")

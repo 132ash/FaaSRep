@@ -50,7 +50,7 @@ WORKFLOWS_INIT=(
 )
 
 # List of microbenchmark workflows from c2 to w16
-MICROBENCHMARK_WORKFLOWS=(c2 c4 c8 c16 w2 w4 w8 w16)
+MICROBENCHMARK_WORKFLOWS=(c2 c4 c8 c16 w2 w4 w6 w8)
 
 # Read workflow name from argument
 WORKFLOW_NAME="$1"
