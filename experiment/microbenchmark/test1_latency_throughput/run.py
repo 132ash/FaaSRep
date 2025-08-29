@@ -33,7 +33,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 100
+ROUND = 10
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}
@@ -73,7 +73,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
             except Exception as e:
                 print(f"Client {client_id}: Error putting results to queue: {e}", flush=True)
                 break
-        if i % (ROUND // 10) == 0 or i == ROUND - 1:
+        if i % (max(ROUND // 10, 1)) == 0 or i == ROUND - 1:
             print(f"Client {client_id}: Round {i} completed, batch sent", flush=True)
         
     
