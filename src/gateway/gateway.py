@@ -137,6 +137,7 @@ def run():
         ConditionExpression='attribute_not_exists(txid)' # 确保只在首次创建
     )
     workflow_exec_latency=0
+    success_exec_latency=0
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         running_start = time.time()
@@ -152,6 +153,8 @@ def run():
                 txTable.resetTX(transaction_id, term)
             else:
                 break
+        else:
+            success_exec_latency = finish_time - running_start
     request_end = time.time()
     if aborted and abort_type == 'ACTIVE':
         message =  json.dumps({'status':'aborted', "res": {}})
@@ -161,7 +164,7 @@ def run():
         repo.release_all_locks(transaction_id)
         success_term, commit_latency = txTable.finishTX(transaction_id)
         e2e_latency = request_end - request_start
-        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term+1, "res": res})
+        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term+1, "res": res, 'success_exec_latency': success_exec_latency })
         # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]

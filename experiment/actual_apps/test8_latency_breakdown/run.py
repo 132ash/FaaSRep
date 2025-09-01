@@ -123,16 +123,31 @@ def analyze_all(system_mode="beldi"):
         if successful_txs.empty:
             print(f"No successful transactions for workflow {workflow}. Skipping analysis.")
             continue
-        
         txids = successful_txs['transaction_id'].tolist()
-
+        json.dump(txids, open(f"successful_txs_{workflow}.json", "w"))
+        results_dir = script_dir / 'results'
+        results_dir.mkdir(parents=True, exist_ok=True)
+        successful_txs_path = results_dir / f"{workflow}_{system_mode}_gateway_results.csv"
+        successful_txs.to_csv(successful_txs_path, index=False)
+        print(f"Saved successful gateway transactions to {successful_txs_path}")
+        
         # 2. 批量从Repo获取详细延迟
         repo_latencies = repo.get_all_latencies_for_txs(txids)
-        repo_df = pd.DataFrame.from_dict(repo_latencies, orient='index').reset_index().rename(columns={'index': 'transaction_id'})
+        
+        if not repo_latencies:
+            print("Warning: Fetched no detailed latencies from the repository.")
+            repo_df = pd.DataFrame(columns=['transaction_id', 'exec_latency', 'io_latency', 'lock_latency'])
+        else:
+            repo_df = pd.DataFrame.from_dict(repo_latencies, orient='index').reset_index().rename(columns={'index': 'transaction_id'})
+
+        # --- 新增：保存从数据库获取的延迟数据 ---
+        if not repo_df.empty:
+            repo_df_path = results_dir / f"{workflow}_{system_mode}_repo_latencies.csv"
+            repo_df.to_csv(repo_df_path, index=False)
+            print(f"Saved repository latencies to {repo_df_path}")
 
         # 3. 合并两个DataFrame
         df = pd.merge(successful_txs, repo_df, on='transaction_id', how='left').fillna(0)
-
         # 4. 计算派生延迟
         df['function_exec_latency'] = df['exec_latency'] - df['io_latency'] - df['lock_latency']
         df['scheduling_latency'] = df['workflow_exec_latency'] - df['exec_latency']

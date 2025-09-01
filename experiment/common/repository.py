@@ -35,6 +35,10 @@ class Repository:
         latencies = {txid: defaultdict(float) for txid in txids}
         try:
             db = self.couch['workflow_latency']
+            print(f"success txs len:{len(txids)}")
+            # 获取数据库中的文档总数，设置查询限制
+            total_docs = len(db)
+            query_limit = max(total_docs + 100, len(txids) * 3 + 100)
             # 查询 io, exec, 和 lock 三种类型的延迟
             query = {
                 'selector': {
@@ -42,7 +46,7 @@ class Repository:
                     'phase': {'$in': ['io', 'exec', 'lock']}
                 },
                 'fields': ['transaction_id', 'phase', 'time'],
-                'limit': len(txids) * 10 # 设置一个足够大的限制
+                'limit': query_limit  # <--- 在这里添加 limit
             }
             results = db.find(query)
             for doc in results:
@@ -74,7 +78,6 @@ class Repository:
                     'phase': phase
                 },
                 'fields': ['transaction_id', 'time'],
-                'limit': len(txids) * 10 # 设置一个足够大的限制以获取所有相关文档
             }
             results = db.find(query)
             for doc in results:
@@ -122,6 +125,15 @@ class Repository:
             }
         return latencies
     
+    def get_all_latencies(self):
+        db = self.couch['workflow_latency']
+        for item in db:
+            doc = db[item]
+            if 'transaction_id' in doc:
+                print(doc)
+                print('----------------------')
+
+
     def get_all_addrs(self):
         db = self.couch['common']
         for item in db:
@@ -135,3 +147,8 @@ class Repository:
         for item in db:
             functions.append(db[item]['function_name'])
         return functions
+
+if __name__ == '__main__':
+    repo = Repository()
+    latency = repo.get_all_latencies()
+    print(latency)
