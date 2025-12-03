@@ -33,7 +33,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 table_name = "data"
 table = dynamodb.Table(table_name)
 
-ROUND = 10
+ROUND = 50
 TEXT_SIZE = 4 * 1024
 parameters_inputs = {}
 result_dict = {}

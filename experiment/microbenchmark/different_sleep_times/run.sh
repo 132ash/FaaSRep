@@ -7,7 +7,7 @@ WORKFLOWS=(w6)
 CLIENT_COUNTS=(32)
 # 定义不同的 sleep_time
 # SLEEP_TIMES=(0 0.01 0.05 0.1 0.2 0.5 1)
-SLEEP_TIMES=(0)
+SLEEP_TIMES=(1)
 
 TEXT_SIZE=4096  # 固定为 4KB
 SYSTEM_MODE="Concord"

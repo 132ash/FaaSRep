@@ -14,6 +14,8 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # apt-get update
 # apt-get install -y docker-ce docker-ce-cli containerd.io
 # apt-get install wondershaper
+docker stop scylla 2>/dev/null || true
+docker rm scylla 2>/dev/null || true
 
 
 # Stop and remove containers for amazon/dynamodb-local:latest and couchdb
@@ -26,7 +28,20 @@ docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
 # # install and initialize DynamoDB
 # # docker pull amazon/dynamodb-local:latest
 # # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
-docker run -d -p 4567:8000 amazon/dynamodb-local:latest
+echo "Starting ScyllaDB..."
+docker run --name scylla -d -p 4567:8000 scylladb/scylla \
+    --alternator-port 8000 \
+    --alternator-write-isolation always \
+    --smp 20 --memory 20G
+
+# 4. 等待 ScyllaDB 启动完成
+# ScyllaDB 启动比 DynamoDB Local 慢，必须等待端口可连接
+echo "Waiting for ScyllaDB to initialize (this may take a few seconds)..."
+until python -c "import urllib.request; urllib.request.urlopen('http://localhost:4567')" > /dev/null 2>&1; do
+    sleep 2
+    echo -n "."
+done
+echo -e "\nScyllaDB started successfully."
 # Default region name: us-west-2
 
 
@@ -77,7 +92,7 @@ elif [ -n "$WORKFLOW_NAME" ] && [ -n "${WORKFLOWS_INIT[$WORKFLOW_NAME]}" ]; then
     # 根据工作流名称决定传递给 initialize.py 的参数
     if [ "$WORKFLOW_NAME" == "microbenchmark" ]; then
         echo "Initializing microbenchmark workflows: ${MICROBENCHMARK_WORKFLOWS[@]}"
-        # python $CURRENT_SH_DIR/../src/initializer/initialize.py "${MICROBENCHMARK_WORKFLOWS[@]}"
+        python $CURRENT_SH_DIR/../src/initializer/initialize.py "${MICROBENCHMARK_WORKFLOWS[@]}"
     else
         echo "Initializing single workflow: $WORKFLOW_NAME"
         python $CURRENT_SH_DIR/../src/initializer/initialize.py "$WORKFLOW_NAME"
