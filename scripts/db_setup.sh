@@ -120,7 +120,7 @@ elif [ -n "$WORKFLOW_NAME" ] && [ -n "${WORKFLOWS_INIT[$WORKFLOW_NAME]}" ]; then
     # 根据工作流名称决定传递给 initialize.py 的参数
     if [ "$WORKFLOW_NAME" == "microbenchmark" ]; then
         echo "Initializing microbenchmark workflows: ${MICROBENCHMARK_WORKFLOWS[@]}"
-        python $CURRENT_SH_DIR/../src/initializer/initialize.py "${MICROBENCHMARK_WORKFLOWS[@]}"
+        #python $CURRENT_SH_DIR/../src/initializer/initialize.py "${MICROBENCHMARK_WORKFLOWS[@]}"
     else
         echo "Initializing single workflow: $WORKFLOW_NAME"
         python $CURRENT_SH_DIR/../src/initializer/initialize.py "$WORKFLOW_NAME"

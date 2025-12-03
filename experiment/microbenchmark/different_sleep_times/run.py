@@ -58,6 +58,9 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
     
     for i in range(ROUND):
         txid, result = analyze_workflow(workflow, parameters_all_round[i])
+        if not txid:
+            print(f"Client {client_id}: No result for round {i}, skipping.", flush=True)
+            continue
         result['client_id'] = client_id
         result['round'] = i + 1
         
@@ -73,7 +76,7 @@ def worker_task(client_id, workflow, parameters_all_round, result_queue):
             except Exception as e:
                 print(f"Client {client_id}: Error putting results to queue: {e}", flush=True)
                 break
-        if i % (ROUND // 10) == 0 or i == ROUND - 1:
+        if i % (max(ROUND // 10,1)) == 0 or i == ROUND - 1:
             print(f"Client {client_id}: Round {i} completed, batch sent", flush=True)
         
     
@@ -109,10 +112,14 @@ def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'
     inputs = {'workflow':workflow_name, 'parameters':json.dumps(parameters)}
     rep = requests.post(url, json = inputs)
+    if not rep:
+        return {}
     return rep.json()
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
+    if not rep:
+        return None, {}
     return rep['transaction_id'], {
         "e2e_latency": rep['e2e_latency'],
     }

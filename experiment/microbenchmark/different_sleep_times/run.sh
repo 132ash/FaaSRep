@@ -3,7 +3,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 cd "$CURRENT_SH_DIR"
 
 # 定义测试参数
-WORKFLOWS=(c4)
+WORKFLOWS=(w6)
 CLIENT_COUNTS=(32)
 # 定义不同的 sleep_time
 # SLEEP_TIMES=(0 0.01 0.05 0.1 0.2 0.5 1)
