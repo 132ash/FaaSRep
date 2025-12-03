@@ -36,7 +36,7 @@ if [ "$(docker ps -aq -f name=redis-main)" ]; then
     docker stop redis-main
     docker rm redis-main
 fi
-docker run -itd -p 6379:6379 --name redis-main redis
+docker run -itd -p 1145:6379 --name redis-main redis
 
 echo "Docker running on worker. Initializing basic images"
 #docker build --no-cache -t workflow_sub $CURRENT_SH_DIR/workflow_sub
