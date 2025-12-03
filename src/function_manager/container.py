@@ -132,7 +132,7 @@ class Container:
 if __name__ == '__main__':
 
     os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
-    redis_client = redis.StrictRedis(host="127.0.0.1", port=6379, db=0)
+    redis_client = redis.StrictRedis(host="127.0.0.1", port=1145, db=0)
 
     def deleteAll():
         keys = redis_client.keys('*')
