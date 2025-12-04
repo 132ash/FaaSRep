@@ -7,8 +7,8 @@ WORKFLOW="c4" #c16
 CLIENT_CNT=32
 SYSTEM_MODE="beldi" # 或者 "pessimistic"
 # 定义要测试的 Zipf 参数
-# ZIPF_PARAMS=(0.5 0.75 1.0 1.25 1.5)
-ZIPF_PARAMS=(0.9)
+# ZIPF_PARAMS=(0.5 0.75 1.0 1.25 0.9)
+ZIPF_PARAMS=(1.25)
 
 echo "🚀 开始测试 $SYSTEM_MODE 模式下的数据倾斜度影响"
 
