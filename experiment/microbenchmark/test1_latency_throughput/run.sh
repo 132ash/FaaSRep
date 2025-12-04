@@ -3,7 +3,7 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 cd "$CURRENT_SH_DIR"
 
 # 定义测试参数
-WORKFLOWS=(w6)
+WORKFLOWS=(w8)
 # WORKFLOWS=(c2 c4 c8 c16 w2 w4 w6 w8)
 # CLIENT_COUNTS=(4 8 12 16 24 32 48 64)
 CLIENT_COUNTS=(64)

@@ -3,11 +3,11 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 cd "$CURRENT_SH_DIR"
 
 # 定义测试参数
-WORKFLOWS=(w6)
-CLIENT_COUNTS=(32)
+WORKFLOWS=(c2)
+CLIENT_COUNTS=(4)
 # 定义不同的 sleep_time
 # SLEEP_TIMES=(0 0.01 0.05 0.1 0.2 0.5 1)
-SLEEP_TIMES=(1)
+SLEEP_TIMES=(0)
 
 TEXT_SIZE=4096  # 固定为 4KB
 SYSTEM_MODE="beldi"

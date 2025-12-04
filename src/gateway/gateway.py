@@ -151,7 +151,7 @@ def run():
                 retry = True
                 term += 1
                 txTable.resetTX(transaction_id, term)
-                gevent.sleep(1)  # brief wait before retry
+                gevent.sleep(0.2)  # brief wait before retry
             else:
                 break
         else:
