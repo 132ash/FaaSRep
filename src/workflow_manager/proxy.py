@@ -1,6 +1,14 @@
 import sys
 import logging
 import os
+import gc
+import gevent
+
+def gc_loop():
+    while True:
+        gevent.sleep(300)
+        gc.collect()
+
 # 配置日志记录 - 输出到文件并每次运行时刷新
 log_file = '../../logging/proxy.log'
 
@@ -140,6 +148,7 @@ def get_container_names():
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
+    gevent.spawn(gc_loop)
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()

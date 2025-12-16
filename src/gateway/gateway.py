@@ -5,6 +5,13 @@ import uuid
 import sys
 import logging
 import os
+import gc
+
+def gc_loop():
+    while True:
+        gevent.sleep(300)
+        gc.collect()
+
 # 配置日志记录
 log_file = '../../logging/gateway.log'
 
@@ -195,6 +202,7 @@ import logging
 
 # python gateway.py 10.2.29.142 8000
 if __name__ == '__main__':
+    gevent.spawn(gc_loop)
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     repo = Repository()

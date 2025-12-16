@@ -5,6 +5,13 @@ import logging
 import json
 import sys
 import boto3
+import gc
+import gevent
+
+def gc_loop():
+    while True:
+        gevent.sleep(300)
+        gc.collect()
 
 from flask import Flask, request
 from gevent.pywsgi import WSGIServer
@@ -165,5 +172,6 @@ def run():
 
 
 if __name__ == '__main__':
+    gevent.spawn(gc_loop)
     server = WSGIServer(('0.0.0.0', 5000), proxy)
     server.serve_forever()

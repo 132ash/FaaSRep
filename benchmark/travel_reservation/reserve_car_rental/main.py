@@ -16,8 +16,8 @@ def main():
         cap = store.get(date_str)
         if type(cap) is not int:
             cap = int(cap)
-        if cap <= 0:
-            store.abort_tx(f"No car can be rent from {rentle_from}. remain: {cap}")
+        # if cap <= 0:
+        #     store.abort_tx(f"No car can be rent from {rentle_from}. remain: {cap}")
         current_date += timedelta(days=1)
     current_date = start_date
     while current_date <= end_date:
