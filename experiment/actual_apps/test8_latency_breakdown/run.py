@@ -28,7 +28,7 @@ from experiment.common import repository, client_logs, generate_param
 # --- 实验配置 ---
 CLIENT_CNT = 32
 ROUND_PER_CLIENT = 100
-TARGET_WORKFLOW = 'travel_reservation'
+TARGET_WORKFLOW = 'banking_system'
 
 # --- 初始化 ---
 repo = repository.Repository()
