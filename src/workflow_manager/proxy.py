@@ -18,7 +18,7 @@ monkey.patch_all()
 import os
 import gevent
 import time
-import requests
+import gc
 import json
 from typing import Dict
 from datetime import datetime
@@ -35,6 +35,11 @@ repo = workersp_repo.Repository()
 
 sys.path.append('../../config')
 import config
+
+def gc_loop():
+    while True:
+        gevent.sleep(300)
+        gc.collect()
 
 validate_interval = 0.005 # 200 qps at most
 default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
@@ -148,6 +153,7 @@ def get_container_names():
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
+    gevent.spawn(gc_loop)
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()

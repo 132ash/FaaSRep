@@ -21,8 +21,8 @@ docker rm scylla 2>/dev/null || true
 # Stop and remove containers for amazon/dynamodb-local:latest and couchdb
 docker stop $(docker ps -q --filter ancestor=amazon/dynamodb-local:latest)
 docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
-# docker stop couchdb
-# docker rm couchdb
+docker stop couchdb
+docker rm couchdb
 # docker stop redis
 # docker rm redis
 # # install and initialize DynamoDB
@@ -49,7 +49,14 @@ echo -e "\nScyllaDB started successfully."
 
 # install and initialize couchdb
 # docker pull couchdb
-#docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
+docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
+echo "Waiting for CouchDB to initialize..."
+until python -c "import urllib.request; urllib.request.urlopen('http://localhost:5984')" > /dev/null 2>&1; do
+    sleep 2
+    echo -n "."
+done
+echo -e "\nCouchDB started successfully."
+
 # pip install -r requirements.txt
 python $CURRENT_SH_DIR/db_starter.py
 
