@@ -35,13 +35,13 @@ WORKFLOW_YAML_ADDR = {
                     #  'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
                     #    'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
                     #     'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                         'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
+                     #    'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
                     #     'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                     #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                     #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
-DEFAULT_CONTAINER_NUM = 4
+DEFAULT_CONTAINER_NUM = 32
 # cache setting
 CACHE_ENABLED = True
 CLEAR_MEM = True
@@ -73,6 +73,7 @@ CLEAR_MEM = True
 
 # used in scalabiliy test.
 SCALABILITY_TEST = False
+TRACE_TEST = True
 FAKE_SINK_URL =  f'http://{STORAGE_NODE_IP}:6000/fake_repair_pessi'
 FAKE_NOTIFY_URL = f'http://{STORAGE_NODE_IP}:8000/fake_notify'
 FAKE_REQUEST_URL = f'http://{STORAGE_NODE_IP}:8000/fake_request'

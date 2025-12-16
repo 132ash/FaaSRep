@@ -15,7 +15,8 @@ CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
 # apt-get install -y docker-ce docker-ce-cli containerd.io
 # apt-get install wondershaper
 
-
+docker stop scylla 2>/dev/null || true
+docker rm scylla 2>/dev/null || true
 # Stop and remove containers for amazon/dynamodb-local:latest and couchdb
 docker stop $(docker ps -q --filter ancestor=amazon/dynamodb-local:latest)
 docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
@@ -25,10 +26,19 @@ docker rm $(docker ps -aq --filter ancestor=amazon/dynamodb-local:latest)
 # docker rm redis
 # # install and initialize DynamoDB
 # # docker pull amazon/dynamodb-local:latest
-# # aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
-docker run -d -p 4567:8000 amazon/dynamodb-local:latest
+aws configure set aws_access_key_id FAASNAPDYNAMODB && aws configure set aws_secret_access_key FAASNAPDYNAMODBKEY && aws configure set default.region us-west-2
+echo "Starting ScyllaDB..."
+docker run --name scylla -d -p 4567:8000 scylladb/scylla \
+    --alternator-port 8000 \
+    --alternator-write-isolation always \
+    --smp 20 --memory 20G
 # Default region name: us-west-2
-
+echo "Waiting for ScyllaDB to initialize (this may take a few seconds)..."
+until python -c "import urllib.request; urllib.request.urlopen('http://localhost:4567')" > /dev/null 2>&1; do
+    sleep 2
+    echo -n "."
+done
+echo -e "\nScyllaDB started successfully."
 
 # ... (前面的内容保持不变) ...
 

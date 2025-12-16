@@ -8,7 +8,7 @@ import sys
 import time
 import os
 import pandas as pd
-import tqdm
+from tqdm import tqdm
 import requests
 
 from pathlib import Path
@@ -26,6 +26,7 @@ sys.path.append(str(ROOT_DIR))
 
 import config.config as config
 from experiment.common import generate_param
+from gevent.pool import Pool
 
 try:
     with open(script_dir / 'trace_tidy.json', 'r') as f:
@@ -39,6 +40,7 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 # --- 全局测试参数 ---
 workflow = 'travel_reservation'
+mode='PESSIMISTIC'
 ids = {}
 latencies = []
 firing_timestamps = []
@@ -48,6 +50,9 @@ def post_request(workflow, request_id, parameters_input):
         st = time.time()
         rep = run_workflow(workflow, parameters_input)
         ed = time.time()
+        if rep.get('failed', False):
+            print(f"Request {request_id} failed for workflow {workflow}.")
+            return
         ids[request_id] = {'time': ed - st, 'st': st, 'ed': ed, 'e2e_latency': rep['e2e_latency'], 'rounds': rep['rounds']}
         latencies.append(rep['e2e_latency'])
         firing_timestamps.append(st)
@@ -61,8 +66,14 @@ def run_workflow(workflow_name, parameters):
     transaction_id = parameters.pop('transaction_id', None)
     if transaction_id:
         inputs['transaction_id'] = transaction_id
-    rep = requests.post(url, json = inputs)
-    return rep.json()
+    try:
+        # 设置 60 秒超时，防止请求无限期挂起
+        rep = requests.post(url, json = inputs, timeout=60)
+        rep.raise_for_status() # 检查 HTTP 错误
+        return rep.json()
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+        return {'e2e_latency': 0, 'rounds': 0, 'failed': True}
 
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
@@ -84,10 +95,16 @@ def save_checkpoint(filepath, workflow_name, trace_id, start_idx, exp_duration):
         'firing_timestamps': firing_timestamps,
         'ids': ids
     }
-    # 使用临时文件写入再重命名，保证原子性
-    temp_path = filepath + '.tmp'
-    with open(temp_path, 'w') as f:
+    # 1. 保存带时间戳的备份文件 (保留历史)
+    timestamp = int(time.time())
+    backup_path = f"{filepath}.{timestamp}.tmp"
+    with open(backup_path, 'w') as f:
         json.dump(save_logs, f)
+        
+    # 2. 更新主文件 (原子操作)
+    import shutil
+    temp_path = filepath + '.tmp'
+    shutil.copy(backup_path, temp_path)
     os.rename(temp_path, filepath)
 
 def checkpoint_loop(filepath, function_name, trace_id, start_idx, exp_duration):
@@ -98,9 +115,10 @@ def checkpoint_loop(filepath, function_name, trace_id, start_idx, exp_duration):
 
 
 def run():
-    # Trace #2 的配置
-    trace_id = 2
-    start_idx = 502
+    # Trace #1 的配置
+    trace_id = 1
+    start_idx = 105674
+    # end_idx = 154111
     exp_duration = 3600
    
     
@@ -124,15 +142,14 @@ def run():
     print(f'total request in trace: {len(incoming_timestamps)}')
 
     print(f"Generating parameters for {len(incoming_timestamps)} requests...")
-    all_parameters = generate_param.generate_workflow_inputs_for_clients(workflow, 1, len(incoming_timestamps))[1]
+    all_parameters = generate_param.generate_workflow_inputs_for_clients(workflow, 1, len(incoming_timestamps))[0]
 
 
     # 准备结果文件路径
-    nowtime = str(datetime.datetime.now()).replace(':', '_').replace(' ', '_')
     if not os.path.exists('result'):
         os.mkdir('result')
     
-    filename = f"{nowtime}_Trace_{workflow}_{trace_id}_{start_idx}.json"
+    filename = f"{mode}_Trace_{workflow}_{trace_id}_{start_idx}.json"
     filepath = os.path.join('result', filename)
 
     # 启动 Checkpoint 协程
@@ -140,6 +157,9 @@ def run():
     start_local_time = time.time()
     request_idx = 0
     
+    # 限制最大并发数为 10000，防止内存溢出
+    pool = Pool(10000)
+
     # 主请求循环
     for i, time_stamp in enumerate(tqdm(incoming_timestamps)):
         delay = max(0, time_stamp - (start_timestamp + time.time() - start_local_time))
@@ -149,10 +169,14 @@ def run():
         # 获取预生成的参数
         params = all_parameters[i]
         
-        # 修正参数传递顺序：workflow_name, request_id, parameters
-        gevent.spawn(post_request, workflow, req_id, params)
+        # 使用 pool.spawn 替代 gevent.spawn
+        # 如果并发数达到 1000，这里会阻塞，直到有请求完成
+        pool.spawn(post_request, workflow, req_id, params)
         request_idx += 1
 
+    # 等待所有剩余请求完成
+    pool.join()
+    
     # 等待实验结束
     gevent.sleep(max(0, last_timestamp - (start_timestamp + time.time() - start_local_time)))
     gevent.sleep(15)

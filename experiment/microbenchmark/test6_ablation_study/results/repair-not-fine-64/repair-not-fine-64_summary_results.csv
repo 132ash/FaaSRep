@@ -1,0 +1,4 @@
+repair-not-fine-64,workflow,client_count,ZIPF,median_latency,p99_latency,avg_throughput
+repair-not-fine-64,c4,64,0.75,0.6950,0.9095,91.6110
+repair-not-fine-64,c4,64,0.9,0.7142,0.9747,88.9290
+repair-not-fine-64,c4,64,1.25,0.8117,1.1367,78.7351
