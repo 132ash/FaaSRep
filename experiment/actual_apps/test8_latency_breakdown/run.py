@@ -39,8 +39,8 @@ DATE_FORMAT = config.DATE_FORMAT
 CLIENT_CNT = 32
 ROUND = 100
 parameters_inputs = {}
-# all_workflows = ['banking_system']
 all_workflows = ['banking_system']
+#all_workflows = ['travel_reservation']
 result_dict = {}
 
 
@@ -81,6 +81,7 @@ def analyze_workflow(workflow, parameters_input):
         "transaction_id": rep.get('transaction_id', ''),
         "e2e_latency": rep.get('e2e_latency', 0),
         "workflow_exec_latency": rep.get('workflow_exec_latency', 0),
+        'setup_and_clean_latency': rep.get('setup_and_clean_latency', 0),
         "commit_latency": rep.get('commit_latency', 0),
         "rounds": rep.get('rounds', 1), # 关键修改：提取 rounds 信息
         "status": rep.get('status', 'aborted')
@@ -156,12 +157,13 @@ def analyze_all(system_mode="beldi"):
         numeric_columns = [
             'e2e_latency', 'workflow_exec_latency', 'commit_latency', 'rounds',
             'exec_latency', 'io_latency', 'lock_latency', 
-            'function_exec_latency', 'scheduling_latency'
+            'function_exec_latency', 'scheduling_latency', 'setup_and_clean_latency'
         ]
         avg_latency = df[numeric_columns].mean()
         summary = {
             "mode": f"{system_mode}",
             "e2e_latency": avg_latency.get("e2e_latency"),
+            'setup_and_clean_latency': avg_latency.get("setup_and_clean_latency"),
             'workflow_exec_latency': avg_latency.get("workflow_exec_latency"),
             "scheduling_latency": avg_latency.get("scheduling_latency"),
             'func_e2e_latency': avg_latency.get("exec_latency"),

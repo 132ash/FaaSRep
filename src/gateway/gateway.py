@@ -121,7 +121,9 @@ def run_workflow(repo, create_timestamp, workflow_name, workflow_metadata, trans
 def run():
     data = request.get_json(force=True, silent=True)
     repo = Repository()
+    setup_and_clean_latency = 0
     request_start = time.time()
+    setup_start = time.time()
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = str(uuid.uuid4())
@@ -145,6 +147,7 @@ def run():
     )
     workflow_exec_latency=0
     success_exec_latency=0
+    setup_and_clean_latency += time.time() - setup_start
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id) or aborted:
         running_start = time.time()
@@ -152,12 +155,14 @@ def run():
         aborted, abort_type, finish_time = txTable.waitTX(transaction_id)
         workflow_exec_latency += (finish_time - running_start)
         if aborted:
+            clean_start = time.time()
             #log_message(f"transaction {transaction_id} aborted, term: {term}, retry: {retry}, abort_type: {abort_type}")
             repo.reset_and_release_locks_for_retry(transaction_id)
             if abort_type == 'PASSIVE':
                 retry = True
                 term += 1
                 txTable.resetTX(transaction_id, term)
+                setup_and_clean_latency += time.time() - clean_start
                 gevent.sleep(0.2)  # brief wait before retry
             else:
                 break
@@ -172,7 +177,7 @@ def run():
         repo.release_all_locks(transaction_id)
         success_term, commit_latency = txTable.finishTX(transaction_id)
         e2e_latency = request_end - request_start
-        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term+1, "res": res, 'success_exec_latency': success_exec_latency })
+        message = json.dumps({'status': 'ok', 'e2e_latency': e2e_latency,'setup_and_clean_latency': setup_and_clean_latency, 'workflow_exec_latency': workflow_exec_latency, 'commit_latency':commit_latency, 'transaction_id': transaction_id, 'rounds':term+1, "res": res, 'success_exec_latency': success_exec_latency })
         # clear memory and other stuff
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow) for ip in workflow_metadata['all_addrs']]
