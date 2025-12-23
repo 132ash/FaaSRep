@@ -29,9 +29,9 @@ WORKFLOW_YAML_ADDR = {
                     # 'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                     #  'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
                     # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                      #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                     # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    #  'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                     'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
 DEFAULT_CONTAINER_NUM = 32
@@ -50,7 +50,7 @@ CAR_NUM = '300'
 DATE_FORMAT = "%Y-%m-%d"			
 			
 # banking system			
-BANKING_ACCOUNTS = 100		
+BANKING_ACCOUNTS = 50	
 BANKING_ORIGINAL_BALANCE = "10000"			
 LOGIN_FAIL_PROB = 0			
 			

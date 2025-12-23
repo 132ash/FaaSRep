@@ -6,7 +6,7 @@ from pathlib import Path
 def merge_results(result_dir, output_file):
     print(f"Merging results from {result_dir}...")
     
-    result_files = sorted([f for f in os.listdir(result_dir) if f.startswith('segment_') and f.endswith('.json')])
+    result_files = sorted([f for f in os.listdir(result_dir) if f.startswith('result_segment_') and f.endswith('.json')])
     
     merged_ids = {}
     
