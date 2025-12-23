@@ -7,8 +7,8 @@ def main():
     flight_cap = store.get(flight_id)
     if type(flight_cap) is not int:
         flight_cap = int(flight_cap)
-    if flight_cap == 0:
-        store.abort_tx(f"Flight {flight_id} is full.")
+    # if flight_cap == 0:
+    #     store.abort_tx(f"Flight {flight_id} is full.")
     store.put(flight_id, str(flight_cap - 1))
     flight_reservation_id = f"{transaction_id}_{flight_id}"
     store.put(flight_reservation_id, 'Pending')
