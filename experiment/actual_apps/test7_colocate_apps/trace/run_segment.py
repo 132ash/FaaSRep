@@ -73,7 +73,7 @@ def run_workflow(workflow_name, parameters):
     if transaction_id:
         inputs['transaction_id'] = transaction_id
     try:
-        rep = requests.post(url, json = inputs, timeout=60)
+        rep = requests.post(url, json = inputs)
         rep.raise_for_status()
         return rep.json()
     except requests.RequestException as e:

@@ -18,6 +18,7 @@ ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
 
 from experiment.common import generate_param
+workflow = 'travel_reservation'
 
 def split_trace():
     # Configuration
@@ -25,7 +26,6 @@ def split_trace():
     trace_id = 1
     start_idx = 105674
     exp_duration = 3600 # 1 hour
-    workflow = 'travel_reservation'
     
     segment_duration = 5 * 60 # 5 minutes
     overlap_duration = 1 * 60 # 1 minute

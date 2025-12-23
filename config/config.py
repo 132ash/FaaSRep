@@ -50,7 +50,7 @@ CAR_NUM = '300'
 DATE_FORMAT = "%Y-%m-%d"			
 			
 # banking system			
-BANKING_ACCOUNTS = 100		
+BANKING_ACCOUNTS = 50	
 BANKING_ORIGINAL_BALANCE = "10000"			
 LOGIN_FAIL_PROB = 0			
 			
