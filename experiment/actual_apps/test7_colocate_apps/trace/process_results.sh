@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="social_network"
-SYSTEM="pessimistic"
+WORKFLOW="banking_system"
+SYSTEM="optimistic"
 # optimistic
 
 # Set paths

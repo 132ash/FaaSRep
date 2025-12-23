@@ -38,8 +38,8 @@ WORKFLOW_YAML_ADDR = {
                      #    'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
                     #     'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     # 'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                    # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                     'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 DEFAULT_CONTAINER_NUM = 32
 # cache setting
@@ -58,7 +58,7 @@ BATCH_SIZE = 4
 
 # mode setting
 FAST_PATH = True
-OPTIMISTIC_REPAIR = False
+OPTIMISTIC_REPAIR = True
 
 
 # repair setting
