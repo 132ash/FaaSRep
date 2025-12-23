@@ -12,4 +12,4 @@
 /.venv
 *.json
 *.log
-!*.merged.json
+!*merged.json
