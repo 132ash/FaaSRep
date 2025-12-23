@@ -18,7 +18,7 @@ ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
 
 from experiment.common import generate_param
-workflow = 'banking_system'
+workflow = 'social_network'
 
 def split_trace():
     # Configuration

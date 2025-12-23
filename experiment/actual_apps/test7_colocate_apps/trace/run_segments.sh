@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
+WORKFLOW="social_network"
 SYSTEM="pessimistic"
 
 # Set paths
@@ -16,7 +16,7 @@ echo "Segments directory: $SEGMENTS_DIR"
 echo "Results directory: $RESULT_DIR"
 
 # Specify segment indices
-TARGET_SEGMENT_INDICES=(0 1 2 3 4 5 6)
+TARGET_SEGMENT_INDICES=(6 7 8 9 10 11)
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"
