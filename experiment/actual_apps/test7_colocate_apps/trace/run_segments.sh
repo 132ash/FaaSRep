@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="social_network"
+WORKFLOW="banking_system"
 
 # Set paths
 TRACE_DIR="/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace"
-SEGMENTS_DIR="$TRACE_DIR/segments"
+SEGMENTS_DIR="$TRACE_DIR/segments_2019"
 RESULT_DIR="$TRACE_DIR/results_segments/$WORKFLOW"
 
 mkdir -p "$RESULT_DIR"
@@ -15,7 +15,7 @@ echo "Segments directory: $SEGMENTS_DIR"
 echo "Results directory: $RESULT_DIR"
 
 # Specify segment indices
-TARGET_SEGMENT_INDICES=(9 10 11)
+TARGET_SEGMENT_INDICES=(0)
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"
