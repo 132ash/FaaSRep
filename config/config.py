@@ -34,7 +34,7 @@ WORKFLOW_YAML_ADDR = {
                     # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
-DEFAULT_CONTAINER_NUM = 32
+DEFAULT_CONTAINER_NUM = 64
 CLEAR_MEM = True
 
 # microbenchmark configuration
