@@ -5,8 +5,8 @@ from pathlib import Path
 import math
 import pandas as pd
 
-trace_name = 'varying'
-workflow = 'travel_reservation'
+trace_name = 'highload'
+workflow = 'banking_system'
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()

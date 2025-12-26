@@ -58,7 +58,7 @@ BATCH_SIZE = 4
 
 # mode setting
 FAST_PATH = True
-OPTIMISTIC_REPAIR = False
+OPTIMISTIC_REPAIR = True
 
 
 # repair setting

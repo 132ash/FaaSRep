@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="travel_reservation"
-SYSTEM="pessimistic"
-TRACE='varying'
+WORKFLOW="banking_system"
+SYSTEM="optimistic"
+TRACE='highload'
 # optimistic
 
 # Set paths

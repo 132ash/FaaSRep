@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="travel_reservation"
-SYSTEM="pessimistic"
-TRACE='varying'
+WORKFLOW="banking_system"
+SYSTEM="optimistic"
+TRACE='highload'
 
 # Set paths
 TRACE_DIR="/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace"
