@@ -5,6 +5,9 @@ from pathlib import Path
 import math
 import pandas as pd
 
+trace_name = 'varying'
+workflow = 'travel_reservation'
+
 # Setup paths
 script_dir = Path(__file__).parent.resolve()
 def get_root_dir(script_dir: Path) -> Path:
@@ -16,20 +19,22 @@ def get_root_dir(script_dir: Path) -> Path:
     return project_root
 
 ROOT_DIR = get_root_dir(script_dir)
+
+
 sys.path.append(str(ROOT_DIR))
 
 from experiment.common import generate_param
-workflow = 'travel_reservation'
+
 
 def split_trace_2019():
     # Configuration
-    csv_file = script_dir / '2019rpm_weak.csv'
+    csv_file = script_dir / '1hourload' /  (trace_name + '.csv')
     exp_duration = 3600 # 1 hour
     
     segment_duration = 5 * 60 # 5 minutes
     overlap_duration = 1 * 60 # 1 minute
     
-    output_dir = script_dir / 'segments_2019'
+    output_dir = script_dir / trace_name
     if not output_dir.exists():
         os.makedirs(output_dir)
         

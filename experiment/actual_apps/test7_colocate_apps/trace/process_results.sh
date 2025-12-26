@@ -1,15 +1,16 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
-SYSTEM="optimistic"
+WORKFLOW="travel_reservation"
+SYSTEM="pessimistic"
+TRACE='varying'
 # optimistic
 
 # Set paths
 TRACE_DIR="/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace"
-RESULT_SEGMENTS_DIR="$TRACE_DIR/results_segments/$SYSTEM/$WORKFLOW"
-MERGED_RESULT="$TRACE_DIR/result/$SYSTEM/${WORKFLOW}_merged.json"
-CSV_OUTPUT="$TRACE_DIR/result/$SYSTEM/${WORKFLOW}_output.csv"
+RESULT_SEGMENTS_DIR="$TRACE_DIR/results_segments/$TRACE/$SYSTEM/$WORKFLOW"
+MERGED_RESULT="$TRACE_DIR/result/$TRACE/$SYSTEM/${WORKFLOW}_merged.json"
+CSV_OUTPUT="$TRACE_DIR/result/$TRACE/$SYSTEM/${WORKFLOW}_output.csv"
 
 mkdir -p "$(dirname "$MERGED_RESULT")"
 

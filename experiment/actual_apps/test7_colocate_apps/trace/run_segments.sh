@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
-SYSTEM="optimistic"
+WORKFLOW="travel_reservation"
+SYSTEM="pessimistic"
+TRACE='varying'
 
 # Set paths
 TRACE_DIR="/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace"
-SEGMENTS_DIR="$TRACE_DIR/segments"
-RESULT_DIR="$TRACE_DIR/results_segments/$SYSTEM/$WORKFLOW"
+SEGMENTS_DIR="$TRACE_DIR/$TRACE"
+RESULT_DIR="$TRACE_DIR/results_segments/$TRACE/$SYSTEM/$WORKFLOW"
 
 mkdir -p "$RESULT_DIR"
 
