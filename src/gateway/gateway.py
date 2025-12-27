@@ -136,7 +136,6 @@ def run():
             reset_on_worker(workflow, transaction_id, node_list, term)
             if abort_type == 'PASSIVE':
                 retry = True
-                gevent.sleep(1) 
             else:
                 break
     request_end = time.time()
