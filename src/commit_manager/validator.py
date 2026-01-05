@@ -194,12 +194,12 @@ class ValidatorProcess(Process):
                 txid_lists.append(self.successed_tx_list_per_batch[batch_id])
                 timestamps.append(self.time_tuple_per_batch[batch_id])
                 pes_transactions.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
-            if FAST_PATH_ENABLED:
-                jobs = [
-                    gevent.spawn(requests.post, url=f"http://{worker_ip}/release", json={"tx_lists":txid_lists, 'workflow_name':self.workflow_name})
-                    for worker_ip in self.worker_ip_set
-                    ]
-                gevent.joinall(jobs)
+            # if FAST_PATH_ENABLED:
+            #     jobs = [
+            #         gevent.spawn(requests.post, url=f"http://{worker_ip}/release", json={"tx_lists":txid_lists, 'workflow_name':self.workflow_name})
+            #         for worker_ip in self.worker_ip_set
+            #         ]
+            #     gevent.joinall(jobs)
             #log_message(self.logger, f"[CASCADED COMMIT] : {data} WITH {txid_lists}")
             self.notify_gateway(txid_lists, True, timestamps, aborted_txs, pes_transactions)
             self.clean_batch_info(data)

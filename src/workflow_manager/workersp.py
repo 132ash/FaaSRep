@@ -376,7 +376,7 @@ class WorkerSPManager:
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):
-            # #log_message(f"Function {name} for transaction {state.transaction_id}, repair: {state.repair}, error:{res['error']}, error_traceback:{res.get('traceback', '')}, port:{res['port']}")
+            log_message(f"Function {name} for transaction {state.transaction_id}, repair: {state.repair}, error:{res['error']}, error_traceback:{res.get('traceback', '')}, port:{res['port']}")
             return False
         state.lock.acquire()
         # in first run, modify read/write set, func port, and update RYW relation.

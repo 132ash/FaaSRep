@@ -188,12 +188,12 @@ def clear():
     transaction_id = data['transaction_id']
     abort_clear = data.get('abort', False)
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
-    if abort_clear:
-        if FAST_PATH:
-            ##log_message(f"transaction {transaction_id} abort, return its containers to pool.")
-            dispatcher.reserve_pools[workflow_name].release([transaction_id])
-    else:
-        dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
+    # if abort_clear:
+    #     if FAST_PATH:
+    #         ##log_message(f"transaction {transaction_id} abort, return its containers to pool.")
+    #         dispatcher.reserve_pools[workflow_name].release([transaction_id])
+    # else:
+    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
 
 @app.route('/prepare', methods = ['POST'])
@@ -214,11 +214,11 @@ def commit():
     data = request.get_json(force=True, silent=True)
     commit_list = data['commit_list']
     aborted_txs = commit_list['aborted_txs']
-    if FAST_PATH:
-        workflow_name = data['workflow_name']
-        fin_tx_list = commit_list['txs']
-        #log_message(f"transactions {fin_tx_list} committing, release containers.")
-        dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
+    # if FAST_PATH:
+    #     workflow_name = data['workflow_name']
+    #     fin_tx_list = commit_list['txs']
+    #     #log_message(f"transactions {fin_tx_list} committing, release containers.")
+    #     dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
     #repo.clear_aborted_txs(aborted_txs)
     #log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")

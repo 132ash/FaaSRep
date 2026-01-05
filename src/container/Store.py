@@ -25,9 +25,8 @@ class Store:
         self.lock_latency = 0
 
 
-        if os.path.exists('work'):
-            os.system('rm -rf work')
-        os.mkdir('work')
+        if not os.path.exists('work'):
+            os.mkdir('work')
 
     def init(self, function_name, shadow_table:RedisShadowTable, cache:RedisCache, db_server, fast_path_enabled, function_pos,validator_addr):
         self.function_name = function_name
@@ -116,14 +115,15 @@ class Store:
         #print(f"function {self.function_name} in transaction {self.transaction_id} get {key}", flush=True)
         if not self.is_repair:
             upstream_func = self.write_set.get(key, "")
+           # print(f"[FIRST RUN] function {self.function_name} in transaction {self.transaction_id} get {key}, write_set:{self.write_set}, upstream_func:{upstream_func}", flush=True)
             if upstream_func:
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                #print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
+                print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
                 self.RYW_subjection_collect[key] = upstream_func
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
-                #print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}")
+                print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}", flush=True)
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]
         # SECOND run or not RYW, read from cache or shadow table.

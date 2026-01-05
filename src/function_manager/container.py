@@ -4,6 +4,7 @@ import time
 import sys
 import gevent
 import redis
+import logging
 import os
 from docker.types import Mount
 from gevent.lock import BoundedSemaphore
@@ -51,7 +52,8 @@ class ContainerPool:
     def check_pool_full_and_occupy(self):
         self.lock.acquire()
         if self.num_exec + len(self.pool) > self.max_containers:
-            # logging.info('hit container limit, function: %s', self.function_name)
+            logging.warning('hit container limit, function: %s, exec: %d, pool: %d, max: %d', 
+                         self.function_name, self.num_exec, len(self.pool), self.max_containers)
             self.lock.release()
             return False
         self.num_exec += 1

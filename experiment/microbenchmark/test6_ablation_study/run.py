@@ -46,8 +46,7 @@ def setup_logging():
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout)
-        ],
-        force=True
+        ]
     )
     # 确保立即刷新输出
     logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()

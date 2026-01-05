@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
-SYSTEM="optimistic"
+WORKFLOW="travel_reservation"
+SYSTEM="pessimistic"
 TRACE='highload'
 # optimistic
 

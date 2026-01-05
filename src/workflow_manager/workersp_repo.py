@@ -195,12 +195,14 @@ class Repository:
             version = key_info[1]
             key = self.param_decode(redis_key)
             value = self.shadowtable_redis_all_addr[self.ip].get(redis_key)
+            if not value:
+                continue
             self.data_db.store_data_to_db(key, version, value)
             # 更新缓存
             try:
                 # 直接使用 SET 命令而不是 pipeline，以便单独捕获每个键的OOM错误
                 data_to_cache = json.dumps({"value": value, "version": version})
-                self.cache_redis.set(redis_key, data_to_cache)
+                self.cache_redis.set(key, data_to_cache)
             except redis.exceptions.OutOfMemoryError:
                 # 当缓存内存不足时，记录错误并跳过这次写入
                 # print(f"OOMError: Skipping cache write for key {redis_key} due to maxmemory limit.")

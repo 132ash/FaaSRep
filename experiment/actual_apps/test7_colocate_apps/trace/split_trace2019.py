@@ -6,7 +6,7 @@ import math
 import pandas as pd
 
 trace_name = 'highload'
-workflow = 'banking_system'
+workflow = 'travel_reservation'
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()

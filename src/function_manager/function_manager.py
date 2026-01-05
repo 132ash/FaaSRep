@@ -20,8 +20,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
     handlers=[
         logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ],
-    force=True 
+    ]
 )
 
 repo = Repository()

@@ -45,8 +45,7 @@ def setup_logging():
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
             logging.StreamHandler(sys.stderr) # 关键修改：输出到 stderr
-        ],
-        force=True
+        ]
     )
 
 def worker_task(client_id, workflow, parameters_all_round, result_queue):

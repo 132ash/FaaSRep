@@ -75,11 +75,12 @@ class Function:
         # create a new container
         while container is None:
         # if container is None:
-            # logging.warning(f"Container pool is empty, creating a new container for function: {self.info.function_name}")
+            logging.warning(f"Container pool is empty, creating a new container for function: {self.info.function_name}, processing: {self.num_processing}, rq len: {len(self.rq)}")
             container = self.create_container()
            
         # the number of exec container hits limit
         if container is None:
+            logging.warning(f"Function {self.info.function_name} reaches max container limit, cannot create new container.")
             self.num_processing -= 1
             return
 
@@ -92,11 +93,11 @@ class Function:
         
         # 3. in fastpath, reserve the container into reserve pool
         # else, return the container to pool
-        if self.FAST_PATH:
-            # if the container is not used in fast path, reserve it into reserve pool
-            self.reserve_pool.reserve(req.transaction_id, container)
-        else:
-            self.container_pool.put(container)
+        # if self.FAST_PATH:
+        #     # if the container is not used in fast path, reserve it into reserve pool
+        #     self.reserve_pool.reserve(req.transaction_id, container)
+        # else:
+        self.container_pool.put(container)
 
 
     # create a new container
@@ -104,6 +105,7 @@ class Function:
         # do not create new exec container
         # when the number of execs hits the limit
         if not self.container_pool.check_pool_full_and_occupy():
+            logging.warning(f"Function {self.info.function_name} cannot create new container as it hits max limit.")
             return None
 
         max_retries = 10  # 设置最大重试次数，防止无限循环

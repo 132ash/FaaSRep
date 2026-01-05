@@ -8,3 +8,4 @@ pandas
 PyYAML
 boto3
 awscli
+tqdm
