@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="travel_reservation"
-SYSTEM="pessimistic"
-TRACE='highload'
+WORKFLOW="social_network"
+SYSTEM="optimistic"
+TRACE='lowload'
 # optimistic
 
 # Set paths

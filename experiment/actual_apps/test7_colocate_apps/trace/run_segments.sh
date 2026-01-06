@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="travel_reservation"
-SYSTEM="pessimistic"
-TRACE='highload'
+WORKFLOW="social_network"
+SYSTEM="optimistic"
+TRACE='lowload'
 
 # Set paths
 TRACE_DIR="/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace"
@@ -17,7 +17,7 @@ echo "Segments directory: $SEGMENTS_DIR"
 echo "Results directory: $RESULT_DIR"
 
 # Specify segment indices
-TARGET_SEGMENT_INDICES=(0)
+TARGET_SEGMENT_INDICES=(3)
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"

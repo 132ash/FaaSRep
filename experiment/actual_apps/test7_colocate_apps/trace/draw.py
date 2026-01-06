@@ -8,11 +8,10 @@ import math
 # --- 配置 ---
 # 结果文件的相对路径
 RESULT_FILES = {
-    'Optimistic': 'result/OPTIMISTIC_Trace_travel_reservation_1_105674.json',
-    'Pessimistic': 'result/PESSIMISTIC_Trace_travel_reservation_1_105674.json'
+    'Pessimistic Mode': 'PESSIMISTIC_Trace_travel_reservation_1_105674.json'
 }
 # 输出图片的名称
-OUTPUT_IMAGE = 'combined_throughput_curve.png'
+OUTPUT_IMAGE = 'pessimistic_trace_throughput.pdf'
 TRACE_FILE = 'trace_tidy.json'
 
 def load_data(filepath):
@@ -114,20 +113,27 @@ def get_rps_series(timestamps, duration_limit=3600):
     return rps_series
 
 def plot_combined_throughput(datasets, trace_data=None):
-    plt.figure(figsize=(12, 6))
+    # 创建两个子图，共享 x 轴
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 5), sharex=True)
+    # 调整子图间距，使其紧挨
+    plt.subplots_adjust(hspace=0.05)
     
-    colors = {'Optimistic': 'blue', 'Pessimistic': 'red'}
+    colors = {'Optimistic': 'blue', 'Pessimistic Mode': '#8ECEC8'}
     
-    # 1. 绘制 Trace RPS (如果存在)
+    # 1. 上半部分：绘制 Trace RPS
     if trace_data:
         trace_series = get_rps_series(trace_data)
-        plt.plot(trace_series.index, trace_series.values, 
-                 color='green', linestyle='--', linewidth=1, alpha=0.7, label='Trace Input (RPS)')
+        ax1.plot(trace_series.index, trace_series.values, 
+                 color="#DAAC88", linestyle='-', linewidth=1, alpha=0.7, label='Trace Input')
         print(f"[Trace] Total Reqs: {len(trace_data)}, Duration: {trace_series.index.max()}s")
+        
+        ax1.set_ylabel('Throughput (rps)', fontsize=15)
+        ax1.legend(loc='upper right', fontsize=18)
+        ax1.tick_params(axis='x', which='major', labelsize=18)
+        ax1.tick_params(axis='y', which='major', labelsize=16)
+        ax1.grid(True, alpha=0.3)
 
-    # 2. 移除全局对齐逻辑，改为各自独立对齐到 0
-    # 这样即使实验是在不同时间运行的，也能在同一张图上对比
-    
+    # 2. 下半部分：绘制系统吞吐量
     for label, data in datasets.items():
         if data is None:
             continue
@@ -140,15 +146,16 @@ def plot_combined_throughput(datasets, trace_data=None):
             continue
             
         # 绘制原始吞吐量
-        plt.plot(series.index, series.values, linewidth=1, label=label, color=colors.get(label, 'gray'))
+        ax2.plot(series.index, series.values, linewidth=1, label=label, color=colors.get(label, 'gray'))
         
         print(f"[{label}] Total Reqs: {total_reqs}, Duration: {duration:.2f}s, Avg QPS: {total_reqs/duration:.2f}")
 
-    plt.title('System Throughput Comparison: Optimistic vs Pessimistic')
-    plt.xlabel('Time (seconds)')
-    plt.ylabel('Throughput (Requests/Second)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax2.set_ylabel('Throughput (rps)', fontsize=15)
+    ax2.set_xlabel('Time (seconds)', fontsize=18)
+    ax2.legend(loc='upper right', fontsize=18)
+    ax2.tick_params(axis='x', which='major', labelsize=18)
+    ax2.tick_params(axis='y', which='major', labelsize=16)
+    ax2.grid(True, alpha=0.3)
     
     # 设置 X 轴范围为 0 到 3600
     plt.xlim(0, 3600)
@@ -156,7 +163,7 @@ def plot_combined_throughput(datasets, trace_data=None):
     # 保存图片
     script_dir = Path(__file__).parent
     output_path = script_dir / OUTPUT_IMAGE
-    plt.savefig(output_path)
+    plt.savefig(output_path, bbox_inches='tight')
     print(f"Combined throughput plot saved to {output_path}")
 
 def main():
