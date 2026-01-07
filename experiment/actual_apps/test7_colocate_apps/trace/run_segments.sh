@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
+WORKFLOW="travel_reservation"
 SYSTEM="pessimistic"
 TRACE='varying'
 
@@ -17,7 +17,7 @@ echo "Segments directory: $SEGMENTS_DIR"
 echo "Results directory: $RESULT_DIR"
 
 # Specify segment indices
-TARGET_SEGMENT_INDICES=(5)
+TARGET_SEGMENT_INDICES=(3 4 5)
 # 2
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
