@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="social_network"
-SYSTEM="optimistic"
-TRACE='lowload'
+WORKFLOW="banking_system"
+SYSTEM="pessimistic"
+TRACE='varying'
 # optimistic
 
 # Set paths

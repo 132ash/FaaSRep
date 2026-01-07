@@ -1,2 +1,0 @@
-workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
-travel_reservation,48438,0.2222,0.2135,0.3450,3600.19,13.45

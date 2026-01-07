@@ -5,7 +5,7 @@ from pathlib import Path
 import math
 import pandas as pd
 
-trace_name = 'highload'
+trace_name = 'varying'
 workflow = 'banking_system'
 
 # Setup paths

@@ -1,2 +1,0 @@
-workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
-banking_system,9587,0.1906,0.1871,0.2466,300.16,31.94
