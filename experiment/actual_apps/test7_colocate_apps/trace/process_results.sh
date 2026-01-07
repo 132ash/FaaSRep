@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
+WORKFLOW="travel_reservation"
 SYSTEM="Concord"
 TRACE='highload'
 # optimistic

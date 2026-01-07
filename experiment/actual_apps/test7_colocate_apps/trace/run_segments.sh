@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="banking_system"
+WORKFLOW="travel_reservation"
 SYSTEM="Concord"
 TRACE='highload'
 
@@ -18,6 +18,7 @@ echo "Results directory: $RESULT_DIR"
 
 # Specify segment indices
 TARGET_SEGMENT_INDICES=(0)
+# 0 6 12 22 28: 1 min
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"

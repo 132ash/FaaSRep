@@ -6,7 +6,7 @@ import math
 import pandas as pd
 
 trace_name = 'highload'
-workflow = 'banking_system'
+workflow = 'travel_reservation'
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()
@@ -31,8 +31,8 @@ def split_trace_2019():
     csv_file = script_dir / '1hourload' /  (trace_name + '.csv')
     exp_duration = 3600 # 1 hour
     
-    segment_duration = 5 * 60 # 5 minutes
-    overlap_duration = 1 * 60 # 1 minute
+    segment_duration = 60 # 1 minute
+    overlap_duration = 5 # 5 seconds
     
     output_dir = script_dir / trace_name
     if not output_dir.exists():
