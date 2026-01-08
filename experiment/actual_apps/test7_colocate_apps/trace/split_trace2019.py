@@ -6,7 +6,7 @@ import math
 import pandas as pd
 
 trace_name = 'varying'
-workflow = 'travel_reservation'
+workflow = 'social_network'
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()
@@ -32,7 +32,7 @@ def split_trace_2019():
     exp_duration = 3600 # 1 hour
     
     segment_duration = 5 * 60 # 5 minutes
-    overlap_duration = 1 * 60 # 1 minute
+    overlap_duration = 10 # 10 seconds
     
     output_dir = script_dir / trace_name
     if not output_dir.exists():

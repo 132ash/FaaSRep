@@ -49,8 +49,8 @@ def post_request(workflow, global_req_id, parameters_input):
         # Use global_req_id as key
         req_key = str(global_req_id)
         
-        if rep.get('failed', False):
-            print(f"Request {req_key} failed for workflow {workflow}.")
+        if rep.get('failed', False) or 'e2e_latency' not in rep:
+            print(f"Request {req_key} aborted for workflow {workflow}.")
             return
             
         ids[req_key] = {
@@ -64,7 +64,7 @@ def post_request(workflow, global_req_id, parameters_input):
         latencies.append(rep['e2e_latency'])
         firing_timestamps.append(st)
     except Exception as e:
-        print(f"Error in post_request for workflow {workflow}: {e}")
+        print(f"Exception in request {global_req_id}: {e}")
 
 def run_workflow(workflow_name, parameters):
     url = f'http://{config.GATEWAY_ADDR}/run'

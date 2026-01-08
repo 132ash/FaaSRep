@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="travel_reservation"
-SYSTEM="pessimistic"
+WORKFLOW="social_network"
+SYSTEM="optimistic"
 TRACE='varying'
 
 # Set paths
@@ -17,8 +17,8 @@ echo "Segments directory: $SEGMENTS_DIR"
 echo "Results directory: $RESULT_DIR"
 
 # Specify segment indices
-TARGET_SEGMENT_INDICES=(3 4 5)
-# 2
+TARGET_SEGMENT_INDICES=(2)
+# 0 6 12 22 28
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"

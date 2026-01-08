@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="travel_reservation"
-SYSTEM="pessimistic"
+WORKFLOW="social_network"
+SYSTEM="optimistic"
 TRACE='varying'
 # optimistic
 

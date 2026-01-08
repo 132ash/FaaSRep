@@ -3,6 +3,7 @@ monkey.patch_all()
 import gevent
 import os
 import requests
+import random
 import logging
 from typing import Dict
 import sys
@@ -16,6 +17,8 @@ import config
 REPAIRED = config.REPAIRED
 ABORTED = config.ABORTED    
 WAITING = config.RUNNING
+
+ABORT_PROB = config.ABORT_PROB
 
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
@@ -133,6 +136,8 @@ class RepairingBatchState:
                 if rejected:
                     #log_message(f"[OPTIMISTIC REPAIR REJECTED] Opt repair of Transaction {tx_id} in batch {origin_batch_id} is rejected, state: {state}, it needs pessi repair.")
                     return False, []
+                if random.random() < ABORT_PROB:
+                    state = ABORTED
                 if state == ABORTED:
                     for next_tx_id in successors_to_be_pessimistic:
                         #log_message(f"[OPTIMISTIC REPAIR CASCADED] {tx_id} IN {origin_batch_id} aborted, Transaction {next_tx_id} should be repaired pessimistically.")

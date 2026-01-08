@@ -136,6 +136,7 @@ def run():
     #log_message(f"transaction {transaction_id} in {workflow}  finished running, checking finished or aborted...")
     if aborted:
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
+        txTable.running_txs.pop(transaction_id, None)
     else:
         res = repo.get_result(transaction_id, workflow)
         first_run_finish_time, repair_start_time, repair_finish_time, pessimistic = txTable.finishTX(transaction_id)
@@ -161,6 +162,7 @@ def notify():
     aborted_txs_from_validator = data.get('aborted_txs', [])
     pessimistic_txs = data.get('pessimistic_txs', [])
     #log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
+    #log_message(f'notify, running_txs:{list(txTable.running_txs.keys())}')
     if aborted_txs_from_validator:
         txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True, {})
     for transaction_id_list, timestamp_per_batch, pessimistic_txs_per_batch in zip(transaction_id_lists, timestamps, pessimistic_txs):
