@@ -1,8 +1,13 @@
 import requests
 import couchdb
-STORAGE_NODE_IP = '10.2.64.4'
+import sys
+from pathlib import Path
 
-COUCHDB_URL = f'http://faasnap:faasnap@{STORAGE_NODE_IP}:5984'
+ROOT_DIR = Path(__file__).resolve().parents[3]
+sys.path.append(str(ROOT_DIR))
+import config.config as config
+
+COUCHDB_URL = config.COUCHDB_URL
 
 class Repository:
     def __init__(self):

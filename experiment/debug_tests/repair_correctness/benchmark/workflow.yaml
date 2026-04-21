@@ -1,0 +1,203 @@
+functions:
+  - name: claim
+    source: claim
+    input:
+      tx_label:
+        from: GLOBAL
+        type: str
+      delta:
+        from: GLOBAL
+        type: str
+      guard_delta:
+        from: GLOBAL
+        type: str
+      guard_abort_threshold:
+        from: GLOBAL
+        type: str
+      hot_key:
+        from: GLOBAL
+        type: str
+      tail_key:
+        from: GLOBAL
+        type: str
+      guard_key:
+        from: GLOBAL
+        type: str
+      audit_key:
+        from: GLOBAL
+        type: str
+      result_key:
+        from: GLOBAL
+        type: str
+    output:
+      claim_seen:
+        type: str
+      claim_value:
+        type: str
+      claim_label:
+        type: str
+      guard_seen:
+        type: str
+      guard_value:
+        type: str
+      guard_abort_threshold:
+        type: str
+      hot_key:
+        type: str
+      tail_key:
+        type: str
+      guard_key:
+        type: str
+      audit_key:
+        type: str
+      result_key:
+        type: str
+    next:
+      type: pass
+      nodes:
+        - use_ryw
+        - guard_abort
+  - name: use_ryw
+    source: use_ryw
+    input:
+      claim_value:
+        from: claim
+        type: str
+      claim_label:
+        from: claim
+        type: str
+      hot_key:
+        from: claim
+        type: str
+      tail_key:
+        from: claim
+        type: str
+      guard_key:
+        from: claim
+        type: str
+      audit_key:
+        from: claim
+        type: str
+      result_key:
+        from: claim
+        type: str
+    output:
+      ryw_value:
+        type: str
+      ryw_label:
+        type: str
+      hot_key:
+        type: str
+      tail_key:
+        type: str
+      guard_key:
+        type: str
+      audit_key:
+        type: str
+      result_key:
+        type: str
+    next:
+      type: pass
+      nodes:
+        - aggregate
+  - name: guard_abort
+    source: guard_abort
+    input:
+      claim_label:
+        from: claim
+        type: str
+      guard_value:
+        from: claim
+        type: str
+      guard_abort_threshold:
+        from: claim
+        type: str
+      hot_key:
+        from: claim
+        type: str
+      tail_key:
+        from: claim
+        type: str
+      guard_key:
+        from: claim
+        type: str
+      audit_key:
+        from: claim
+        type: str
+      result_key:
+        from: claim
+        type: str
+    output:
+      guard_label:
+        type: str
+      guard_value:
+        type: str
+      audit_value:
+        type: str
+      hot_key:
+        type: str
+      tail_key:
+        type: str
+      guard_key:
+        type: str
+      audit_key:
+        type: str
+      result_key:
+        type: str
+    next:
+      type: pass
+      nodes:
+        - aggregate
+  - name: aggregate
+    source: aggregate
+    input:
+      ryw_value:
+        from: use_ryw
+        type: str
+      ryw_label:
+        from: use_ryw
+        type: str
+      guard_value:
+        from: guard_abort
+        type: str
+      audit_value:
+        from: guard_abort
+        type: str
+      hot_key:
+        from: use_ryw
+        type: str
+      tail_key:
+        from: use_ryw
+        type: str
+      guard_key:
+        from: use_ryw
+        type: str
+      audit_key:
+        from: use_ryw
+        type: str
+      result_key:
+        from: use_ryw
+        type: str
+    output:
+      final_value:
+        type: str
+      final_label:
+        type: str
+      final_guard_value:
+        type: str
+      final_audit_value:
+        type: str
+      final_result_value:
+        type: str
+      final_hot_key:
+        type: str
+      final_tail_key:
+        type: str
+      final_guard_key:
+        type: str
+      final_audit_key:
+        type: str
+      final_result_key:
+        type: str
+    next:
+      type: FINISH

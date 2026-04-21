@@ -10,6 +10,13 @@ from docker.types import Mount
 from gevent.lock import BoundedSemaphore
 sys.path.append('../../config')
 
+LOCAL_NO_PROXY = "localhost,127.0.0.1,::1,0.0.0.0,host.docker.internal"
+for proxy_var in ("NO_PROXY", "no_proxy"):
+    current = [item.strip() for item in os.environ.get(proxy_var, "").split(",") if item.strip()]
+    for entry in LOCAL_NO_PROXY.split(","):
+        if entry not in current:
+            current.append(entry)
+    os.environ[proxy_var] = ",".join(current)
 
 base_url = 'http://127.0.0.1:{}/{}'
 

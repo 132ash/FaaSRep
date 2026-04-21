@@ -119,11 +119,11 @@ class Store:
             if upstream_func:
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
+                #print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
                 self.RYW_subjection_collect[key] = upstream_func
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
-                print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}", flush=True)
+                #print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}", flush=True)
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]
         # SECOND run or not RYW, read from cache or shadow table.

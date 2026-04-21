@@ -23,7 +23,8 @@ from typing import Dict
 from datetime import datetime
 import docker
 from flask import Flask, request
-app = Flask(__name__)
+data_app = Flask(__name__)
+repair_app = Flask(__name__)
 docker_client = docker.from_env()
 container_names = []
 from validate_struct import TransactionSink
@@ -32,6 +33,8 @@ sys.path.append('../../config')
 import config
 
 VALIDATE_INTERVAL = config.VALIDATE_INTERVAL
+TX_SINK_REPAIR_PORT = config.TX_SINK_REPAIR_PORT
+HTTP_SERVER_BACKLOG = config.HTTP_SERVER_BACKLOG
 
 FAST_PATH = config.FAST_PATH
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
@@ -71,7 +74,7 @@ class Dispatcher:
 
 dispatcher = Dispatcher(info_addrs=config.WORKFLOW_YAML_ADDR)
 
-@app.route('/fin_repair', methods = ['POST'])
+@data_app.route('/fin_repair', methods = ['POST'])
 def fin_repair():
     data = request.get_json(force=True, silent=True)
     batch_id = data['batch_id']
@@ -83,7 +86,7 @@ def fin_repair():
     dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED, skip_repair)
     return json.dumps({'status': 'ok'})
 
-@app.route('/abort', methods = ['POST'])
+@data_app.route('/abort', methods = ['POST'])
 def abort():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
@@ -93,17 +96,20 @@ def abort():
     if data.get('repair', False):
         dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED)
     else:
-        notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
+        notify_url = "http://{}/notify".format(config.GATEWAY_NOTIFY_ADDR)
         payload = {
             'transaction_id_lists': [[transaction_id]],
             'timestamps': [[0, 0, 0]],  # first_run_finish_time, start_time, validate_time_inside_validator
             'abort': True,
             'pessimistic_txs':[{}]
         }
-        requests.post(notify_url, json=payload)
+        try:
+            requests.post(notify_url, json=payload)
+        except requests.RequestException as exc:
+            logging.error("[HTTP ERROR] abort notify gateway %s: %s", notify_url, exc)
     return json.dumps({'status': 'ok'})
 
-@app.route('/validate', methods = ['POST'])
+@data_app.route('/validate', methods = ['POST'])
 def validate():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
@@ -115,7 +121,7 @@ def validate():
     dispatcher.validate_transaction(workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection)
     return json.dumps({'status': 'ok'})
 
-@app.route('/repair_pessi', methods = ['POST'])
+@repair_app.route('/repair_pessi', methods = ['POST'])
 def repair_pessimistic():
     data = request.get_json(force=True, silent=True)
     workflow_name = data['workflow_name']
@@ -126,7 +132,7 @@ def repair_pessimistic():
     res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
     return res
 
-@app.route('/release_opt', methods = ['POST'])
+@repair_app.route('/release_opt', methods = ['POST'])
 def release_opt_table():
     data = request.get_json(force=True, silent=True)
     batch_list = data['batch_list']
@@ -134,14 +140,22 @@ def release_opt_table():
     dispatcher.sink_release_optimistic_info(workflow_name, batch_list)
     return json.dumps({'status': 'ok'})
 
-# python3 proxy.py  10.2.30.50 6000
-# python3 proxy.py  10.2.27.23 6000
-# python3 proxy.py  10.2.30.62 6000
+# python3 proxy.py  10.2.30.50 6000 6001
+# python3 proxy.py  10.2.27.23 6000 6001
+# python3 proxy.py  10.2.30.62 6000 6001
 
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
-    server.serve_forever()
+    host = sys.argv[1]
+    data_port = int(sys.argv[2])
+    repair_port = int(sys.argv[3]) if len(sys.argv) > 3 else TX_SINK_REPAIR_PORT
+    data_server = WSGIServer((host, data_port), data_app, backlog=HTTP_SERVER_BACKLOG)
+    repair_server = WSGIServer((host, repair_port), repair_app, backlog=HTTP_SERVER_BACKLOG)
+    logging.info("transaction sink data listener on %s:%s", host, data_port)
+    logging.info("transaction sink repair listener on %s:%s", host, repair_port)
+    data_server.start()
+    repair_server.start()
+    gevent.wait()
    

@@ -12,21 +12,16 @@ import re
 
 sys.path.append('../../config')
 import config
+from logging_utils import RunAwareFileHandler
 
 sys.path.append('../function_manager')
 from function_manager import FunctionManager
 
-log_file = '../../logging/workersp.log'
-
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
-
 def setup_logger():
     logger = logging.getLogger('workersp')
     logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
+    # 动态跟随当前 run_id 的文件处理器
+    file_handler = RunAwareFileHandler(config.ROOT_DIR, 'workersp.log')
     file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
@@ -57,6 +52,26 @@ REPAIRED = config.REPAIRED
 
 OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
+
+def post_json(url, data, context):
+    try:
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+        return response
+    except requests.RequestException as exc:
+        log_message(f"[HTTP ERROR] {context}: {url}: {exc}")
+        return None
+
+def join_and_report(jobs, context):
+    if not jobs:
+        return True
+    gevent.joinall(jobs)
+    ok = True
+    for job in jobs:
+        if job.exception is not None:
+            ok = False
+            log_message(f"[GEVENT ERROR] {context}: {job.exception}")
+    return ok
 
 def extract_ip(address: str) -> str:
     # 使用正则表达式匹配 IP 地址和可选的端口号
@@ -193,7 +208,7 @@ class WorkerSPManager:
     def del_state(self, transaction_id: str):
         self.lock.acquire()
         if transaction_id in self.states:
-            #log_message(f'delete state of: {transaction_id}')
+            log_message(f'delete state of: {transaction_id}')
             del self.states[transaction_id]
         self.lock.release()
     
@@ -207,25 +222,33 @@ class WorkerSPManager:
             'container_port': container_port,
             'RYW_subjection': RYW_subjection
         }
-        requests.post(url, json=data)
+        post_json(url, data, f"validate transaction {transaction_id}")
 
     def tx_aborted_or_repaired(self,transaction_id, state,is_repair, batch_id='', repair_mode=''):
         if state == ABORTED:
             url = 'http://{}/abort'.format(self.transaction_sink_addr)
-            #log_message(f"Transaction {transaction_id} in batch {batch_id} is aborted.")
+            log_message(f"Transaction {transaction_id} in batch {batch_id} is aborted.")
         else:
-            #log_message(f"Transaction {transaction_id} in batch {batch_id} is repaired.")
+            log_message(f"Transaction {transaction_id} in batch {batch_id} is repaired.")
             url = 'http://{}/fin_repair'.format(self.transaction_sink_addr)
         # trigger next run of the transaction under pessimistic repair mode
         data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'repair_mode':repair_mode, 'repair': is_repair}
-        requests.post(url, json=data)
+        log_message(
+            f"[TX STATE NOTIFY] workflow={self.workflow_name}, tx={transaction_id}, "
+            f"batch={batch_id}, state={state}, repair={is_repair}, mode={repair_mode}, url={url}"
+        )
+        post_json(url, data, f"tx state notify {transaction_id}")
 
     def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode):
         base_url = 'http://127.0.0.1:{}/{}'
-        #log_message(f"Triggering FASTPATH repair for transaction {transaction_id} in batch {batch_id}, function: {function_name}, repair_mode: {repair_mode}, PORT: {port}")
+        log_message(f"Triggering FASTPATH repair for transaction {transaction_id} in batch {batch_id}, function: {function_name}, repair_mode: {repair_mode}, PORT: {port}")
         data = {'batch_id':batch_id, 'transaction_id': transaction_id, "no_parent_execution": no_parent_execution, 'repair': True, 'repair_mode': repair_mode}
+        log_message(
+            f"[REPAIR TRIGGER] workflow={self.workflow_name}, tx={transaction_id}, batch={batch_id}, "
+            f"func={function_name}, mode={repair_mode}, port={port}"
+        )
          # try:
-        requests.post(base_url.format(port, 'run'), json=data)
+        post_json(base_url.format(port, 'run'), data, f"trigger repair {transaction_id}/{function_name}")
         # except:
         #     state = self.states[transaction_id]
         #     self.function_manager.run(function_name, transaction_id, state.write_set, True, batch_id)
@@ -250,7 +273,7 @@ class WorkerSPManager:
 
     def crosstx_trigger_function(self, transaction_id: str, function_name: str) -> None:
         if transaction_id not in self.states or self.states[transaction_id].repair_mode != OPT_REPAIR:
-            #log_message(f"[CROSS TRIGGER] Transaction {transaction_id} doesn't need the data from {function_name}")
+            log_message(f"[CROSS TRIGGER] Transaction {transaction_id} doesn't need the data from {function_name}")
             return
         state = self.states[transaction_id]
         state.lock.acquire()
@@ -264,15 +287,15 @@ class WorkerSPManager:
 
     # trigger a function that runs on local
     def trigger_function_local(self, state: TransactionState, function_name: str,  no_parent_execution = False) -> None:
-        #log_message(f'trigger local function: {function_name} of: {state.transaction_id}, repair:{state.repair}, repair_mode:{state.repair_mode}, repair_mode_changed:{state.repair_mode_changed[function_name]}')
+        log_message(f'trigger local function: {function_name} of: {state.transaction_id}, repair:{state.repair}, repair_mode:{state.repair_mode}, repair_mode_changed:{state.repair_mode_changed[function_name]}')
         state.lock.acquire()
         if state.repair and state.repair_mode_changed[function_name]:
             state.repair_mode_changed[function_name] = False
-            #log_message(f"[REPAIR METADATA] {function_name} of: {state.transaction_id}, repair_states:{state.repair_states[function_name]}")
+            log_message(f"[REPAIR METADATA] {function_name} of: {state.transaction_id}, repair_states:{state.repair_states[function_name]}")
             upstream_keys = state.repair_states[function_name].get('upstream_keys', {}).copy()
             upstream_fetch_info = self.repo.subjection_collector.fetch_upstream_keys(upstream_keys, state.transaction_id, function_name, self.function_pos) 
             upstream_waiting_count = self.repo.subjection_collector.prepair_subjection_before_repair(state.transaction_id, function_name, state.repair_states[function_name]["upstream_keys"],upstream_fetch_info)  
-            #log_message(f"[REPAIR FETCH UPSTREAM] {function_name} of: {state.transaction_id}, upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
+            log_message(f"[REPAIR FETCH UPSTREAM] {function_name} of: {state.transaction_id}, upstream_keys:{upstream_keys}, upstream waiting count: {upstream_waiting_count}")
             state.repair_subjection_upcnt[function_name] = upstream_waiting_count
             state.parent_executed[function_name] = 0
         if not no_parent_execution:
@@ -287,7 +310,7 @@ class WorkerSPManager:
 
     # trigger a function that runs on remote machine
     def trigger_function_remote(self, state: TransactionState, function_name: str, remote_addr: str, no_parent_execution = False) -> None:
-        #log_message(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
+        log_message(f'trigger remote function: {function_name} on: {remote_addr} of: {state.transaction_id}')
         remote_url = 'http://{}/request'.format(remote_addr)
         data = {
             # basic infomation
@@ -306,7 +329,7 @@ class WorkerSPManager:
             'repair_mode': state.repair_mode,
             'repair_states': state.repair_states
         }
-        requests.post(remote_url, json=data)
+        post_json(remote_url, data, f"trigger remote {state.transaction_id}/{function_name}")
 
     def trigger_function_cross_tx(self, func_info):
         downstream_tx_id, function_name, remote_addr = func_info[0], func_info[1], func_info[2]
@@ -316,7 +339,7 @@ class WorkerSPManager:
             'function_name': function_name,
             'workflow_name': self.workflow_name
         }
-        requests.post(remote_url, json=data)
+        post_json(remote_url, data, f"cross tx trigger {downstream_tx_id}/{function_name}")
     
     # check if a function's parents are all finished
     # If in repair mode, add upstream parents 
@@ -326,7 +349,7 @@ class WorkerSPManager:
         if state.repair:
             up_cnt = state.repair_subjection_upcnt.get(function_name, 0)
             # parent count: the sum of parents in workflow graph and parents in subject table
-        #log_message(f"check runnable for function: {function_name}, up_cnt: {up_cnt}, parent_executed: {state.parent_executed[function_name]}, parent_cnt: {info['parent_cnt']}")
+        log_message(f"check runnable for function: {function_name}, up_cnt: {up_cnt}, parent_executed: {state.parent_executed[function_name]}, parent_cnt: {info['parent_cnt']}")
         return state.parent_executed[function_name] == info['parent_cnt'] + up_cnt
 
     # run a function on local
@@ -346,7 +369,7 @@ class WorkerSPManager:
         if self.OPTIMISTIC_REPAIR:
             if state.repair:
                 downstream_funcs = self.repo.subjection_collector.set_state_and_get_waiting_downstream(state.transaction_id, function_name, REPAIRED)
-                #log_message(f"trigger downstream_funcs waiting function: {downstream_funcs}")
+                log_message(f"trigger downstream_funcs waiting function: {downstream_funcs}")
                 self.repo.subjection_collector.send_data_to_waiting_downstream(state.transaction_id, function_name, downstream_funcs)
                 crosstx_jobs = [
                             gevent.spawn(self.trigger_function_cross_tx, func_info)
@@ -367,12 +390,12 @@ class WorkerSPManager:
             for func in info['next']
         ]    
         jobs.extend(crosstx_jobs)
-        gevent.joinall(jobs)
+        join_and_report(jobs, f"downstream trigger {state.transaction_id}/{function_name}")
 
     def run_normal(self, state: TransactionState, info: Any) -> None:
         start = time.time()
         name = info['function_name']
-        #log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
+        log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, state.repair_states.get(name, {}))
         end = time.time()
         if res.get("Abort", False):
@@ -386,7 +409,7 @@ class WorkerSPManager:
             state.write_set.update(res["write_set"])
             # self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
             # self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
-           # #log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
+            log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
             state.container_port[name] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
             state.RYW_subjection[name] = res["RYW_subjection"]

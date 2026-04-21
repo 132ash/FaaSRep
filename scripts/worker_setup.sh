@@ -49,6 +49,7 @@ WORKFLOWS=(
     ['travel_reservation']="$CURRENT_SH_DIR/init/travel_reservation/gen_image.sh"
     ['banking_system']="$CURRENT_SH_DIR/init/banking_system/gen_image.sh"
     ['social_network']="$CURRENT_SH_DIR/init/social_network/gen_image.sh"
+    ['repair_correctness']="$CURRENT_SH_DIR/init/repair_correctness/gen_image.sh"
 )
 
 # Read workflow name from argument

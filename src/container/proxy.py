@@ -41,6 +41,37 @@ db_server = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_acc
 default_file = 'main.py'
 work_dir = '/proxy'
 
+
+def post_json(url, data, context):
+    try:
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+        return response
+    except requests.RequestException as exc:
+        logging.error("[HTTP ERROR] %s: %s: %s", context, url, exc)
+        return None
+
+def join_and_report(jobs, context):
+    if not jobs:
+        return True
+    gevent.joinall(jobs)
+    ok = True
+    for job in jobs:
+        if job.exception is not None:
+            ok = False
+            logging.error("[GEVENT ERROR] %s: %s", context, job.exception)
+    return ok
+
+
+def should_cleanup_repair_context(is_repair, fast_path_enabled, optimistic_repair, repair_mode):
+    if not is_repair:
+        return False
+    if not fast_path_enabled:
+        return True
+    if not optimistic_repair:
+        return True
+    return repair_mode == PESSI_REPAIR
+
 class Runner:
     def __init__(self):
         self.code = None
@@ -209,19 +240,19 @@ class Runner:
             'repair_mode':repair_mode
             }
         ##print(f"Triggering next function: {ip}:{port}, batch_id: {batch_id}, transaction_id: {transaction_id}, dirty: {dirty}", flush=True)
-        requests.post(url, json=data)
+        post_json(url, data, f"trigger next {transaction_id}")
 
     def fin_repair(self, batch_id, transaction_id, repair_mode):
         url = f'http://{self.sink_addr}/fin_repair'
-        ##print(f"Finishing repair: {self.function}, sending to sink: {url}, batch_id: {batch_id}, transaction_id: {transaction_id}", flush=True)
+        logging.info(f"Finishing repair: notifying sink at {self.sink_addr} for transaction {transaction_id} batch {batch_id} mode {repair_mode}")
         data = { 'workflow_name':self.workflow  ,'batch_id': batch_id, "transaction_id": transaction_id, 'repair_mode':repair_mode}
-        requests.post(url, json=data)
+        post_json(url, data, f"finish repair {transaction_id}")
 
     def abort_transaction(self, batch_id, transaction_id, repair_mode, msg=""):
-        ##print(f"abort transaction: {self.function}", flush=True)
+        logging.info(f"Aborting transaction: notifying sink at {self.sink_addr} for transaction {transaction_id} batch {batch_id} mode {repair_mode} with message: {msg}")
         url = f'http://{self.sink_addr}/abort'
         data = {'batch_id': batch_id, "transaction_id": transaction_id, 'workflow_name': self.workflow, 'repair':True, 'repair_mode':repair_mode, "error": msg}
-        requests.post(url, json=data)
+        post_json(url, data, f"abort repair {transaction_id}")
 
     def trigger_downstream_functions(self, batch_id, aborted, downstream_funcs, repair_mode, transaction_id, ctx):
         ##print(f"Trigger waiting functions in opt: {downstream_funcs}", flush=True)
@@ -244,14 +275,14 @@ class Runner:
                     )
                     break
                 next_ip = self.function_pos[next_func]
-                ##print(f"Trigger Next functions: {next_ip}:{self.successor_port}", flush=True)
+                logging.info(f"Triggering successor function: {next_func} at {next_ip}:{port} for transaction {transaction_id} batch {batch_id} repair_mode {repair_mode}")
                 next_trigger_tasks.append(
                     gevent.spawn(
                     self.trigger_next_function,
                     transaction_id, next_ip, port, ctx['dirty'], batch_id, repair_mode
                     )
                 )
-        gevent.joinall(next_trigger_tasks)
+        join_and_report(next_trigger_tasks, f"trigger downstream {transaction_id}")
 
     def run(self, transaction_id, is_repair):
         # in first run, collect read/write set, and RYW subjection
@@ -317,12 +348,35 @@ class Runner:
         if not is_repair:
             io_latency = current_store.io_latency
         
-        # Cleanup context if repair is done
-        if is_repair:
+        # Keep optimistic fast-path context so the same container can accept a later
+        # cascaded pessimistic retry for the same transaction.
+        if should_cleanup_repair_context(
+            is_repair,
+            self.fast_path_enabled,
+            self.optimistic_repair,
+            ctx_data['repair_mode'],
+        ):
             self.tx_contexts_lock.acquire()
             if transaction_id in self.tx_contexts:
+                logging.info(
+                    "[REPAIR CONTEXT CLEANUP] workflow=%s function=%s tx=%s batch=%s mode=%s",
+                    self.workflow,
+                    self.function,
+                    transaction_id,
+                    ctx_data['batch_id'],
+                    ctx_data['repair_mode'],
+                )
                 del self.tx_contexts[transaction_id]
             self.tx_contexts_lock.release()
+        elif is_repair:
+            logging.info(
+                "[REPAIR CONTEXT RETAINED] workflow=%s function=%s tx=%s batch=%s mode=%s",
+                self.workflow,
+                self.function,
+                transaction_id,
+                ctx_data['batch_id'],
+                ctx_data['repair_mode'],
+            )
 
         return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"],TxMetaData_thisFunc["RYW_subjection"], io_latency
 
@@ -371,10 +425,20 @@ def run():
     if not is_repair:
         runner.save(transaction_id, inp.get('write_set', {}))
     else:
+        logging.info(f"Received repair request: workflow={runner.workflow} function={runner.function} tx={transaction_id} batch={batch_id} mode={repair_mode}")
         if batch_id:
             ctx = runner.get_context(transaction_id)
             if ctx:
                 ctx['batch_id'] = batch_id
+            else:
+                logging.error(
+                    "[REPAIR CONTEXT MISSING] workflow=%s function=%s tx=%s batch=%s mode=%s",
+                    runner.workflow,
+                    runner.function,
+                    transaction_id,
+                    batch_id,
+                    repair_mode,
+                )
             
             if runner.fast_path_enabled:
                 no_parent_execution = inp.get('no_parent_execution', False)
@@ -382,9 +446,16 @@ def run():
         else:
             ctx = runner.get_context(transaction_id)
             if ctx and ctx['repair_mode'] == PESSI_REPAIR:
+                logging.warning(
+                    "[PESSI REPAIR WITHOUT BATCH ID] workflow=%s function=%s tx=%s mode=%s",
+                    runner.workflow,
+                    runner.function,
+                    transaction_id,
+                    repair_mode,)
                 return json.dumps({'Abort': True, 'error': "PESSIMISTIC REPAIR should not be triggered without batch_id."})
 
     if runner.check_runnable(transaction_id, is_repair, no_parent_execution, repair_mode):
+        logging.info(f"Running function for transaction {transaction_id} batch {batch_id} repair_mode {repair_mode}")
         aborted, abort_msg, rs, ws, RYW_subjection, io_latency = runner.run(transaction_id, is_repair)
         if aborted:
             return abort_msg
@@ -397,9 +468,19 @@ def run():
         }
         proxy.status = 'ok'
         return res
-    
+
+    if is_repair:
+        logging.info(
+            "[REPAIR WAITING] workflow=%s function=%s tx=%s batch=%s mode=%s no_parent_execution=%s",
+            runner.workflow,
+            runner.function,
+            transaction_id,
+            batch_id,
+            repair_mode,
+            no_parent_execution,
+        )
     return ('OK', 200)
 
 if __name__ == '__main__':
-    server = WSGIServer(('0.0.0.0', 5000), proxy)
+    server = WSGIServer(('0.0.0.0', 5000), proxy, backlog=container_config.HTTP_SERVER_BACKLOG)
     server.serve_forever()

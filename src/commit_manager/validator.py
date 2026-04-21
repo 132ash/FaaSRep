@@ -14,6 +14,7 @@ from multiprocessing import Process, Queue
 from repair_info import RepairInfo
 from repair_engine import RepairEngine
 from validator_repo import Repository
+from validator_state import BatchRuntimeState, ValidatorBatchStore
 
 sys.path.append('../../config')
 import config
@@ -33,12 +34,12 @@ VALIDATE = 1
 REPAIR_FINISH = 2
 COMMIT = 3
 CASCADED_COMMIT = 4
-GATEWAY_ADDR = config.GATEWAY_ADDR
+GATEWAY_NOTIFY_ADDR = config.GATEWAY_NOTIFY_ADDR
 DISPATCH_INTERVAL = 0.005 
 SCALABILITY_TEST = config.SCALABILITY_TEST
 FAKE_NOTIFY_URL = config.FAKE_NOTIFY_URL
-
-Serializer_timeout = 10  # seconds
+DIAGNOSTIC_INTERVAL_S = 5.0
+STUCK_BATCH_AFTER_S = 5.0
 
 
 class ValidatorPool:
@@ -102,12 +103,32 @@ class ValidatorProcess(Process):
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
         gevent.spawn(self.dispatch_serilizer_response)
 
+    def _diagnostic_loop(self):
+        gevent.spawn_later(DIAGNOSTIC_INTERVAL_S, self._diagnostic_loop)
+        gevent.spawn(self.report_stuck_batches)
+
     def dispatch_serilizer_response(self):
         if not self.serializer_return_pipe.empty():
             batch_id, data = self.serializer_return_pipe.get()
-            if batch_id in self.response_events:
-                return_event = self.response_events.pop(batch_id)
+            self.response_lock.acquire()
+            try:
+                return_event = self.response_events.pop(batch_id, None)
+                self.serializer_pending.pop(batch_id, None)
+            finally:
+                self.response_lock.release()
+            if return_event is not None:
                 return_event.set(data)
+
+    def report_stuck_batches(self):
+        snapshots = self.batch_store.stuck_snapshots(STUCK_BATCH_AFTER_S)
+        for snapshot in snapshots[:10]:
+            log_message(
+                self.logger,
+                f"[VALIDATOR STUCK] batch={snapshot['batch_id']}, status={snapshot['status']}, "
+                f"age={snapshot['age']:.2f}s, idle={snapshot['idle']:.2f}s, "
+                f"txs={snapshot['transaction_list']}, aborted={snapshot['aborted_txs']}, "
+                f"ports={snapshot.get('container_ports', {})}"
+            )
 
 
     def run(self):
@@ -127,20 +148,15 @@ class ValidatorProcess(Process):
         self.repair_info = RepairInfo(self.logger, self.workflow_graph_topo,  self.function_pos)
         self.repair_engine = RepairEngine(self.logger, self.repair_info, self.function_pos, self.worker_ip_set, self.workflow_name, self.tx_sink_addr, self.repo)
         self.response_events = {} 
-        self.register_lock = gevent.lock.BoundedSemaphore()
         self.response_lock = gevent.lock.BoundedSemaphore()
-        self.tx_list_per_batch = {}
-        self.container_port_per_batch = {} 
-        self.read_set_per_batch = {}
-        self.write_set_per_batch = {}
-        self.successed_tx_list_per_batch = {}  # {batch_id: [tx_id1, tx_id2, ...]}
-        self.aborted_tx_list_per_batch = {}
-        self.time_tuple_per_batch = {}  # {batch_id: (first_run_finish_time, last_task_time)} 
+        self.serializer_pending = {}
+        self.batch_store = ValidatorBatchStore()
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
+        gevent.spawn_later(DIAGNOSTIC_INTERVAL_S, self._diagnostic_loop)
         last_task_time = time.time()
         while True:
             try:
-                batch_id, op, data = self.task_queue.get(timeout=1)
+                batch_id, op, data = self.task_queue.get_nowait()
                 gevent.spawn(self.handle_task, batch_id, op, data)
                 last_task_time = time.time()
             except:
@@ -148,38 +164,72 @@ class ValidatorProcess(Process):
                     gevent.sleep(0.1)
 
     def handle_task(self, batch_id, op, data):
-        last_task_time = time.time()
         if op == VALIDATE:
             batch = data['batch'] 
-            self.register_lock.acquire()
-            self.tx_list_per_batch[batch_id] = batch['transaction_list']
-            #log_message(self.logger, f"[VALIDATE] Batch {batch_id} with batch size: {len(batch['transaction_list'])}, write_set:{batch["write_set"]}")
-            self.successed_tx_list_per_batch[batch_id] = {txid:True for txid in batch['transaction_list']}
-            self.aborted_tx_list_per_batch[batch_id] = []
-            self.read_set_per_batch[batch_id] = batch['read_set']
-            self.write_set_per_batch[batch_id] = batch['write_set']
-            self.container_port_per_batch[batch_id] = batch['container_port']
-            expired_keys_per_ip, pessi_sink_info = self.validate(batch_id, batch)
-            self.register_lock.release()
-            repair_start_time = time.time()
-            self.time_tuple_per_batch[batch_id] = [last_task_time, repair_start_time, 0]
-            self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
+            state = BatchRuntimeState.from_validate_payload(
+                batch_id,
+                batch,
+                data.get("first_run_finish_time", time.time()),
+            )
+            self.batch_store.register(state)
+            state.mark_status("validating")
+            log_message(
+                self.logger,
+                f"[VALIDATOR VALIDATE] batch={batch_id}, txs={state.transaction_list}"
+            )
+            expired_keys_per_ip, pessi_sink_info = self.validate(state)
+            state.mark_repairing()
+            self.repair_engine.repair_batch_after_validate(
+                batch_id,
+                state.container_port,
+                state.read_set,
+                state.write_set,
+                state.transaction_list,
+                expired_keys_per_ip,
+                pessi_sink_info,
+            )
 
         elif op == REPAIR_FINISH:
+            state = self.batch_store.get(batch_id)
+            if state is None:
+                log_message(self.logger, f"[VALIDATOR WARNING] Repair finish for unknown batch {batch_id}: {data}")
+                return
             batch_finished = data['batch_finished']
             pessi_repair_txs = data['pessi_repair_txs']
             aborted_txs = data['aborted_txs']
+            log_message(
+                self.logger,
+                f"[VALIDATOR REPAIR FINISH] batch={batch_id}, batch_finished={batch_finished}, "
+                f"pessi_repair_txs={pessi_repair_txs}, aborted_txs={aborted_txs}"
+            )
             # {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}
-            self.aborted_tx_list_per_batch[batch_id].extend(aborted_txs)
-            self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, aborted_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
+            state.record_aborts(aborted_txs)
+            self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(
+                batch_id,
+                aborted_txs,
+                state.write_set,
+                state.successed_tx_table,
+            )
             if batch_finished:
-                #log_message(self.logger, f"[COMMIT] Batch {batch_id} repair finish, txlist:{self.tx_list_per_batch[batch_id]}")
+                log_message(self.logger, f"[COMMIT] Batch {batch_id} repair finish, txlist:{state.transaction_list}")
                 commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
-                self.time_tuple_per_batch[batch_id][2] = time.time()
+                state.mark_repair_finished()
+                state.mark_committing()
                 ready_batch_list, keys_for_commit_on_worker = self.serializer_request(batch_id, COMMIT, {'commit_keys':commit_keys_all})
                 self.commit_batch_list(ready_batch_list, keys_for_commit_on_worker)
             else:
-                self.repair_engine.send_pessimistic_repair_req(batch_id, self.container_port_per_batch[batch_id], pessi_repair_txs)     
+                state.mark_waiting_pessimistic()
+                if not pessi_repair_txs:
+                    log_message(
+                        self.logger,
+                        f"[VALIDATOR WARNING] batch={batch_id} entered waiting_pessimistic with empty pessi_repair_txs"
+                    )
+                log_message(
+                    self.logger,
+                    f"[VALIDATOR WAIT PESSI] batch={batch_id}, txs={pessi_repair_txs}, "
+                    f"ports={state.container_ports_for(pessi_repair_txs)}"
+                )
+                self.repair_engine.send_pessimistic_repair_req(batch_id, state.container_port, pessi_repair_txs)
         elif op == CASCADED_COMMIT:
             aborted_txs = []
             txid_lists = []
@@ -187,12 +237,16 @@ class ValidatorProcess(Process):
             pes_transactions = []
             if SCALABILITY_TEST:
                 self.clean_batch_info(data)
-                requests.post(FAKE_NOTIFY_URL, json={'batch_id_list': data})
+                self._post_json(FAKE_NOTIFY_URL, {'batch_id_list': data}, "fake notify cascaded")
                 return
             for batch_id in data:
-                aborted_txs.extend(self.aborted_tx_list_per_batch[batch_id])
-                txid_lists.append(self.successed_tx_list_per_batch[batch_id])
-                timestamps.append(self.time_tuple_per_batch[batch_id])
+                state = self.batch_store.get(batch_id)
+                if state is None:
+                    log_message(self.logger, f"[VALIDATOR WARNING] Cascaded commit for unknown batch {batch_id}")
+                    continue
+                aborted_txs.extend(state.aborted_txs)
+                txid_lists.append(state.successed_tx_table)
+                timestamps.append(state.timestamps)
                 pes_transactions.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
             # if FAST_PATH_ENABLED:
             #     jobs = [
@@ -200,7 +254,7 @@ class ValidatorProcess(Process):
             #         for worker_ip in self.worker_ip_set
             #         ]
             #     gevent.joinall(jobs)
-            #log_message(self.logger, f"[CASCADED COMMIT] : {data} WITH {txid_lists}")
+            log_message(self.logger, f"[CASCADED COMMIT] : {data} WITH {txid_lists}")
             self.notify_gateway(txid_lists, True, timestamps, aborted_txs, pes_transactions)
             self.clean_batch_info(data)
 
@@ -208,47 +262,54 @@ class ValidatorProcess(Process):
         res_event = event.AsyncResult()
         self.response_lock.acquire()
         self.response_events[batch_id] = res_event
+        self.serializer_pending[batch_id] = {
+            "op": op,
+            "started_at": time.time(),
+            "data_keys": sorted(data.keys()),
+        }
         self.response_lock.release()
         self.serializer_req_queue.put((self.validator_id, batch_id, op, data))
-        try:
-            serilizer_res = res_event.get(timeout=Serializer_timeout)
-            return serilizer_res
-        except gevent.timeout.Timeout:
-            #log_message(self.logger, f"[FATAL] Timeout waiting for Serializer response for batch {batch_id}, op {op}. This is a critical error. Terminating program.")
-            # 在多进程的子进程中，使用 os._exit() 是最安全的退出方式，
-            # 它可以防止因清理资源而导致的死锁。
-            import os
-            os._exit(1) # 使用非零状态码退出，表示异常终止。
+        return res_event.get()
 
 
-    def validate(self, batch_id, batch):
+    def validate(self, state: BatchRuntimeState):
+        batch_id = state.batch_id
         self.repair_info.batch_init(batch_id)
-        serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
+        serializer_input = {
+            'transaction_list': state.transaction_list,
+            'read_set': state.read_set,
+            'write_set': state.write_set,
+        }
         expired_keys, subjection_set, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
-        expired_keys_per_ip = self.repair_info.construct_repair_metadata(batch_id, expired_keys, subjection_set, batch['RYW_subjection'], self.worker_ip_set, batch['transaction_list'], batch['container_port'])
-        #log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
+        expired_keys_per_ip = self.repair_info.construct_repair_metadata(
+            batch_id,
+            expired_keys,
+            subjection_set,
+            state.ryw_subjection,
+            self.worker_ip_set,
+            state.transaction_list,
+            state.container_port,
+        )
+        log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
         return expired_keys_per_ip, pessi_sink_info
 
     def clean_batch_info(self, batch_id_list):
-        #log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
-        for batch_id in batch_id_list:
-            self.tx_list_per_batch.pop(batch_id, None)
-            self.time_tuple_per_batch.pop(batch_id, None)
-            self.read_set_per_batch.pop(batch_id, None)
-            self.write_set_per_batch.pop(batch_id, None)
-            self.aborted_tx_list_per_batch.pop(batch_id, None)
-            self.successed_tx_list_per_batch.pop(batch_id, None)
-            self.repair_engine.clean_table_of_batch(batch_id)
-            self.container_port_per_batch.pop(batch_id, None)
+        log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
+        states = self.batch_store.pop_many(batch_id_list)
+        for state in states:
+            state.mark_committed()
+            self.repair_engine.clean_table_of_batch(state.batch_id)
 
     # commit_batch_list : [(batch_id, version), ...]
     def commit_batch_list(self, commit_batch_list, keys_for_commit_per_ip):
         if SCALABILITY_TEST:
             txid_lists = []
             for batch_id in commit_batch_list:
-                txid_lists.append(self.tx_list_per_batch[batch_id])
+                state = self.batch_store.get(batch_id)
+                if state is not None:
+                    txid_lists.append(state.transaction_list)
             self.clean_batch_info(commit_batch_list)
-            requests.post(FAKE_NOTIFY_URL, json={'batch_id_list': commit_batch_list})
+            self._post_json(FAKE_NOTIFY_URL, {'batch_id_list': commit_batch_list}, "fake notify commit")
             return
         if commit_batch_list:
             txid_lists, timestamps, abort_txs, pes_txs = [], [], [], []
@@ -259,22 +320,26 @@ class ValidatorProcess(Process):
                 worker_commit_set[target_ip]['keys'].append([f'{writer_tx_id}:PUT:{writer_func}:{key}', version])
 
             for batch_id in commit_batch_list:
-                timestamps.append(self.time_tuple_per_batch[batch_id])
-                successed_tx_list = self.successed_tx_list_per_batch[batch_id]
+                state = self.batch_store.get(batch_id)
+                if state is None:
+                    log_message(self.logger, f"[VALIDATOR WARNING] Commit for unknown batch {batch_id}")
+                    continue
+                timestamps.append(state.timestamps)
+                successed_tx_list = state.successed_tx_table
                 txid_lists.append(successed_tx_list)
-                aborted_txs_this_batch = self.aborted_tx_list_per_batch.get(batch_id, [])
-                abort_txs.extend(self.aborted_tx_list_per_batch.get(batch_id, []))
+                aborted_txs_this_batch = state.aborted_txs
+                abort_txs.extend(state.aborted_txs)
                 pes_txs.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
                 for worker_ip in self.worker_ip_set:
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
                     worker_commit_set[worker_ip]['aborted_txs'].extend(aborted_txs_this_batch)
 
-            #log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}, timestamps:{timestamps}")
+            log_message(self.logger, f"[COMMIT] Commit batch list: {commit_batch_list}, txid_lists: {txid_lists}, aborted_txs:{abort_txs}, timestamps:{timestamps}")
             jobs = [
                 gevent.spawn(self.trigger_worker_commit, ip, worker_commit_set[ip])
                 for ip in worker_commit_set
             ]
-            gevent.joinall(jobs)
+            self._join_and_report(jobs, f"worker commit {commit_batch_list}")
             self.repair_engine.sink_release_optimistic_info(commit_batch_list)
             self.notify_gateway(txid_lists, True, timestamps, abort_txs, pes_txs)
             self.clean_batch_info(commit_batch_list)
@@ -291,11 +356,11 @@ class ValidatorProcess(Process):
             "commit_list": commit_list
         }
 
-        requests.post(url, json=data)
+        return self._post_json(url, data, f"commit worker {ip}") is not None
 
     def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs, pessi_txs):
-        url = 'http://{}/notify'.format(GATEWAY_ADDR)
-        #log_message(self.logger, f"[NOTIFY] Notify gateway: {url}, transaction_id_lists: {txid_lists}, timestamps:{timestamps}, pessimistic_txs:{pessi_txs}")
+        url = 'http://{}/notify'.format(GATEWAY_NOTIFY_ADDR)
+        log_message(self.logger, f"[NOTIFY] Notify gateway: {url}, transaction_id_lists: {txid_lists}, timestamps:{timestamps}, pessimistic_txs:{pessi_txs}")
         data = {
             'transaction_id_lists': txid_lists,
             'success': success,
@@ -303,5 +368,33 @@ class ValidatorProcess(Process):
             'aborted_txs': aborted_txs,
             'pessimistic_txs': pessi_txs
         }
-        r = requests.post(url, json=data)
-        return r.json() 
+        r = self._post_json(url, data, "notify gateway")
+        return r.json() if r is not None else {}
+
+    def _post_json(self, url, data, context):
+        started_at = time.time()
+        log_message(self.logger, f"[HTTP POST START] {context}: {url}")
+        try:
+            response = requests.post(url, json=data)
+            response.raise_for_status()
+            elapsed_s = time.time() - started_at
+            log_message(
+                self.logger,
+                f"[HTTP POST OK] {context}: {url}, status={response.status_code}, elapsed_s={elapsed_s:.3f}",
+            )
+            return response
+        except requests.RequestException as exc:
+            elapsed_s = time.time() - started_at
+            log_message(self.logger, f"[HTTP ERROR] {context}: {url}: {exc}, elapsed_s={elapsed_s:.3f}")
+            return None
+
+    def _join_and_report(self, jobs, context):
+        if not jobs:
+            return True
+        gevent.joinall(jobs)
+        ok = True
+        for job in jobs:
+            if job.exception is not None:
+                ok = False
+                log_message(self.logger, f"[GEVENT ERROR] {context}: {job.exception}")
+        return ok

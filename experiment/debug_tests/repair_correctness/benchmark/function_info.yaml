@@ -1,0 +1,7 @@
+workflow: repair_correctness
+functions:
+- {image: repair_correctness_claim, name: claim}
+- {image: repair_correctness_use_ryw, name: use_ryw}
+- {image: repair_correctness_guard_abort, name: guard_abort}
+- {image: repair_correctness_aggregate, name: aggregate}
+max_containers: 64

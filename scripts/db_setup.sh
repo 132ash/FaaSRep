@@ -1,5 +1,21 @@
 #!/bin/bash
 CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
+ROOT_DIR=$(dirname "$CURRENT_SH_DIR")
+STORAGE_NODE_IP=$(PYTHONPATH="$ROOT_DIR" python -c "import config.config as config; print(config.STORAGE_NODE_IP)")
+COUCHDB_PORT=$(PYTHONPATH="$ROOT_DIR" python -c "import config.config as config; print(config.COUCHDB_PORT)")
+
+LOCAL_NO_PROXY="localhost,127.0.0.1,::1,0.0.0.0,host.docker.internal,$STORAGE_NODE_IP"
+if [ -n "${NO_PROXY:-}" ]; then
+    export NO_PROXY="$NO_PROXY,$LOCAL_NO_PROXY"
+else
+    export NO_PROXY="$LOCAL_NO_PROXY"
+fi
+if [ -n "${no_proxy:-}" ]; then
+    export no_proxy="$no_proxy,$LOCAL_NO_PROXY"
+else
+    export no_proxy="$LOCAL_NO_PROXY"
+fi
+
 # install docker
 # apt-get update
 # apt-get install -y \
@@ -34,7 +50,7 @@ docker run --name scylla -d -p 4567:8000 scylladb/scylla \
     --smp 20 --memory 20G
 # Default region name: us-west-2
 echo "Waiting for ScyllaDB to initialize (this may take a few seconds)..."
-until python -c "import urllib.request; urllib.request.urlopen('http://localhost:4567')" > /dev/null 2>&1; do
+until python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4567')" > /dev/null 2>&1; do
     sleep 2
     echo -n "."
 done
@@ -44,9 +60,9 @@ echo -e "\nScyllaDB started successfully."
 
 # install and initialize couchdb
 # docker pull couchdb
-docker run -itd -p 5984:5984 -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
+docker run -itd -p "${COUCHDB_PORT}:5984" -e COUCHDB_USER=faasnap -e COUCHDB_PASSWORD=faasnap --name couchdb couchdb
 echo "Waiting for CouchDB to initialize..."
-until python -c "import urllib.request; urllib.request.urlopen('http://localhost:5984')" > /dev/null 2>&1; do
+until python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${COUCHDB_PORT}')" > /dev/null 2>&1; do
     sleep 2
     echo -n "."
 done
@@ -63,6 +79,7 @@ WORKFLOWS_INIT=(
     ['travel_reservation']="$CURRENT_SH_DIR/init/travel_reservation/init.sh"
     ['banking_system']="$CURRENT_SH_DIR/init/banking_system/init.sh"
     ['social_network']="$CURRENT_SH_DIR/init/social_network/init.sh"
+    ['repair_correctness']="$CURRENT_SH_DIR/init/repair_correctness/init.sh"
 )
 
 # List of microbenchmark workflows from c2 to w16

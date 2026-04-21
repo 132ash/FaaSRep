@@ -323,7 +323,7 @@ class PessimisticSinkInfo:
 - 所有 `requests.post/get` 必须有 timeout。
 - `gevent.joinall()` 应设置 timeout 或检查 greenlet exception。
 - repair/commit request 失败时必须向 validator/sink 返回可观察错误，不能静默。
-- serializer timeout 不应直接 `os._exit(1)` 后让上层无感知；至少要记录 fatal log，并让 batch 进入 abort/fail-fast 路径。
+- serializer 等待不做超时 fail-fast 或自动 abort；如果 serializer 长时间不返回，由 watchdog 输出 batch/op/data key 等上下文，等待人工终止和排查。
 - 每个 batch 增加可观测状态：
   - registered
   - validated
@@ -385,24 +385,28 @@ class PessimisticSinkInfo:
 - [x] 新增 commit_manager 内部 dataclass：`WriterRef`、`UpstreamRef`、`BatchWriteInfo`、`PessimisticSinkInfo`、`FunctionRepairPlan`、`TransactionRepairPlan`、`ValidationResult`。
 - [x] 将 `SerializerProcess` 中的 validation/commit 状态拆成 `WriterIndex`、`BatchCommitTracker`、`DependencyBuilder`，并使用 deque 替换 list `pop(0)`。
 - [x] 将 serializer 输出从嵌套 dict 改为 typed result，再在进程边界转换为兼容的 JSON dict。
-- [ ] 重写 `RepairInfo.construct_repair_metadata()`，使用 `FunctionRepairPlan` 默认字段，修复 `upstream_keys` 缺失、dirty 被覆盖、up_cnt 非去重等问题。
-- [ ] 重写 `PessimisticRepairer` 的 writer table 和依赖构造，加入去重、幂等 abort、`try/finally` lock 释放。
-- [ ] 在 transaction_sink 新增显式 `TransactionRepairState` 和 `BatchRepairState`，替代 `optimistic_state_per_transaction`、`pessimistic_state_per_batch`、`tx_finished_table_per_batch` 等散落 dict。
-- [ ] 重写 sink 状态机入口：`register_batch`、`register_dependencies`、`mark_repair_finished`、`mark_needs_pessimistic`、`release_optimistic_state`。
-- [ ] 修复乐观 repair 被 rejected 后直接 `return False, []` 的卡死路径，确保事务进入悲观 repair 等待/触发状态。
-- [ ] 对 PBD/PTD dependency 和 whole-tx optimistic dependency 使用 set 去重，避免 `prev_fin_cnt` 不可释放。
-- [ ] 对已 committed、已 aborted、未知 predecessor 分别建模，禁止静默丢失依赖。
-- [ ] 让 sink 状态机所有 mutation 在 lock 内完成，网络请求只根据返回的 `SinkCommand` 在 lock 外执行。
-- [ ] 为所有跨组件 HTTP 调用加 timeout 和错误日志，特别是 validator/sink/worker/gateway repair/commit/notify 路径。
-- [ ] 对 `gevent.joinall()` 增加异常检查和 timeout 处理，避免某个 greenlet 异常后 batch 无通知。
-- [ ] 改造 `RepairEngine`：repair trigger 失败必须显式反馈，不能让 batch 永久等待。
-- [ ] 增加 batch/tx watchdog 日志，输出长时间等待的依赖、ready 条件、当前 mode 和缺失前驱。
-- [ ] 保持所有外部 HTTP API payload 兼容，只在内部使用 typed model。
-- [ ] 增加 serializer 单元测试：stale read、writer dependency、commit cascade。
-- [ ] 增加 repair metadata 单元测试：RYW merge、dirty 传播、upstream 去重。
-- [ ] 增加 transaction_sink 单元测试：乐观到悲观退化、迟到 finish、重复 finish、丢失 predecessor 兜底。
-- [ ] 增加 PessimisticRepairer 单元测试：abort 后重建依赖、commit key 选择、重复 abort 幂等。
-- [ ] 跑现有 debug/basic experiment，并补一个小型 deterministic workflow smoke test，覆盖 optimistic repair 和 pessimistic fallback。
+- [x] 重写 `RepairInfo.construct_repair_metadata()`，使用 `FunctionRepairPlan` 默认字段，修复 `upstream_keys` 缺失、dirty 被覆盖、up_cnt 非去重等问题。
+- [x] 重写 `PessimisticRepairer` 的 writer table 和依赖构造，加入去重、幂等 abort、`try/finally` lock 释放。
+- [x] 在 transaction_sink 新增显式 `TransactionRepairState` 和 `BatchRepairState`，替代 `optimistic_state_per_transaction`、`pessimistic_state_per_batch`、`tx_finished_table_per_batch` 等散落 dict。
+- [x] 重写 sink 状态机入口：`register_batch`、`register_dependencies`、`mark_repair_finished`、`mark_needs_pessimistic`、`release_optimistic_state`。
+- [x] 修复乐观 repair 被 rejected 后直接 `return False, []` 的卡死路径，确保事务进入悲观 repair 等待/触发状态。
+- [x] 对 PBD/PTD dependency 和 whole-tx optimistic dependency 使用 set 去重，避免 `prev_fin_cnt` 不可释放。
+- [x] 对已 committed、已 aborted、未知 predecessor 分别建模，禁止静默丢失依赖。
+- [x] 让 sink 状态机所有 mutation 在 lock 内完成，网络请求只根据返回的 `SinkCommand` 在 lock 外执行。
+- [x] 跨组件 HTTP 调用不设置自动超时、不因网络等待自动 abort；若请求返回错误则记录详细日志，卡住时依赖 watchdog 输出上下文并由人工终止。
+- [x] 对 `gevent.joinall()` 增加 greenlet 异常检查，但不设置 timeout/kill；卡住时由 watchdog 输出 batch/tx 状态。
+- [x] 改造 `RepairEngine`：repair trigger/prepare 失败只记录阻塞上下文，不自动向 sink `/abort`。
+- [x] 增加 batch/tx watchdog 日志，输出长时间等待的依赖、ready 条件、当前 mode 和缺失前驱。
+- [x] 保持所有外部 HTTP API payload 兼容，只在内部使用 typed model。
+- [x] 增加 serializer 单元测试：stale read、writer dependency、commit cascade。
+- [x] 增加 repair metadata 单元测试：RYW merge、dirty 传播、upstream 去重。
+- [x] 增加 transaction_sink 单元测试：乐观到悲观退化、迟到 finish、重复 finish、丢失 predecessor 兜底。
+- [x] 增加 PessimisticRepairer 单元测试：abort 后重建依赖、commit key 选择、重复 abort 幂等。
+- [x] 按本次约束不跑真实 debug/basic experiment；补一个小型 deterministic workflow smoke test，覆盖 optimistic repair 和 pessimistic fallback。
+- [x] 复核前三项勾选但可能被 stash 覆盖的问题：`serializer.py` 主路径已实际切换到 `DependencyBuilder`、`WriterIndex`、`BatchCommitTracker` 和 typed `ValidationResult`。
+- [x] 按调试需求移除自动 timeout/kill/abort 语义：HTTP、greenlet join 和 serializer response 等待均不因超时推进状态，只由 watchdog 输出卡死上下文。
+- [x] 重构 validator batch runtime：用 `BatchRuntimeState` 和 `ValidatorBatchStore` 替代 `tx_list_per_batch`、`read_set_per_batch`、`write_set_per_batch`、`container_port_per_batch`、`successed_tx_list_per_batch`、`aborted_tx_list_per_batch`、`time_tuple_per_batch` 等平行字典。
+- [x] 将 `repair_correctness` workflow 初始化移入 `scripts/db_setup.sh repair_correctness` 和 `scripts/worker_setup.sh repair_correctness`；debug runner 只负责播种本轮数据、运行 Gateway 场景和校验结果。
 
 ## 实现时优先检查的具体卡死路径
 

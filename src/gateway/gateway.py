@@ -6,18 +6,17 @@ import uuid
 import sys
 import os
 import logging
-# 配置日志记录
-log_file = '../../logging/gateway.log'
+from pathlib import Path
 
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
+sys.path.append('../../config')
+import config
+from logging_utils import RunAwareFileHandler
 
 def setup_logger():
     logger = logging.getLogger('gateway')
     logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
+    # 动态跟随当前 run_id 的文件处理器
+    file_handler = RunAwareFileHandler(config.ROOT_DIR, 'gateway.log')
     file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
@@ -48,17 +47,45 @@ from transaction_info import RunningTXTable
 import requests
 import time
 
-sys.path.append('../../config')
-import config
-
 CLEAR_MEM = config.CLEAR_MEM
 
-app = Flask(__name__)
+public_app = Flask("gateway_public")
+notify_app = Flask("gateway_notify")
+app = public_app
 repo = Repository()
 txTable = RunningTXTable()
 
 workflow_metadata = {}
 metadata_lock = gevent.lock.BoundedSemaphore()
+
+def post_json(url, data, context):
+    try:
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+        return response
+    except requests.RequestException as exc:
+        log_message(f"[HTTP ERROR] {context}: {url}: {exc}")
+        return None
+
+def get_url(url, context):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response
+    except requests.RequestException as exc:
+        log_message(f"[HTTP ERROR] {context}: {url}: {exc}")
+        return None
+
+def join_and_report(jobs, context):
+    if not jobs:
+        return True
+    gevent.joinall(jobs)
+    ok = True
+    for job in jobs:
+        if job.exception is not None:
+            ok = False
+            log_message(f"[GEVENT ERROR] {context}: {job.exception}")
+    return ok
 
 def get_workflow_metadata(workflow_name):
     metadata_lock.acquire()
@@ -82,14 +109,14 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'repair': False,
         'retry': retry
     }
-    #log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
-    requests.post(url, json=data)
+    log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
+    post_json(url, data, f"trigger {transaction_id}/{function_name}")
 
 def clear_mem(ip, transaction_id, workflow_name, abort=False):
     if not ip.endswith(':7500'):
         ip += ':7500'
     clear_url = 'http://{}/clear'.format(ip)
-    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'abort': abort})
+    post_json(clear_url, {'transaction_id': transaction_id, 'workflow_name': workflow_name, 'abort': abort}, f"clear mem {transaction_id}")
 
 def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
     if not retry:
@@ -106,11 +133,21 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
         if not retry:
             repo.store_input(transaction_id, ip, func_param)
         jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
-    gevent.joinall(jobs)
+    join_and_report(jobs, f"first run trigger {transaction_id}")
     end = time.time()
     return end - start
 
-@app.route('/run', methods = ['POST'])
+@public_app.route('/healthz', methods=['GET'])
+def public_healthz():
+    return json.dumps({"status": "ok", "listener": "public"})
+
+
+@notify_app.route('/healthz', methods=['GET'])
+def notify_healthz():
+    return json.dumps({"status": "ok", "listener": "notify"})
+
+
+@public_app.route('/run', methods = ['POST'])
 def run():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow']
@@ -118,7 +155,7 @@ def run():
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
-    #log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
+    log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
     start = time.time()
     aborted = False
     retry = False
@@ -127,13 +164,12 @@ def run():
         exec_first_run_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
         aborted = txTable.waitTX(transaction_id)
         # if aborted:
-        #     #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
         #     # clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
         #     # gevent.joinall(clear_jobs)
         #     break
         #     txTable.resetTX(transaction_id)
         # retry = True
-    #log_message(f"transaction {transaction_id} in {workflow}  finished running, checking finished or aborted...")
+    log_message(f"transaction {transaction_id} in {workflow}  finished running, checking finished or aborted...")
     if aborted:
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
         txTable.running_txs.pop(transaction_id, None)
@@ -147,22 +183,22 @@ def run():
         time_commit = end - repair_finish_time
         rounds = 3 if pessimistic else 2
         message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'workflow_exec_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit, 'rounds':rounds})
-    #log_message(f"transaction {transaction_id} in {workflow} aborted: {aborted}, clearing states")
+    log_message(f"transaction {transaction_id} in {workflow} aborted: {aborted}, clearing states")
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
-        gevent.joinall(clear_jobs)
-    #log_message(f"transaction {transaction_id}  in {workflow} cleaned, return results")
+        join_and_report(clear_jobs, f"clear transaction {transaction_id}")
+    log_message(f"transaction {transaction_id}  in {workflow} cleaned, return results")
     return message
 
-@app.route('/notify', methods = ['POST'])
+@notify_app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
     transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     aborted_txs_from_validator = data.get('aborted_txs', [])
     pessimistic_txs = data.get('pessimistic_txs', [])
-    #log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
-    #log_message(f'notify, running_txs:{list(txTable.running_txs.keys())}')
+    log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
+    log_message(f'notify, running_txs:{list(txTable.running_txs.keys())}')
     if aborted_txs_from_validator:
         txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True, {})
     for transaction_id_list, timestamp_per_batch, pessimistic_txs_per_batch in zip(transaction_id_lists, timestamps, pessimistic_txs):
@@ -173,7 +209,7 @@ def notify():
             txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, False, pessimistic_txs_per_batch)  
     return json.dumps({"status": "notified"})
 
-@app.route('/clear_container', methods = ['POST'])
+@public_app.route('/clear_container', methods = ['POST'])
 def clear_container():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow']
@@ -183,15 +219,35 @@ def clear_container():
     print(addrs)
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
-        jobs.append(gevent.spawn(requests.get, clear_url))
-    gevent.joinall(jobs)
+        jobs.append(gevent.spawn(get_url, clear_url, f"clear container {addr}"))
+    join_and_report(jobs, "clear containers")
     return json.dumps({'status': 'ok'})
 
 from gevent.pywsgi import WSGIServer
 import logging
 
-#  python gateway.py  10.2.29.142  8000
+
+def _port_from_addr(addr: str, default: int) -> int:
+    try:
+        return int(str(addr).rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        return default
+
+
+# python gateway.py 10.2.30.50 8000 8001
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
-    server.serve_forever()
+    host = sys.argv[1]
+    public_port = int(sys.argv[2])
+    notify_port = (
+        int(sys.argv[3])
+        if len(sys.argv) > 3
+        else _port_from_addr(config.GATEWAY_NOTIFY_ADDR, public_port + 1)
+    )
+    public_server = WSGIServer((host, public_port), public_app, backlog=config.HTTP_SERVER_BACKLOG)
+    notify_server = WSGIServer((host, notify_port), notify_app, backlog=config.HTTP_SERVER_BACKLOG)
+    log_message(f"gateway public listener on {host}:{public_port}")
+    log_message(f"gateway notify listener on {host}:{notify_port}")
+    public_server.start()
+    notify_server.start()
+    gevent.wait()

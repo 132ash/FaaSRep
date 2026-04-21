@@ -1,97 +1,160 @@
-from gevent import monkey
+from __future__ import annotations
 
-monkey.patch_all()
-import logging
+from dataclasses import dataclass, field
+from typing import Dict, Iterable, List, Optional, Set
+
 import sys
+
 sys.path.append('../../config')
 import config
 
-REPAIRED = config.REPAIRED
-ABORTED = config.ABORTED    
-WAITING = config.RUNNING
 
+REPAIRED = config.REPAIRED
+ABORTED = config.ABORTED
+WAITING = config.RUNNING
 
 OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
 
-PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
-VALIDATOR_ADDR = config.VALIDATOR_ADDR
 
-class PessimisticBatchState:
-    def __init__(self, batch_id, tx_list, batch_size):
-        self.batch_size = batch_size
-        self.batch_id = batch_id
-        self.transaction_list = tx_list
-        self.next_txs_after_batch = {} # {successor_batchid: [txid1, txid2, ...]}
-        self.fin_consecutive_cnt = -1
-        self.finished_tx_list = [None] * len(tx_list) 
-        self.tx_idx = {txid: idx for idx, txid in enumerate(tx_list)}
-        self.pessi_transaction_info = {txid:{'next_txs':[], 'prev_fin_cnt':0, 'fin_repair':False} for txid in tx_list}
-        self.pessimistic_repair_ready = {txid:False for txid in tx_list}
+@dataclass
+class TransactionRepairState:
+    tx_id: str
+    batch_id: str
+    optimistic_state: str = WAITING
+    needs_pessimistic: bool = False
+    pessimistic_ready: bool = False
+    pessimistic_running: bool = False
+    final_state: Optional[str] = None
+    finish_recorded: bool = False
+    optimistic_result_rejected: bool = False
+    optimistic_successors: Set[str] = field(default_factory=set)
+    missing_predecessors: Set[str] = field(default_factory=set)
 
-    def trigger_successor(self, next_trigger_txs, ready_txs):
-        for tx_id in next_trigger_txs:
-            self.pessi_transaction_info[tx_id]['prev_fin_cnt'] -= 1
-            if self.pessi_transaction_info[tx_id]['prev_fin_cnt'] == 0:
-                self.pessimistic_repair_ready[tx_id] = True
-                ready_txs.setdefault(self.batch_id, []).append(tx_id)
-       
-    def init_tx_info(self, ready_txs, tx_sub, batch_successors):
-        for tx_id in batch_successors:
-            ready_txs.pop(tx_id, None)
-            self.pessi_transaction_info[tx_id]['prev_fin_cnt'] += 1
+    def add_optimistic_successors(self, successors: Iterable[str]) -> None:
+        self.optimistic_successors.update(successors)
+
+    def mark_needs_pessimistic(self, reason: str = "") -> None:
+        self.needs_pessimistic = True
+        if reason:
+            self.missing_predecessors.add(reason)
+
+    def can_trigger_pessimistic(self) -> bool:
+        return (
+            self.needs_pessimistic
+            and self.pessimistic_ready
+            and not self.pessimistic_running
+            and self.final_state is None
+        )
+
+
+@dataclass
+class BatchRepairState:
+    batch_id: str
+    tx_order: List[str]
+    finished_count: int = 0
+    resolved_prefix_index: int = -1
+    batch_finished: bool = False
+    batch_successors: Dict[str, Set[str]] = field(default_factory=dict)
+    tx_successors: Dict[str, Set[str]] = field(default_factory=dict)
+    prev_fin_count: Dict[str, int] = field(default_factory=dict)
+    ready_pessi_queue: Set[str] = field(default_factory=set)
+    finished_by_index: List[bool] = field(default_factory=list)
+    missing_predecessors: Dict[str, Set[str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.tx_order = list(self.tx_order)
+        self.tx_idx = {tx_id: idx for idx, tx_id in enumerate(self.tx_order)}
+        self.prev_fin_count = {tx_id: 0 for tx_id in self.tx_order}
+        self.finished_by_index = [False] * len(self.tx_order)
+
+    @property
+    def batch_size(self) -> int:
+        return len(self.tx_order)
+
+    def add_batch_dependency(self, tx_ids: Iterable[str], predecessor: str = "") -> None:
+        for tx_id in set(tx_ids):
+            if tx_id not in self.prev_fin_count:
+                self.missing_predecessors.setdefault(tx_id, set()).add(predecessor or "unknown_batch")
+                continue
+            self.prev_fin_count[tx_id] += 1
+
+    def add_tx_dependencies(self, tx_sub: Dict[str, Iterable[str]]) -> None:
         for prev_tx_id, next_txs in tx_sub.items():
-            self.pessi_transaction_info[prev_tx_id]['next_txs'] = next_txs
-            for tx_id in next_txs:
-                ready_txs.pop(tx_id, None)
-                self.pessi_transaction_info[tx_id]['prev_fin_cnt'] += 1
-        for tx_id in ready_txs:
-            self.pessimistic_repair_ready[tx_id] = True
+            next_tx_set = set(next_txs)
+            if prev_tx_id not in self.tx_idx:
+                for tx_id in next_tx_set:
+                    self.missing_predecessors.setdefault(tx_id, set()).add(prev_tx_id)
+                continue
+            self.tx_successors.setdefault(prev_tx_id, set()).update(next_tx_set)
+            for tx_id in next_tx_set:
+                if tx_id not in self.prev_fin_count:
+                    self.missing_predecessors.setdefault(tx_id, set()).add(prev_tx_id)
+                    continue
+                self.prev_fin_count[tx_id] += 1
 
-    def modify_batch_successors(self, next_batch_id, next_batch_txs, batch_successors):
-        batch_successors.extend(next_batch_txs)
-        self.next_txs_after_batch.setdefault(next_batch_id, []).extend(next_batch_txs)
-        # logging.info(f"[PESSIMISTIC REPAIR] Batch {self.batch_id} modified successors: {next_batch_id} with transactions {next_batch_txs}")
+    def mark_initial_ready(self) -> Set[str]:
+        ready = {
+            tx_id
+            for tx_id, count in self.prev_fin_count.items()
+            if count == 0
+        }
+        self.ready_pessi_queue.update(ready)
+        return ready
 
-    def transaction_finish(self, tx_id, ready_txs):
-        txs_to_be_triggered_by_prev_finish = []
-        finish_idx = self.tx_idx[tx_id]
-        self.finished_tx_list[self.tx_idx[tx_id]] = True
-        if self.fin_consecutive_cnt == finish_idx - 1:
-            while self.fin_consecutive_cnt < self.batch_size - 1 and self.finished_tx_list[self.fin_consecutive_cnt + 1] is not None:
-                self.fin_consecutive_cnt += 1
-                current_fin_tx_id = self.transaction_list[self.fin_consecutive_cnt]
-                txs_to_be_triggered_by_prev_finish.extend(self.pessi_transaction_info[current_fin_tx_id]['next_txs'])
-        self.trigger_successor(txs_to_be_triggered_by_prev_finish, ready_txs)
+    def add_successor_batch(self, next_batch_id: str, tx_ids: Iterable[str]) -> None:
+        self.batch_successors.setdefault(next_batch_id, set()).update(tx_ids)
+
+    def release_transactions_after_tx_finish(self, tx_id: str) -> Dict[str, Set[str]]:
+        ready: Dict[str, Set[str]] = {}
+        tx_idx = self.tx_idx.get(tx_id)
+        if tx_idx is None:
+            return ready
+        self.finished_by_index[tx_idx] = True
+        if self.resolved_prefix_index == tx_idx - 1:
+            while (
+                self.resolved_prefix_index < self.batch_size - 1
+                and self.finished_by_index[self.resolved_prefix_index + 1]
+            ):
+                self.resolved_prefix_index += 1
+                current_tx_id = self.tx_order[self.resolved_prefix_index]
+                self._release_successors(current_tx_id, ready)
+        return ready
+
+    def release_successors_after_batch_finish(self) -> Dict[str, Set[str]]:
+        ready: Dict[str, Set[str]] = {}
+        for next_batch_id, next_txs in self.batch_successors.items():
+            ready.setdefault(next_batch_id, set()).update(next_txs)
+        return ready
+
+    def mark_tx_ready(self, tx_ids: Iterable[str]) -> Set[str]:
+        ready: Set[str] = set()
+        for tx_id in set(tx_ids):
+            if tx_id not in self.prev_fin_count:
+                self.missing_predecessors.setdefault(tx_id, set()).add("unknown_release")
+                continue
+            if self.prev_fin_count[tx_id] > 0:
+                self.prev_fin_count[tx_id] -= 1
+            if self.prev_fin_count[tx_id] == 0:
+                self.ready_pessi_queue.add(tx_id)
+                ready.add(tx_id)
+        return ready
+
+    def _release_successors(self, prev_tx_id: str, ready: Dict[str, Set[str]]) -> None:
+        successors = self.tx_successors.get(prev_tx_id, set())
+        newly_ready = self.mark_tx_ready(successors)
+        if newly_ready:
+            ready.setdefault(self.batch_id, set()).update(newly_ready)
 
 
-class OptimisticTransactionState:
-    def __init__(self, batch_id, tx_id):
-        self.need_pessimistic_repair = False
-        self.optimistic_repair_state = WAITING
-        self.batch_id = batch_id
-        self.transaction_id = tx_id
-        self.transaction_subjection = []
+@dataclass
+class SinkCommand:
+    batch_finished: bool = False
+    pessi_repair_txs: Set[str] = field(default_factory=set)
+    aborted_txs: Set[str] = field(default_factory=set)
 
-    def modify_transaction_subjection(self, tx_sub_inside_batch:list):
-        """
-        Update the subjection info for the given transaction.
-        sub_per_tx: {prev_tx_id: {next_tx:True}}
-        """
-        if self.optimistic_repair_state == ABORTED:
-            return ABORTED
-        self.transaction_subjection.extend(tx_sub_inside_batch)
-        # logging.info(f"[OPTIMISTIC SUBJECTION] Transaction {self.transaction_id} in batch {self.batch_id} updated subjection: {self.transaction_subjection}")
-        return self.optimistic_repair_state
-    
-    def optimistic_state_change_after_repair(self, optimistic_repair_mode, repair_state):
-        """
-        Update the optimistic repair state after repair. return the repair is rejected or not.
-        """
-        successors_to_be_pessimistic = []
-        if self.need_pessimistic_repair and optimistic_repair_mode == OPT_REPAIR:
-            return True, []
-        self.optimistic_repair_state = repair_state
-        if self.optimistic_repair_state == ABORTED:
-            successors_to_be_pessimistic = self.transaction_subjection
-        return False, successors_to_be_pessimistic
+
+# Compatibility aliases for older imports. The state machine now uses the
+# explicit dataclasses above.
+PessimisticBatchState = BatchRepairState
+OptimisticTransactionState = TransactionRepairState

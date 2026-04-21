@@ -444,9 +444,10 @@ Redis shadow table 中常见 key：
 1. 在 storage node 执行 `scripts/db_setup.sh <workflow>` 或 `scripts/db_setup.sh app`。
 2. 在每个 worker 执行 `scripts/worker_setup.sh <workflow>`。
 3. 启动 validator proxy：`python src/commit_manager/proxy.py <storage_ip> 9000`。
-4. 启动 gateway：`python src/gateway/gateway.py <storage_ip> 8000`。
+4. 启动 gateway：`python src/gateway/gateway.py <storage_ip> 8000 8001`。
+   其中 `8000` 提供外部 `/run`，`8001` 提供内部 `/notify`。
 5. 在 worker 启动 WorkerSP proxy：`python src/workflow_manager/proxy.py <worker_ip> 7500`。
-6. 在 end function 所在节点启动 transaction sink：`python src/transaction_sink/proxy.py <worker_ip> 6000`。
+6. 在 end function 所在节点启动 transaction sink：`python src/transaction_sink/proxy.py <worker_ip> 6000 6001`。其中 `6000` 负责 `/validate`、`/fin_repair`、`/abort`，`6001` 负责 `/repair_pessi`、`/release_opt`，用于隔离 repair 控制流量，减少组件间连接丢失。
 7. 使用 `experiment/.../run.py` 生成 workload 并向 gateway 发请求。
 
 实际脚本中没有看到一个完整的一键启动所有服务的编排器，因此复现实验通常需要多节点手动启动或外部脚本配合。
@@ -482,3 +483,157 @@ FaaSRep 的核心贡献很清楚：它把冲突处理从 “发现冲突后丢�
 5. 增加一个单机 smoke test，用小 workflow 启动 Redis/Scylla/CouchDB 后验证一次完整事务、一次 optimistic repair、一次 pessimistic fallback。
 6. 为 validator 的 `key_writers`、`PessimisticRepairer`、RYW merge 写纯单元测试；这些是正确性的核心，最适合用确定性小例子覆盖。
 
+## 13. 当前重构后的架构和修改总结
+
+本轮修改保持 FaaSRep 外部 HTTP API payload 兼容，重点把 validator/serializer、repair metadata、pessimistic repairer 和 transaction sink 的内部状态边界显式化。新的核心形态如下。
+
+### 13.1 Commit manager / serializer
+
+`src/commit_manager/models.py` 和 `src/commit_manager/serializer_state.py` 现在承载 validator hot path 的 typed model 和服务边界：
+
+- `WriterRef`、`UpstreamRef` 描述 writer 和跨事务 upstream。
+- `FunctionRepairPlan`、`TransactionRepairPlan` 描述函数级 repair metadata，最后再转成旧 JSON 字段 `dirty`、`up_cnt`、`upstream_keys`、`RYW_keys`、`successor_port`。
+- `PessimisticSinkInfo` 内部用 set 去重 PBD/PTD/whole-tx optimistic dependency，对外仍输出原来的 `batch_sub`、`tx_sub`、`last_tx`、`whole_tx_sub`。
+- `ValidationResult` 统一承载 expired keys、repair dependency 和 pessimistic sink info。
+- `WriterIndex` 使用 `deque[WriterRef]` 替代旧 list，commit 时用 `popleft()`，避免 `pop(0)` 的 O(n) hot path。
+- `BatchCommitTracker` 管理 batch 写集合、ready write count、version 和 suspended commit。
+- `DependencyBuilder` 专门负责 stale-read 检查和依赖构建。
+
+`src/commit_manager/serializer.py` 的主路径已经切到这些 typed component：validation 先生成 `ValidationResult`，进程边界再转成兼容 dict；commit cascade 使用 deque 和 `BatchCommitTracker` 推进后续 suspended batch。
+
+### 13.2 Repair metadata
+
+`src/commit_manager/repair_info.py` 现在先用 `FunctionRepairPlan` 构造每个函数的 repair plan，再统一转回 worker 侧消费的旧 JSON 结构。修复点包括：
+
+- 每个函数 metadata 都有默认字段，避免 `upstream_keys` 缺省导致 KeyError。
+- RYW merge 不再覆盖已有 dirty 状态，而是 OR 语义。
+- RYW key 会移除同 key 的跨事务 upstream dependency，避免同事务写被错误解释成跨事务依赖。
+- `up_cnt` 从去重后的 upstream `(tx_id, func)` 集合派生，避免多 key 指向同一 upstream 时重复等待。
+- pessimistic metadata 更新同样走 `FunctionRepairPlan`，保持 optimistic/pessimistic 两条路径字段一致。
+
+### 13.3 PessimisticRepairer
+
+`src/commit_manager/pessimistic_repairer.py` 的 batch writer table 改为 `key -> list[WriterRef | None]`。abort 会把对应 tx 的 writer slot 幂等置空，重复 abort 不会 KeyError，也不会重复影响 commit key 选择。悲观依赖构造在锁内只读取 writer table 并生成 dependency dict，锁外再更新 `RepairInfo`，减少锁内副作用。
+
+`pessimistic_get_commit_keys()` 现在返回 `set[str]`，外层 serializer 已能兼容 set 或旧 dict payload。
+
+### 13.4 Transaction sink 状态机
+
+`src/transaction_sink/batch_state_struct.py` 新增显式状态模型：
+
+- `TransactionRepairState`：记录 tx 所属 batch、optimistic repair state、是否需要 pessimistic repair、pessimistic ready/running、最终状态、迟到 optimistic finish 是否被拒绝、whole-tx optimistic successors 和缺失前驱。
+- `BatchRepairState`：记录 batch tx order、finished count、resolved prefix、PTD successors、PBD successors、prev dependency count、ready queue 和缺失 predecessor。
+- `SinkCommand`：状态机在锁内只产生命令，外层根据命令通知 validator 或触发 pessimistic repair。
+
+`src/transaction_sink/validate_struct.py` 中 `RepairingBatchState` 已改为显式入口：
+
+- `register_batch`
+- `update_subjection_info`，对应计划中的 register dependencies
+- `after_transaction_finish`，对应 mark repair finished
+- `_mark_needs_pessimistic`
+- `clear_opt_table_after_finish`，对应 release optimistic state
+
+所有状态 mutation 都在 `state_lock` 内完成，网络请求只在外层 `TransactionSink` 根据返回 task/command 发出。
+
+最关键的卡死路径已经修复：如果一个 tx 已被标记为 `needs_pessimistic=True`，迟到的 optimistic finish 不再 `return False, []` 后静默丢失，而是记录 `optimistic_result_rejected=True`；如果该 tx 已 pessi-ready 且未运行 pessimistic repair，则产生 pessimistic trigger command，否则等待 PBD/PTD 释放。
+
+PBD/PTD 和 whole-tx optimistic dependency 都用 set 去重。已 committed/completed batch、已 aborted tx、未知 predecessor 分别建模：committed/completed predecessor 视为 satisfied；aborted predecessor 会让后继进入 pessimistic path；unknown predecessor 记录到 `unknown_predecessors` 和 tx `missing_predecessors`，并输出 warning/watchdog 日志。
+
+### 13.5 卡死防护和可观测性
+
+配置中新增：
+
+- `WATCHDOG_LOG_INTERVAL`
+- `WATCHDOG_STUCK_AFTER`
+
+按照当前调试策略，系统不再使用跨组件 HTTP timeout、greenlet join timeout 或 serializer response timeout 来推进状态，也不会因为 timeout 自动 abort 事务。HTTP 调用如果立即返回错误，会记录错误日志；如果请求或 greenlet 长时间阻塞，系统保持阻塞状态，等待人工终止。这样可以保留现场，避免 timeout 把真正的卡死根因改写成二次 abort/fail-fast。
+
+`gevent.joinall()` 只做无 timeout 等待，返回后检查 greenlet exception 并记录。`RepairEngine` 在 prepare/trigger repair 失败或缺失 container port 时，只输出 `[REPAIR BLOCKED]` 上下文，不再自动向 sink `/abort`。serializer 请求同样无限等待；validator watchdog 会输出等待 serializer 的 batch、op、age 和 payload key。
+
+sink watchdog 会周期性输出长时间未完成 batch 的 waiting tx、ready 条件、当前 optimistic/pessimistic mode、prev dependency count 和缺失 predecessor。validator watchdog 会周期性输出 batch runtime state，包括 status、成功/abort tx、read/write/container_port 覆盖情况、timestamp 和 serializer pending 状态。
+
+### 13.6 Validator runtime state
+
+`src/commit_manager/validator.py` 原先维护多组平行字典：
+
+- `tx_list_per_batch`
+- `container_port_per_batch`
+- `read_set_per_batch`
+- `write_set_per_batch`
+- `successed_tx_list_per_batch`
+- `aborted_tx_list_per_batch`
+- `time_tuple_per_batch`
+
+这些字典现在收敛到 `src/commit_manager/validator_state.py`：
+
+- `BatchRuntimeState` 保存单个 batch 的 tx order、read/write set、RYW subjection、container port、成功事务表、abort 列表、三阶段 timestamp 和当前状态。
+- `ValidatorBatchStore` 管理 batch 生命周期，提供 register/get/pop/stuck snapshot。
+
+Validator 的执行流变成：
+
+1. VALIDATE 请求进入时构造 `BatchRuntimeState` 并注册到 store。
+2. serializer validation 返回后构造 repair metadata。
+3. batch 状态标记为 repairing，并交给 `RepairEngine`。
+4. sink 返回 repair finish command 后，validator 在同一个 `BatchRuntimeState` 上记录 abort、更新 pessimistic writer table，并按 batch 是否完成决定 commit 或继续 pessimistic repair。
+5. commit/cascaded commit 使用 store 中的 batch state 组装 worker commit payload 和 gateway notify payload。
+6. clean 时 pop batch state 并清理 repair engine/repair info/pessimistic repairer 的 batch 内部状态。
+
+### 13.7 测试覆盖
+
+新增纯单元测试位于 `tests/`，不依赖真实 DB 或服务：
+
+- `test_serializer_state.py`：stale read、writer dependency、同 batch nearest tx dependency、commit cascade。
+- `test_repair_info.py`：RYW merge、dirty OR、upstream 去重、pessimistic metadata 默认字段。
+- `test_pessimistic_repairer.py`：abort 后 writer table 重建、commit key 选择、重复 abort 幂等。
+- `test_sink_state.py`：optimistic -> pessimistic fallback、迟到 finish、重复 finish、未知 predecessor 兜底。
+- `test_deterministic_repair_smoke.py`：不启动真实服务的 deterministic optimistic repair / pessimistic fallback smoke。
+- `test_validator_state.py`：验证 `BatchRuntimeState` 对旧平行字典的收敛、abort 记录、timestamp 和 store snapshot/pop。
+
+当前已用 FaaSRep conda 环境跑过：
+
+```bash
+conda run --no-capture-output -n FaaSRep python -m compileall -q config src tests
+conda run --no-capture-output -n FaaSRep python -m unittest discover -s tests -p 'test_*.py'
+```
+
+共 16 个单元测试通过。
+
+### 13.8 真实环境 correctness debug suite
+
+新增真实环境验证套件位于 `experiment/debug_tests/repair_correctness/`。它包含一个小型 deterministic/controlled benchmark：
+
+- workflow 名称：`repair_correctness`
+- 函数图：`claim -> {use_ryw, guard_abort} -> aggregate`
+- DynamoDB key：
+  - `<scenario>_hot`：高冲突计数 key，用来验证 serializer writer order、repair 后的最终提交值。
+  - `<scenario>_tail`：同事务 RYW/tail propagation key，用来验证 RYW metadata 和 downstream dirty 传播。
+  - `<scenario>_guard`：控制分支 key，用来制造跨事务依赖并触发前序事务的可控 abort。
+  - `<scenario>_audit`：旁路分支写入 key，用来验证 fan-out/fan-in 场景下的 dirty 和 RYW 传播。
+  - `<scenario>_result`：聚合函数写入 key，用来验证最终 fan-in 写回。
+
+`claim` 从 GLOBAL 输入接收所有测试 key，读取并写回 hot/guard 两个 key；`use_ryw` 通过 `store.get(hot_key)` 验证同事务 RYW 必须读到 `claim` 的写；`guard_abort` 通过 `store.get(guard_key)` 验证另一条 RYW 分支，并可通过 `guard_abort_threshold` 在 repair 阶段主动 abort；`aggregate` 同时等待 `use_ryw` 与 `guard_abort` 两个父节点，读取 tail/audit key 做 fan-in 校验，并写回 result key。
+
+初始化流程已接入项目统一入口，和其他 workflow 一样拆成 DB/metadata 初始化与 worker 镜像构建：
+
+```bash
+bash scripts/db_setup.sh repair_correctness
+bash scripts/worker_setup.sh repair_correctness
+```
+
+其中 `db_setup.sh repair_correctness` 会运行 `scripts/init/repair_correctness/init.sh` 写入 `rc_hot`、`rc_tail`、`rc_guard`、`rc_audit`、`rc_result` 初始数据，并调用 `src/initializer/initialize.py repair_correctness` 写入 CouchDB workflow metadata；`worker_setup.sh repair_correctness` 会运行 `scripts/init/repair_correctness/gen_image.sh` 构建 `repair_correctness_claim`、`repair_correctness_use_ryw`、`repair_correctness_guard_abort`、`repair_correctness_aggregate` 四个函数镜像。
+
+在用户已经启动 Gateway、workersp、validator、transaction sink 等组件后，debug suite 的一键运行脚本只负责本轮具体执行：
+
+```bash
+bash experiment/debug_tests/repair_correctness/run_all.sh
+```
+
+脚本步骤包括：
+
+1. 为每个场景生成唯一 DynamoDB key，例如 `rc_<run_id>_<scenario>_hot`、`rc_<run_id>_<scenario>_guard`，避免在不重启 validator/serializer 时把 DB 回滚到旧 version 后触发假 stale/conflict。
+2. 通过 Gateway 运行 `sequential_ryw`、`optimistic_chain`、`pessimistic_fallback`、`cascaded_pessimistic_retry` 四类场景；由于系统可通过 `ABORT_PROB` 注入随机 abort，`sequential_ryw` 会重试直到得到 2 个成功事务或达到尝试上限。
+3. `cascaded_pessimistic_retry` 启动三笔重叠事务：base 先写 guard/hot，aborting predecessor 在 repair 阶段读到 base 的 guard 后主动 abort，successor 已完成 optimistic repair 后被 sink 标记为 `needs_pessimistic`，随后以 pessimistic repair 重跑；脚本要求至少一个 abort、至少两个成功提交、且至少一个成功响应 `rounds == 3`。
+4. 每个成功响应必须回传 `final_hot_key`、`final_tail_key`、`final_guard_key`、`final_audit_key`、`final_result_key`，用于提前识别 gateway/workersp 仍在使用旧 workflow metadata 或旧函数镜像的 stale deployment。
+5. 扫描 DynamoDB 并按每个场景自己的 hot key 校验成功事务数，而不是总请求数；fallback 场景还要求至少出现一次 abort。
+
+本轮只提供代码，没有启动真实 DynamoDB/CouchDB/Gateway/Worker/Validator，也没有执行该真实环境 debug suite。

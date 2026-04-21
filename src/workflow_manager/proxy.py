@@ -1,18 +1,16 @@
 import sys
 import logging
 import os
-# 配置日志记录 - 输出到文件并每次运行时刷新
-log_file = '../../logging/proxy.log'
 
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
+sys.path.append('../../config')
+import config
+from logging_utils import RunAwareFileHandler
 
 def setup_logger():
     logger = logging.getLogger('proxy')
     logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
+    # 动态跟随当前 run_id 的文件处理器
+    file_handler = RunAwareFileHandler(config.ROOT_DIR, 'workflow_proxy.log')
     file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
@@ -53,9 +51,6 @@ app = Flask(__name__)
 docker_client = docker.from_env()
 repo = workersp_repo.Repository()
 
-sys.path.append('../../config')
-import config
-
 validate_interval = 0.005 # 200 qps at most
 default_FaaSTCC_snapshot_interval = [datetime(2000, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f'), datetime(2999, 1, 1).strftime('%Y-%m-%d %H:%M:%S.%f')]
 
@@ -81,18 +76,18 @@ class Dispatcher:
                     except Exception as e:
                         log_message(f"Failed to remove container {container.id}: {e}")
                 time.sleep(1)  # Wait a moment for cleanup to complete
-            #log_message("All workflow containers have been cleared.")
+            log_message("All workflow containers have been cleared.")
         except Exception as e:
             log_message(f"Error during container cleanup: {e}")
         self.host_addr = sys.argv[1] + ':' + sys.argv[2]
         repo.shadowtable_init(sys.argv[1])
         repo.clear_mem()
         self.node_list = repo.get_all_addrs('common')
-        ##log_message(f"Node list: {self.node_list}")
+        log_message(f"Node list: {self.node_list}")
         self.all_workflows = info_addrs.keys()
         self.reserve_pools =  {name: ReservePool() for name in info_addrs}
         self.managers = {name: WorkerSPManager(self.host_addr, name, addr, self.reserve_pools[name], repo, self.node_list) for name, addr in info_addrs.items()}
-        #log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
+        log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
     def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states) -> TransactionState:
@@ -139,7 +134,7 @@ def repair():
     repair_mode = data['repair_mode']
     no_parent_execution = data['no_parent_execution']
     port = data['port']
-    ##log_message(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
+    log_message(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
     dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
     return json.dumps({'status': 'ok'})
 
@@ -174,8 +169,8 @@ def req():
     repair = data.get('repair', False)
     repair_mode = data.get('repair_mode', "")
     repair_states = data.get('repair_states', {})
-    # if repair:
-        ##log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
+    if repair:
+        log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
     state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
@@ -190,7 +185,6 @@ def clear():
     dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     # if abort_clear:
     #     if FAST_PATH:
-    #         ##log_message(f"transaction {transaction_id} abort, return its containers to pool.")
     #         dispatcher.reserve_pools[workflow_name].release([transaction_id])
     # else:
     dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
@@ -217,11 +211,10 @@ def commit():
     # if FAST_PATH:
     #     workflow_name = data['workflow_name']
     #     fin_tx_list = commit_list['txs']
-    #     #log_message(f"transactions {fin_tx_list} committing, release containers.")
     #     dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     repo.commit_tx_writes(commit_list['keys'])
     #repo.clear_aborted_txs(aborted_txs)
-    #log_message(f"transactions {fin_tx_list} committed, aborted_txs:{aborted_txs}")
+    log_message(f"transactions {commit_list['txs']} committed, aborted_txs:{aborted_txs}")
     return json.dumps({'status': 'ok'})
 
 @app.route('/release', methods = ['POST'])
@@ -230,7 +223,7 @@ def release():
     tx_lists = data['tx_lists']
     workflow_name = data['workflow_name']
     for fin_tx_list in tx_lists:
-        ##log_message(f"transactions {fin_tx_list} commited, release containers.")
+        log_message(f"transactions {fin_tx_list} commited, release containers.")
         dispatcher.reserve_pools[workflow_name].release(fin_tx_list)
     return json.dumps({'status': 'ok'})
 
@@ -253,5 +246,5 @@ GET_NODE_INFO_INTERVAL = 0.1
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
+    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app, backlog=config.HTTP_SERVER_BACKLOG)
     server.serve_forever()

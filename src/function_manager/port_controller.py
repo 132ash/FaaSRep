@@ -48,12 +48,8 @@ class PortController:
     
     def refresh_available_ports(self):
         """重新扫描并更新可用端口池"""
-        acquired = False
         try:
-            acquired = self.lock.acquire(timeout=5.0)
-            if not acquired:
-                logging.error(f"[PORT_CONTROLLER] Timeout acquiring lock to refresh ports")
-                return False
+            self.lock.acquire()
             
             # 保存当前已分配的端口
             current_allocated = self.allocated_ports.copy()
@@ -75,18 +71,13 @@ class PortController:
             logging.error(f"[PORT_CONTROLLER] Error refreshing available ports: {e}")
             return False
         finally:
-            if acquired:
-                self.lock.release()
+            self.lock.release()
         
         
     def get(self):
         """获取一个可用端口"""
-        acquired = False
         try:
-            acquired = self.lock.acquire(timeout=5.0)  # 5秒超时
-            if not acquired:
-                logging.error(f"[PORT_CONTROLLER] Timeout acquiring lock to get port")
-                raise Exception("timeout acquiring lock for port allocation")
+            self.lock.acquire()
             
             if len(self.port_resource) == 0:
                 logging.error(f"[PORT_CONTROLLER] No idle port available. Range: {self.min_port}-{self.max_port}")
@@ -100,17 +91,12 @@ class PortController:
             logging.error(f"[PORT_CONTROLLER] Error getting port: {e}")
             raise
         finally:
-            if acquired:
-                self.lock.release()
+            self.lock.release()
 
     def put(self, port):
         """归还一个端口"""
-        acquired = False
         try:
-            acquired = self.lock.acquire(timeout=5.0)  # 5秒超时
-            if not acquired:
-                logging.error(f"[PORT_CONTROLLER] Timeout acquiring lock to return port {port}")
-                return False
+            self.lock.acquire()
             
             # 检查端口是否在有效范围内
             if port < self.min_port or port >= self.max_port:
@@ -135,5 +121,4 @@ class PortController:
             logging.error(f"[PORT_CONTROLLER] Error returning port {port}: {e}")
             return False
         finally:
-            if acquired:
-                self.lock.release()
+            self.lock.release()
