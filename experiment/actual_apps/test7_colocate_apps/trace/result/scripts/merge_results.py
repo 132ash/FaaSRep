@@ -3,7 +3,22 @@ import os
 import argparse
 from pathlib import Path
 
-def merge_results(result_dir, output_file):
+DEFAULT_WARMUP_SECONDS = 30
+
+
+def get_segment_cutoff(data, warmup_seconds):
+    segment_start_time = data.get('segment_start_local_time')
+    if segment_start_time is not None:
+        return segment_start_time + warmup_seconds
+
+    ids = data.get('ids', {})
+    start_times = [info['st'] for info in ids.values() if 'st' in info]
+    if not start_times:
+        return None
+    return min(start_times) + warmup_seconds
+
+
+def merge_results(result_dir, output_file, default_warmup_seconds=DEFAULT_WARMUP_SECONDS):
     print(f"Merging results from {result_dir}...")
     
     result_files = sorted([f for f in os.listdir(result_dir) if f.startswith('result_segment_') and f.endswith('.json')])
@@ -17,15 +32,21 @@ def merge_results(result_dir, output_file):
             data = json.load(f)
             
         segment_ids = data['ids']
+        warmup_seconds = data.get('warmup_seconds', default_warmup_seconds)
+        cutoff = get_segment_cutoff(data, warmup_seconds)
         count = 0
         skipped = 0
+        warmup_skipped = 0
         for req_id, info in segment_ids.items():
+            if cutoff is not None and info.get('st', 0) < cutoff:
+                warmup_skipped += 1
+                continue
             if req_id not in merged_ids:
                 merged_ids[req_id] = info
                 count += 1
             else:
                 skipped += 1
-        print(f"  Added {count} requests, skipped {skipped} duplicates.")
+        print(f"  Added {count} requests, skipped {warmup_skipped} warmup requests, skipped {skipped} duplicates.")
         
     # Reconstruct lists
     # Sort by firing timestamp (st)
@@ -43,6 +64,7 @@ def merge_results(result_dir, output_file):
 
     merged_data = {
         'workflow_name': workflow_name,
+        'warmup_cut_per_segment_seconds': default_warmup_seconds,
         'latencies': latencies,
         'firing_timestamps': firing_timestamps,
         'ids': merged_ids
@@ -60,6 +82,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--result-dir', type=str, required=True, help='Directory containing segment result files')
     parser.add_argument('--output', type=str, required=True, help='Path to output merged JSON file')
+    parser.add_argument('--default-warmup-seconds', type=float, default=DEFAULT_WARMUP_SECONDS, help='Warmup seconds to cut if a segment result does not record warmup_seconds')
     args = parser.parse_args()
     
-    merge_results(args.result_dir, args.output)
+    merge_results(args.result_dir, args.output, args.default_warmup_seconds)

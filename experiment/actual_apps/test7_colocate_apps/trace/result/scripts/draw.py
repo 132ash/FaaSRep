@@ -8,9 +8,9 @@ import argparse
 
 # --- 配置 ---
 # 默认结果文件路径
-DEFAULT_RESULT_FILE = '/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace/result/travel_reservation/travel_merged.json'
+DEFAULT_RESULT_FILE = '/home/shao/FaaSnap/experiment/actual_apps/test7_colocate_apps/trace/result/summary/lowload/Concord/travel_reservation_merged.json'
 DEFAULT_OUTPUT_IMAGE = 'combined_throughput_curve.png'
-TRACE_FILE = 'trace_tidy.json'
+TRACE_FILE = Path('prepare') / 'raw' / 'trace_tidy.json'
 
 def load_data(filepath):
     print(f"Loading data from {filepath}...")
@@ -26,7 +26,7 @@ def load_data(filepath):
         return None
 
 def load_trace_data(script_dir, trace_id, start_idx, duration):
-    trace_path = script_dir / TRACE_FILE
+    trace_path = script_dir.parent.parent / TRACE_FILE
     # print(f"Loading trace data from {trace_path}...")
     try:
         if not trace_path.exists():

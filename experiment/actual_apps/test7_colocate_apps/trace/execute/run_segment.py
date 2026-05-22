@@ -16,7 +16,7 @@ script_dir = Path(__file__).parent
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
     while project_root != project_root.parent:
-        if (project_root / "README.md").exists():
+        if (project_root / "config").is_dir() and (project_root / "experiment").is_dir():
             break
         project_root = project_root.parent
     return project_root
@@ -59,6 +59,11 @@ def post_request(workflow, global_req_id, parameters_input):
             'ed': ed, 
             'e2e_latency': rep['e2e_latency'], 
             'rounds': rep['rounds'],
+            'transaction_id': rep.get('transaction_id', ''),
+            'workflow_exec_latency': rep.get('workflow_exec_latency', 0),
+            'time_inside_validator': rep.get('time_inside_validator', 0),
+            'time_repair': rep.get('time_repair', 0),
+            'time_commit': rep.get('time_commit', 0),
             'global_req_id': global_req_id
         }
         latencies.append(rep['e2e_latency'])
@@ -80,11 +85,15 @@ def run_workflow(workflow_name, parameters):
         print(f"Request failed: {e}")
         return {'e2e_latency': 0, 'rounds': 0, 'failed': True}
 
-def save_results(filepath, workflow_name, segment_index):
+def save_results(filepath, workflow_name, segment_data, start_local_time):
     print(f"\nSaving results to {filepath}...")
     save_logs = {
         'workflow_name': workflow_name,
-        'segment_index': segment_index,
+        'segment_index': segment_data['segment_index'],
+        'core_interval': segment_data.get('core_interval'),
+        'actual_interval': segment_data.get('actual_interval'),
+        'warmup_seconds': segment_data.get('warmup_seconds', 0),
+        'segment_start_local_time': start_local_time,
         'latencies': latencies,
         'firing_timestamps': firing_timestamps,
         'ids': ids
@@ -172,7 +181,7 @@ def run(segment_file, output_file):
     # Wait a bit for trailing responses
     gevent.sleep(5)
     
-    save_results(output_file, workflow, segment_index)
+    save_results(output_file, workflow, segment_data, start_local_time)
     
     print('total requests count:', len(latencies))
     if latencies:

@@ -16,7 +16,7 @@ script_dir = Path(__file__).parent
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
     while project_root != project_root.parent:
-        if (project_root / "README.md").exists():
+        if (project_root / "config").is_dir() and (project_root / "experiment").is_dir():
             break
         project_root = project_root.parent
     return project_root
@@ -28,8 +28,10 @@ import config.config as config
 from experiment.common import generate_param
 from gevent.pool import Pool
 
+TRACE_DIR = script_dir.parent
+
 try:
-    with open(script_dir / 'trace_tidy.json', 'r') as f:
+    with open(TRACE_DIR / 'prepare' / 'raw' / 'trace_tidy.json', 'r') as f:
         raw_trace = json.load(f)
 except Exception as e:
     print(f"Error loading trace file: {e}")
@@ -152,11 +154,10 @@ def run():
 
 
     # 准备结果文件路径
-    if not os.path.exists('result'):
-        os.mkdir('result')
-    
     filename = f"{mode}_Trace_{workflow}_{trace_id}_{start_idx}.json"
-    filepath = os.path.join('result', filename)
+    result_dir = TRACE_DIR / 'result' / 'summary' / 'full_trace' / mode
+    result_dir.mkdir(parents=True, exist_ok=True)
+    filepath = str(result_dir / filename)
 
     # 启动 Checkpoint 协程
     cp_greenlet = gevent.spawn(checkpoint_loop, filepath, workflow, trace_id, start_idx, exp_duration)

@@ -1,38 +1,40 @@
 import json
 import sys
-import os
 from pathlib import Path
 import math
+import os
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
     while project_root != project_root.parent:
-        if (project_root / "README.md").exists():
+        if (project_root / "config").is_dir() and (project_root / "experiment").is_dir():
             break
         project_root = project_root.parent
     return project_root
 
 ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
+PREPARE_DIR = script_dir.parent
 
 from experiment.common import generate_param
-workflow = 'social_network'
+workflow = os.environ.get('WORKFLOW', 'travel_reservation')
 
 def split_trace():
     # Configuration
-    trace_file = script_dir / 'trace_tidy.json'
+    trace_file = PREPARE_DIR / 'raw' / 'trace_tidy.json'
     trace_id = 1
     start_idx = 105674
     exp_duration = 3600 # 1 hour
     
-    segment_duration = 5 * 60 # 5 minutes
-    overlap_duration = 1 * 60 # 1 minute
+    core_segment_duration = 2 * 60 # 2 minutes used for measurement
+    prefix_duration = 30 # 30 seconds warmup before each measured segment
     
-    output_dir = script_dir / 'segments'
-    if not output_dir.exists():
-        os.makedirs(output_dir)
+    output_dir = PREPARE_DIR / 'segments' / 'lowload'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for old_segment in output_dir.glob('segment_*.json'):
+        old_segment.unlink()
         
     print(f"Loading trace from {trace_file}...")
     with open(trace_file, 'r') as f:
@@ -71,21 +73,16 @@ def split_trace():
         }
         all_requests.append(req)
         
-    # Split into segments
-    # Core segments: 0-5, 5-10, 10-15...
-    num_segments = math.ceil(exp_duration / segment_duration)
+    # Split into measured 2-minute segments with a 30-second warmup prefix.
+    num_segments = math.ceil(exp_duration / core_segment_duration)
     
     for i in range(num_segments):
-        core_start_time = i * segment_duration
-        core_end_time = (i + 1) * segment_duration
+        core_start_time = i * core_segment_duration
+        core_end_time = min((i + 1) * core_segment_duration, exp_duration)
         
-        # Apply overlap
-        if i == 0:
-            actual_start_time = core_start_time
-        else:
-            actual_start_time = core_start_time - overlap_duration
-            
+        actual_start_time = max(0, core_start_time - prefix_duration)
         actual_end_time = core_end_time
+        warmup_seconds = core_start_time - actual_start_time
         
         # Filter requests for this segment
         # We use relative_time for filtering. 
@@ -107,6 +104,7 @@ def split_trace():
             'segment_index': i,
             'core_interval': [core_start_time, core_end_time],
             'actual_interval': [actual_start_time, actual_end_time],
+            'warmup_seconds': warmup_seconds,
             'requests': segment_requests,
             'workflow': workflow,
             'trace_id': trace_id,
@@ -114,10 +112,10 @@ def split_trace():
         }
         
         outfile = output_dir / f'segment_{i}.json'
-        with open(outfile, 'w') as f:
+        with open(outfile, 'w', encoding='utf-8') as f:
             json.dump(segment_data, f, indent=2)
             
-        print(f"Created segment {i}: {len(segment_requests)} requests. Interval: {actual_start_time/60:.1f}-{actual_end_time/60:.1f} min")
+        print(f"Created segment {i}: {len(segment_requests)} requests. Core: {core_start_time/60:.1f}-{core_end_time/60:.1f} min. Actual: {actual_start_time/60:.1f}-{actual_end_time/60:.1f} min")
 
 if __name__ == "__main__":
     split_trace()
