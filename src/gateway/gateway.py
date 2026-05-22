@@ -138,15 +138,32 @@ def run():
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
         txTable.running_txs.pop(transaction_id, None)
     else:
+        first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time, notify_received_time, pessimistic = txTable.finishTX(transaction_id)
+        result_fetch_start = time.time()
         res = repo.get_result(transaction_id, workflow)
-        first_run_finish_time, repair_start_time, repair_finish_time, pessimistic = txTable.finishTX(transaction_id)
         end = time.time()
         first_run_latency = first_run_finish_time - start
         time_inside_validator = repair_start_time - first_run_finish_time
         time_repair = repair_finish_time - repair_start_time
-        time_commit = end - repair_finish_time
+        time_commit = commit_finish_time - repair_finish_time
+        result_fetch_latency = end - result_fetch_start
+        post_commit_gateway_latency = end - commit_finish_time
+        notify_to_fetch_start_latency = result_fetch_start - notify_received_time
         rounds = 3 if pessimistic else 2
-        message = json.dumps({'status': 'ok', 'e2e_latency': end-start, 'workflow_exec_latency':first_run_latency, 'transaction_id': transaction_id, "res": res, 'time_inside_validator':time_inside_validator, 'time_repair':time_repair, 'time_commit':time_commit, 'rounds':rounds})
+        message = json.dumps({
+            'status': 'ok',
+            'e2e_latency': end-start,
+            'workflow_exec_latency':first_run_latency,
+            'transaction_id': transaction_id,
+            "res": res,
+            'time_inside_validator':time_inside_validator,
+            'time_repair':time_repair,
+            'time_commit':time_commit,
+            'result_fetch_latency': result_fetch_latency,
+            'post_commit_gateway_latency': post_commit_gateway_latency,
+            'notify_to_fetch_start_latency': notify_to_fetch_start_latency,
+            'rounds':rounds
+        })
     #log_message(f"transaction {transaction_id} in {workflow} aborted: {aborted}, clearing states")
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
@@ -164,13 +181,14 @@ def notify():
     #log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
     #log_message(f'notify, running_txs:{list(txTable.running_txs.keys())}')
     if aborted_txs_from_validator:
-        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, True, {})
+        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, abort=True, pessimistic_txs={})
     for transaction_id_list, timestamp_per_batch, pessimistic_txs_per_batch in zip(transaction_id_lists, timestamps, pessimistic_txs):
         if data.get('abort', False):
-            txTable.notifyTX(transaction_id_list, 0,0, 0, True, {})
+            txTable.notifyTX(transaction_id_list, 0,0, 0, abort=True, pessimistic_txs={})
         else:
             first_run_finish_time, repair_start_time, repair_finish_time = timestamp_per_batch[0], timestamp_per_batch[1], timestamp_per_batch[2]
-            txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, False, pessimistic_txs_per_batch)  
+            commit_finish_time = timestamp_per_batch[3] if len(timestamp_per_batch) > 3 else repair_finish_time
+            txTable.notifyTX(transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time, time.time(), False, pessimistic_txs_per_batch)  
     return json.dumps({"status": "notified"})
 
 @app.route('/clear_container', methods = ['POST'])

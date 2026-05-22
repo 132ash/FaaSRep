@@ -87,8 +87,12 @@ def analyze_and_save_results(all_gateway_results, system_mode):
     numeric_columns = [
         'e2e_latency', 'workflow_exec_latency', 'rounds',
         'func_e2e_latency', 'io_latency', 'time_commit', 'time_repair',
-        'function_exec_latency', 'scheduling_latency', 'time_inside_validator'
+        'function_exec_latency', 'scheduling_latency', 'time_inside_validator',
+        'result_fetch_latency', 'post_commit_gateway_latency', 'notify_to_fetch_start_latency'
     ]
+    for column in numeric_columns:
+        if column not in gateway_df:
+            gateway_df[column] = 0
     avg_metrics = gateway_df[numeric_columns].mean()
 
     #log_message(f"transactio
@@ -102,6 +106,9 @@ def analyze_and_save_results(all_gateway_results, system_mode):
         "time_inside_validator": avg_metrics.get("time_inside_validator", 0),
         "time_repair": avg_metrics.get("time_repair", 0),
         "time_commit": avg_metrics.get("time_commit", 0),
+        "result_fetch_latency": avg_metrics.get("result_fetch_latency", 0),
+        "post_commit_gateway_latency": avg_metrics.get("post_commit_gateway_latency", 0),
+        "notify_to_fetch_start_latency": avg_metrics.get("notify_to_fetch_start_latency", 0),
         "rounds": avg_metrics.get("rounds"),
     }
     

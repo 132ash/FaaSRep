@@ -9,7 +9,6 @@ import numpy as np
 
 
 script_dir = Path(__file__).parent
-repo = repository.Repository()
 
 
 # travel_reservation parameters
@@ -187,6 +186,7 @@ def generate_social_media_parameters(client_cnt, round_cnt):
     return parameters_inputs
 
 def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param, read_ratio):
+    repo = repository.Repository()
     text_size = 4 * 1024
     dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)

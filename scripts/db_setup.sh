@@ -1,5 +1,6 @@
 #!/bin/bash
 CURRENT_SH_DIR=$(dirname $(readlink -f "$0"))
+ROOT_DIR=$(readlink -f "$CURRENT_SH_DIR/..")
 # install docker
 # apt-get update
 # apt-get install -y \
@@ -68,58 +69,120 @@ WORKFLOWS_INIT=(
 # List of microbenchmark workflows from c2 to w16
 MICROBENCHMARK_WORKFLOWS=(c2 c4 c8 c16 w2 w4 w6 w8)
 
+CONFIGURED_WORKFLOWS_OUTPUT=$(python - "$ROOT_DIR" <<'PY'
+import importlib.util
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+config_path = root / "config" / "config.py"
+spec = importlib.util.spec_from_file_location("faasnap_config", config_path)
+config = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(config)
+print(" ".join(config.WORKFLOW_YAML_ADDR.keys()))
+PY
+)
+if [ $? -ne 0 ]; then
+    echo "Error: failed to read config.WORKFLOW_YAML_ADDR from $ROOT_DIR/config/config.py." >&2
+    exit 1
+fi
+CONFIGURED_WORKFLOWS=($CONFIGURED_WORKFLOWS_OUTPUT)
+
+if [ "${#CONFIGURED_WORKFLOWS[@]}" -eq 0 ]; then
+    echo "Error: config.WORKFLOW_YAML_ADDR is empty. No workflow metadata can be initialized." >&2
+    exit 1
+fi
+
+contains_workflow() {
+    local target="$1"
+    local wf
+    for wf in "${CONFIGURED_WORKFLOWS[@]}"; do
+        if [ "$wf" == "$target" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+filter_configured_workflows() {
+    local wf
+    for wf in "$@"; do
+        if contains_workflow "$wf"; then
+            echo "$wf"
+        else
+            echo "Warning: workflow '$wf' is not in config.WORKFLOW_YAML_ADDR; skip metadata initialization." >&2
+        fi
+    done
+}
+
+run_dataset_init_for_workflows() {
+    local initialized_groups=()
+    local wf group already
+    for wf in "$@"; do
+        group="$wf"
+        for micro_wf in "${MICROBENCHMARK_WORKFLOWS[@]}"; do
+            if [ "$wf" == "$micro_wf" ]; then
+                group="microbenchmark"
+                break
+            fi
+        done
+
+        already=false
+        for existing in "${initialized_groups[@]}"; do
+            if [ "$existing" == "$group" ]; then
+                already=true
+                break
+            fi
+        done
+        if [ "$already" == true ]; then
+            continue
+        fi
+
+        if [ -n "${WORKFLOWS_INIT[$group]}" ]; then
+            echo "Running init script for: $group"
+            bash "${WORKFLOWS_INIT[$group]}"
+            initialized_groups+=("$group")
+        else
+            echo "Warning: no init script for workflow group '$group'." >&2
+        fi
+    done
+}
+
+initialize_workflow_metadata() {
+    local workflows=("$@")
+    if [ "${#workflows[@]}" -eq 0 ]; then
+        echo "Error: no workflow metadata to initialize. Check config.WORKFLOW_YAML_ADDR." >&2
+        exit 1
+    fi
+    echo "Running initialize.py for: ${workflows[@]}"
+    python "$CURRENT_SH_DIR/../src/initializer/initialize.py" "${workflows[@]}"
+}
+
 # Read workflow name from argument
-WORKFLOW_NAME="$1"
+WORKFLOW_NAME="${1:-}"
 
 if [ "$WORKFLOW_NAME" == "app" ]; then
-    echo "Initializing actual application workflows: travel_reservation, banking_system, social_network"
+    echo "Initializing configured actual application workflows."
     
-    ACTUAL_WORKFLOWS=("travel_reservation" "banking_system" "social_network")
+    ACTUAL_WORKFLOWS=($(filter_configured_workflows "travel_reservation" "banking_system" "social_network"))
     
-    # 运行每个工作流的 init.sh 脚本
-    for wf in "${ACTUAL_WORKFLOWS[@]}"; do
-        echo "Running init script for: $wf"
-        bash "${WORKFLOWS_INIT[$wf]}"
-    done
+    run_dataset_init_for_workflows "${ACTUAL_WORKFLOWS[@]}"
     
-    # 调用 initialize.py 来初始化这三个工作流
-    echo "Running initialize.py for: ${ACTUAL_WORKFLOWS[@]}"
-    python $CURRENT_SH_DIR/../src/initializer/initialize.py "${ACTUAL_WORKFLOWS[@]}"
+    initialize_workflow_metadata "${ACTUAL_WORKFLOWS[@]}"
 
 elif [ -n "$WORKFLOW_NAME" ] && [ -n "${WORKFLOWS_INIT[$WORKFLOW_NAME]}" ]; then
     echo "Initializing workflow: $WORKFLOW_NAME"
-    bash "${WORKFLOWS_INIT[$WORKFLOW_NAME]}"
     
     # 根据工作流名称决定传递给 initialize.py 的参数
     if [ "$WORKFLOW_NAME" == "microbenchmark" ]; then
-        echo "Initializing microbenchmark workflows: ${MICROBENCHMARK_WORKFLOWS[@]}"
-        # python $CURRENT_SH_DIR/../src/initializer/initialize.py "${MICROBENCHMARK_WORKFLOWS[@]}"
+        WORKFLOWS_TO_INITIALIZE=($(filter_configured_workflows "${MICROBENCHMARK_WORKFLOWS[@]}"))
     else
-        echo "Initializing single workflow: $WORKFLOW_NAME"
-        python $CURRENT_SH_DIR/../src/initializer/initialize.py "$WORKFLOW_NAME"
+        WORKFLOWS_TO_INITIALIZE=($(filter_configured_workflows "$WORKFLOW_NAME"))
     fi
+    run_dataset_init_for_workflows "${WORKFLOWS_TO_INITIALIZE[@]}"
+    initialize_workflow_metadata "${WORKFLOWS_TO_INITIALIZE[@]}"
 else
-    echo "No specific workflow provided or workflow not found. Initializing all workflows."
-    
-    # 执行所有工作流的初始化脚本
-    for wf in "${!WORKFLOWS_INIT[@]}"; do
-        echo "Initializing workflow: $wf"
-        bash "${WORKFLOWS_INIT[$wf]}"
-    done
-
-    # 构建完整的工作流列表
-    ALL_WORKFLOWS=()
-    
-    # 添加 microbenchmark 工作流
-    ALL_WORKFLOWS+=("${MICROBENCHMARK_WORKFLOWS[@]}")
-    
-    # 添加除了 microbenchmark 之外的其他工作流
-    for wf in "${!WORKFLOWS_INIT[@]}"; do
-        if [ "$wf" != "microbenchmark" ]; then
-            ALL_WORKFLOWS+=("$wf")
-        fi
-    done
-    
-    echo "Initializing all workflows: ${ALL_WORKFLOWS[@]}"
-    python $CURRENT_SH_DIR/../src/initializer/initialize.py "${ALL_WORKFLOWS[@]}"
+    echo "No specific workflow provided or workflow not found. Initializing workflows in config.WORKFLOW_YAML_ADDR."
+    run_dataset_init_for_workflows "${CONFIGURED_WORKFLOWS[@]}"
+    initialize_workflow_metadata "${CONFIGURED_WORKFLOWS[@]}"
 fi

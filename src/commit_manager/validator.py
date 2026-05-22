@@ -135,7 +135,7 @@ class ValidatorProcess(Process):
         self.write_set_per_batch = {}
         self.successed_tx_list_per_batch = {}  # {batch_id: [tx_id1, tx_id2, ...]}
         self.aborted_tx_list_per_batch = {}
-        self.time_tuple_per_batch = {}  # {batch_id: (first_run_finish_time, last_task_time)} 
+        self.time_tuple_per_batch = {}  # {batch_id: [first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time]}
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
         last_task_time = time.time()
         while True:
@@ -162,7 +162,7 @@ class ValidatorProcess(Process):
             expired_keys_per_ip, pessi_sink_info = self.validate(batch_id, batch)
             self.register_lock.release()
             repair_start_time = time.time()
-            self.time_tuple_per_batch[batch_id] = [last_task_time, repair_start_time, 0]
+            self.time_tuple_per_batch[batch_id] = [last_task_time, repair_start_time, 0, 0]
             self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
 
         elif op == REPAIR_FINISH:
@@ -276,6 +276,9 @@ class ValidatorProcess(Process):
             ]
             gevent.joinall(jobs)
             self.repair_engine.sink_release_optimistic_info(commit_batch_list)
+            commit_finish_time = time.time()
+            for batch_id in commit_batch_list:
+                self.time_tuple_per_batch[batch_id][3] = commit_finish_time
             self.notify_gateway(txid_lists, True, timestamps, abort_txs, pes_txs)
             self.clean_batch_info(commit_batch_list)
 

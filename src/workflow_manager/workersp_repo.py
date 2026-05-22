@@ -1,5 +1,7 @@
 from gevent import monkey
 monkey.patch_all()
+import gevent
+from gevent import queue
 import couchdb
 import redis
 import boto3
@@ -66,6 +68,10 @@ class Repository:
                     for host in self.get_all_addrs('common')
                     }
         self.subjection_collector:SubjectionCollector = None
+        self.latency_queue = queue.Queue()
+        self.latency_batch_size = getattr(config, "LATENCY_BATCH_SIZE", 128)
+        self.latency_flush_interval = getattr(config, "LATENCY_FLUSH_INTERVAL", 0.05)
+        gevent.spawn(self._latency_writer_loop)
 
     def shadowtable_init(self, ip):
         self.ip = ip
@@ -133,8 +139,36 @@ class Repository:
         log_db.save({'transaction_id': transaction_id, 'workflow': workflow_name, 'status': status})
     
     def save_latency(self, log):
-        latency_db = self.couch['workflow_latency']
-        latency_db.save(log)
+        self.latency_queue.put(log)
+
+    def save_latencies(self, logs):
+        for log in logs:
+            self.latency_queue.put(log)
+
+    def _latency_writer_loop(self):
+        pending = []
+        while True:
+            try:
+                pending.append(self.latency_queue.get(timeout=self.latency_flush_interval))
+            except queue.Empty:
+                pass
+
+            while len(pending) < self.latency_batch_size:
+                try:
+                    pending.append(self.latency_queue.get_nowait())
+                except queue.Empty:
+                    break
+
+            if not pending:
+                continue
+
+            batch = pending
+            pending = []
+            try:
+                latency_db = self.couch['workflow_latency']
+                latency_db.update(batch)
+            except Exception as exc:
+                print(f"Failed to write latency batch to CouchDB: {exc}", file=sys.stderr)
 
     def param_wrapper(self, transaction_id, mode, func="" ,key=""):
         return f"{transaction_id}:{mode}:{func}:{key}" 

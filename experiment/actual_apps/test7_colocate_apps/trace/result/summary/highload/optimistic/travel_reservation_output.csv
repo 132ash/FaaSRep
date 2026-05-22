@@ -1,0 +1,2 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput,e2e_latency,scheduling_latency,function_io_latency,function_exec_latency,time_inside_validator,time_repair,time_commit,result_fetch_latency,post_commit_gateway_latency,notify_to_fetch_start_latency,rounds
+travel_reservation,13253,0.1720,0.1679,0.2412,795.93,16.65,0.171957,0.040806,0.003300,0.030686,0.004041,0.040358,0.032929,0.017186,0.019838,0.000455,2.000000

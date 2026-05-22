@@ -1,6 +1,7 @@
 from gevent import event
 import sys
 import requests
+import time
 sys.path.append('../../config')
 import config
 
@@ -18,9 +19,11 @@ class RunningTXTable:
         first_run_finish_time = self.running_txs[tx_id]["first_run_finish_time"]
         repair_start_time = self.running_txs[tx_id]["repair_start_time"]
         repair_finish_time = self.running_txs[tx_id]["repair_finish_time"]
+        commit_finish_time = self.running_txs[tx_id].get("commit_finish_time", repair_finish_time)
+        notify_received_time = self.running_txs[tx_id].get("notify_received_time", commit_finish_time)
         pessimistic = self.running_txs[tx_id]['pessimistic']
         self.running_txs.pop(tx_id)
-        return first_run_finish_time, repair_start_time, repair_finish_time, pessimistic
+        return first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time, notify_received_time, pessimistic
 
     def waitTX(self, tx_id):
         condition = self.running_txs[tx_id]['cond']
@@ -41,7 +44,9 @@ class RunningTXTable:
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
 
-    def notifyTX(self, transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, abort = False, pessimistic_txs={}):
+    def notifyTX(self, transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time=None, notify_received_time=None, abort = False, pessimistic_txs=None):
+        if pessimistic_txs is None:
+            pessimistic_txs = {}
         if abort:
             for tx_id in transaction_id_list:
                 self.running_txs[tx_id]['abort'] = True
@@ -55,4 +60,6 @@ class RunningTXTable:
                 self.running_txs[tx_id]["first_run_finish_time"] = first_run_finish_time
                 self.running_txs[tx_id]["repair_start_time"] = repair_start_time
                 self.running_txs[tx_id]['repair_finish_time']=repair_finish_time
+                self.running_txs[tx_id]['commit_finish_time'] = commit_finish_time if commit_finish_time else repair_finish_time
+                self.running_txs[tx_id]['notify_received_time'] = notify_received_time if notify_received_time else time.time()
                 condition.set()
