@@ -34,15 +34,36 @@ WORKFLOW_YAML_ADDR = {
                      #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                       }
 
-DEFAULT_CONTAINER_NUM = 64
+DEFAULT_CONTAINER_NUM = 32
 CLEAR_MEM = True
 
 # microbenchmark configuration
 DB_SIZE = 10000
 DATA_ITEM_SIZE = 4 * 1024
 
+## OLD APPLICATION PARAMETERS (not used in current experiments, but kept here for reference)
+
+# # travel reservation
+# FLIGHT_IDS = 50			
+# FLIGHT_CAPACITY = "100"			
+# RENTAL_START = '2025-07-01'			
+# RENTAL_END = '2025-07-31'			
+# CAR_NUM = '300'			
+# DATE_FORMAT = "%Y-%m-%d"			
+			
+# # banking system			
+# BANKING_ACCOUNTS = 50
+# BANKING_ORIGINAL_BALANCE = "10000"			
+# LOGIN_FAIL_PROB = 0			
+			
+# # social network			
+# SOCIAL_NETWORK_USERS = 50			
+# STARTUP_POSTS = 1
 # travel reservation
-FLIGHT_IDS = 50			
+
+## APPLICATION PARAMETERS V1
+# travel reservation
+FLIGHT_IDS = 100			
 FLIGHT_CAPACITY = "100"			
 RENTAL_START = '2025-07-01'			
 RENTAL_END = '2025-07-31'			
@@ -50,10 +71,29 @@ CAR_NUM = '300'
 DATE_FORMAT = "%Y-%m-%d"			
 			
 # banking system			
-BANKING_ACCOUNTS = 50	
+BANKING_ACCOUNTS = 100
 BANKING_ORIGINAL_BALANCE = "10000"			
 LOGIN_FAIL_PROB = 0			
 			
 # social network			
-SOCIAL_NETWORK_USERS = 50			
-STARTUP_POSTS = 1
+SOCIAL_NETWORK_USERS = 100			
+STARTUP_POSTS = 2
+
+
+# # APPLICATION PARAMETERS V2
+# # travel reservation
+# FLIGHT_IDS = 200			
+# FLIGHT_CAPACITY = "200"			
+# RENTAL_START = '2025-07-01'			
+# RENTAL_END = '2025-07-31'			
+# CAR_NUM = '300'			
+# DATE_FORMAT = "%Y-%m-%d"			
+			
+# # banking system			
+# BANKING_ACCOUNTS = 200
+# BANKING_ORIGINAL_BALANCE = "10000"			
+# LOGIN_FAIL_PROB = 0			
+			
+# # social network			
+# SOCIAL_NETWORK_USERS = 200			
+# STARTUP_POSTS = 3
