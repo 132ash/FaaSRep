@@ -1,0 +1,2 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput,Average Rounds,P50 Rounds,P99 Rounds,Max Rounds,Retried Requests,Retry Ratio
+travel_reservation,2384,0.3777,0.3258,1.0997,120.32,19.81,2.467701,2.000000,7.000000,16,2379,0.997903

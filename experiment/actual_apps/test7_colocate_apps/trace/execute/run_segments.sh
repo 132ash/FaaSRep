@@ -3,7 +3,7 @@
 # Specify workflow name
 WORKFLOW="${WORKFLOW:-travel_reservation}"
 SYSTEM="${SYSTEM:-OCC}"
-TRACE="${TRACE:-highload}"
+TRACE="${TRACE:-lowload}"
 
 # Set paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +24,7 @@ echo "Results directory: $RESULT_DIR"
 #
 # Override at runtime, for example:
 #   TRACE=lowload TARGET_SEGMENT_INDICES_OVERRIDE="1 8 17 19 29" bash execute/run_segments.sh
-TARGET_SEGMENT_INDICES=(6)
+TARGET_SEGMENT_INDICES=(1)
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"

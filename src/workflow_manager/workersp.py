@@ -240,10 +240,11 @@ class WorkerSPManager:
         # ##log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
         state.read_set[info["function_name"]] = res["read_set"]
         state.lock.release()
-        self.repo.save_latencies([
-            {'workflow_name': self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start},
-            {'workflow_name': self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}
-        ])
+        if getattr(config, 'COLLECT_FUNCTION_LATENCY', False):
+            self.repo.save_latencies([
+                {'workflow_name': self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start},
+                {'workflow_name': self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}
+            ])
         return True
 
     def clear_mem(self, transaction_id):

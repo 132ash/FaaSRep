@@ -1,0 +1,2 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput,Average Rounds,P50 Rounds,P99 Rounds,Max Rounds,Retried Requests,Retry Ratio
+social_network,2384,0.4039,0.3261,1.2479,120.32,19.81,2.742869,2.000000,8.000000,13,2384,1.000000

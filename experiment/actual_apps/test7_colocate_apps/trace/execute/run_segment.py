@@ -25,16 +25,14 @@ ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
 
 import config.config as config
-from experiment.common import repository
 from gevent.pool import Pool
 
 DB_NODE_IP = config.STORAGE_NODE_IP
-# dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
-repo = repository.Repository()
 
 # Global variables for results
 ids = {}
 latencies = []
+rounds = []
 firing_timestamps = []
 
 def gc_loop():
@@ -62,16 +60,10 @@ def post_request(workflow, global_req_id, parameters_input):
             'e2e_latency': rep['e2e_latency'], 
             'rounds': rep['rounds'],
             'transaction_id': rep.get('transaction_id', ''),
-            'workflow_exec_latency': rep.get('workflow_exec_latency', 0),
-            'time_inside_validator': rep.get('time_inside_validator', 0),
-            'time_repair': rep.get('time_repair', 0),
-            'time_commit': rep.get('time_commit', 0),
-            'result_fetch_latency': rep.get('result_fetch_latency', 0),
-            'post_commit_gateway_latency': rep.get('post_commit_gateway_latency', 0),
-            'notify_to_fetch_start_latency': rep.get('notify_to_fetch_start_latency', 0),
             'global_req_id': global_req_id
         }
         latencies.append(rep['e2e_latency'])
+        rounds.append(rep['rounds'])
         firing_timestamps.append(st)
     except Exception as e:
         print(f"Exception in request {global_req_id}: {e}")
@@ -90,31 +82,6 @@ def run_workflow(workflow_name, parameters):
         print(f"Request failed: {e}")
         return {'e2e_latency': 0, 'rounds': 0, 'failed': True}
 
-def collect_latency_breakdown():
-    txids = [
-        info.get('transaction_id')
-        for info in ids.values()
-        if info.get('transaction_id')
-    ]
-    if not txids:
-        return
-
-    print(f"Collecting function-level latency breakdown for {len(txids)} transactions...")
-    exec_latencies = repo.get_latencies_for_txs_by_phase(txids, 'exec')
-    io_latencies = repo.get_latencies_for_txs_by_phase(txids, 'io')
-
-    for info in ids.values():
-        txid = info.get('transaction_id')
-        if not txid:
-            continue
-        func_e2e_latency = exec_latencies.get(txid, 0)
-        function_io_latency = io_latencies.get(txid, 0)
-        workflow_exec_latency = info.get('workflow_exec_latency', 0)
-        info['func_e2e_latency'] = func_e2e_latency
-        info['function_io_latency'] = function_io_latency
-        info['function_exec_latency'] = func_e2e_latency - function_io_latency
-        info['scheduling_latency'] = workflow_exec_latency - func_e2e_latency
-
 def save_results(filepath, workflow_name, segment_data, start_local_time):
     print(f"\nSaving results to {filepath}...")
     save_logs = {
@@ -125,6 +92,7 @@ def save_results(filepath, workflow_name, segment_data, start_local_time):
         'warmup_seconds': segment_data.get('warmup_seconds', 0),
         'segment_start_local_time': start_local_time,
         'latencies': latencies,
+        'rounds': rounds,
         'firing_timestamps': firing_timestamps,
         'ids': ids
     }
@@ -211,13 +179,13 @@ def run(segment_file, output_file):
     # Wait a bit for trailing responses
     gevent.sleep(5)
 
-    collect_latency_breakdown()
-    
     save_results(output_file, workflow, segment_data, start_local_time)
     
     print('total requests count:', len(latencies))
     if latencies:
         print('avg:', format(sum(latencies) / len(latencies), '.3f'))
+    if rounds:
+        print('avg rounds:', format(sum(rounds) / len(rounds), '.3f'))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

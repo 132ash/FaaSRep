@@ -69,6 +69,7 @@ WORKFLOW_YAML_ADDR = {
 # cache setting
 CACHE_ENABLED = True
 CLEAR_MEM = True
+COLLECT_FUNCTION_LATENCY = False
 FILLUP_CACHE = False
 EXPIRED_CACHE = True
 
@@ -105,7 +106,6 @@ LOGIN_FAIL_PROB = 0
 # social network			
 SOCIAL_NETWORK_USERS = 75			
 STARTUP_POSTS = 2
-
 
 
 

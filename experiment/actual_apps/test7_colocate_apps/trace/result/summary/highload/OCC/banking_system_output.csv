@@ -1,0 +1,2 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput,e2e_latency,scheduling_latency,function_io_latency,function_exec_latency,time_inside_validator,time_repair,time_commit,result_fetch_latency,post_commit_gateway_latency,notify_to_fetch_start_latency,rounds
+banking_system,5307,0.2581,0.2324,0.5941,120.34,44.10,0.258131,0.173439,0.002489,0.063273,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,2.306011

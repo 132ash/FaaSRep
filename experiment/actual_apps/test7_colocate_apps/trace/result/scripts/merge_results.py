@@ -52,6 +52,7 @@ def merge_results(result_dir, output_file, default_warmup_seconds=DEFAULT_WARMUP
     sorted_reqs = sorted(merged_ids.values(), key=lambda x: x['st'])
     
     latencies = [r['e2e_latency'] for r in sorted_reqs]
+    rounds = [r.get('rounds', 0) for r in sorted_reqs]
     firing_timestamps = [r['st'] for r in sorted_reqs]
     
     # We might want to preserve other metadata from the first file
@@ -65,6 +66,7 @@ def merge_results(result_dir, output_file, default_warmup_seconds=DEFAULT_WARMUP
         'workflow_name': workflow_name,
         'warmup_cut_per_segment_seconds': default_warmup_seconds,
         'latencies': latencies,
+        'rounds': rounds,
         'firing_timestamps': firing_timestamps,
         'ids': merged_ids
     }

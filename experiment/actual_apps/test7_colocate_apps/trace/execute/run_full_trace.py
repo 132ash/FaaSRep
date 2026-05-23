@@ -27,7 +27,6 @@ sys.path.append(str(ROOT_DIR))
 
 import config.config as config
 from experiment.common import generate_param
-from experiment.common import repository
 from gevent.pool import Pool
 
 def get_default_workflow():
@@ -43,13 +42,13 @@ except Exception as e:
 
 DB_NODE_IP = config.STORAGE_NODE_IP
 dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567', aws_secret_access_key='FAASNAPDYNAMODBKEY', aws_access_key_id='FAASNAPDYNAMODB', region_name='us-west-2')
-repo = repository.Repository()
 
 # --- 全局测试参数 ---
 workflow = os.environ.get('WORKFLOW', get_default_workflow())
 mode='PESSIMISTIC'
 ids = {}
 latencies = []
+rounds = []
 firing_timestamps = []
 
 def post_request(workflow, request_id, parameters_input):
@@ -67,15 +66,9 @@ def post_request(workflow, request_id, parameters_input):
             'e2e_latency': rep['e2e_latency'],
             'rounds': rep['rounds'],
             'transaction_id': rep.get('transaction_id', ''),
-            'workflow_exec_latency': rep.get('workflow_exec_latency', 0),
-            'time_inside_validator': rep.get('time_inside_validator', 0),
-            'time_repair': rep.get('time_repair', 0),
-            'time_commit': rep.get('time_commit', 0),
-            'result_fetch_latency': rep.get('result_fetch_latency', 0),
-            'post_commit_gateway_latency': rep.get('post_commit_gateway_latency', 0),
-            'notify_to_fetch_start_latency': rep.get('notify_to_fetch_start_latency', 0),
         }
         latencies.append(rep['e2e_latency'])
+        rounds.append(rep['rounds'])
         firing_timestamps.append(st)
     except Exception as e:
         print(f"Error in post_request for workflow {workflow}: {e}")
@@ -96,31 +89,6 @@ def run_workflow(workflow_name, parameters):
         print(f"Request failed: {e}")
         return {'e2e_latency': 0, 'rounds': 0, 'failed': True}
 
-def collect_latency_breakdown():
-    txids = [
-        info.get('transaction_id')
-        for info in ids.values()
-        if info.get('transaction_id')
-    ]
-    if not txids:
-        return
-
-    print(f"Collecting function-level latency breakdown for {len(txids)} transactions...")
-    exec_latencies = repo.get_latencies_for_txs_by_phase(txids, 'exec')
-    io_latencies = repo.get_latencies_for_txs_by_phase(txids, 'io')
-
-    for info in ids.values():
-        txid = info.get('transaction_id')
-        if not txid:
-            continue
-        func_e2e_latency = exec_latencies.get(txid, 0)
-        function_io_latency = io_latencies.get(txid, 0)
-        workflow_exec_latency = info.get('workflow_exec_latency', 0)
-        info['func_e2e_latency'] = func_e2e_latency
-        info['function_io_latency'] = function_io_latency
-        info['function_exec_latency'] = func_e2e_latency - function_io_latency
-        info['scheduling_latency'] = workflow_exec_latency - func_e2e_latency
-
 def analyze_workflow(workflow, parameters_input):
     rep = run_workflow(workflow, parameters_input)
     transaction_id = rep.get('transaction_id', '')
@@ -138,6 +106,7 @@ def save_checkpoint(filepath, workflow_name, trace_id, start_idx, exp_duration):
         'start_idx': start_idx,
         'exp_duration': exp_duration,
         'latencies': latencies,
+        'rounds': rounds,
         'firing_timestamps': firing_timestamps,
         'ids': ids
     }
@@ -230,14 +199,14 @@ def run():
     # 停止 Checkpoint 协程
     cp_greenlet.kill()
 
-    collect_latency_breakdown()
-
     # 保存最终结果
     save_checkpoint(filepath, workflow, trace_id, start_idx, exp_duration)
     
     print('total requests count:', len(latencies))
     if latencies:
         print('avg:', format(sum(latencies) / len(latencies), '.3f'))
+    if rounds:
+        print('avg rounds:', format(sum(rounds) / len(rounds), '.3f'))
 
 if __name__ == '__main__':
     run()

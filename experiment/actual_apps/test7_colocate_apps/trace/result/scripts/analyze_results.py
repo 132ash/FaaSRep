@@ -1,66 +1,64 @@
-import json
 import argparse
-import os
-import math
 import csv
+import json
+import math
+import os
 
-BREAKDOWN_COLUMNS = [
-    'e2e_latency',
-    'scheduling_latency',
-    'function_io_latency',
-    'function_exec_latency',
-    'time_inside_validator',
-    'time_repair',
-    'time_commit',
-    'result_fetch_latency',
-    'post_commit_gateway_latency',
-    'notify_to_fetch_start_latency',
-    'rounds',
+
+ROUND_COLUMNS = [
+    'Average Rounds',
+    'P50 Rounds',
+    'P99 Rounds',
+    'Max Rounds',
+    'Retried Requests',
+    'Retry Ratio',
 ]
 
 
-def average_metric(infos, key):
-    values = [
-        info.get(key)
-        for info in infos
-        if isinstance(info.get(key), (int, float))
-    ]
-    if not values:
+def percentile(sorted_values, p):
+    if not sorted_values:
         return 0
-    return sum(values) / len(values)
+    k = (len(sorted_values) - 1) * (p / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_values[int(k)]
+    d0 = sorted_values[int(f)] * (c - k)
+    d1 = sorted_values[int(c)] * (k - f)
+    return d0 + d1
 
 
-def build_latency_breakdown(ids):
-    infos = list(ids.values())
+def build_round_stats(ids, fallback_rounds=None):
+    rounds = [
+        info.get('rounds')
+        for info in ids.values()
+        if isinstance(info.get('rounds'), (int, float))
+    ]
+    if not rounds and fallback_rounds:
+        rounds = [r for r in fallback_rounds if isinstance(r, (int, float))]
+    if not rounds:
+        return {
+            'Average Rounds': 0,
+            'P50 Rounds': 0,
+            'P99 Rounds': 0,
+            'Max Rounds': 0,
+            'Retried Requests': 0,
+            'Retry Ratio': 0,
+        }
+
+    sorted_rounds = sorted(rounds)
+    retried_requests = sum(1 for r in rounds if r > 1)
     return {
-        'e2e_latency': average_metric(infos, 'e2e_latency'),
-        'scheduling_latency': average_metric(infos, 'scheduling_latency'),
-        'function_io_latency': average_metric(infos, 'function_io_latency'),
-        'function_exec_latency': average_metric(infos, 'function_exec_latency'),
-        'time_inside_validator': average_metric(infos, 'time_inside_validator'),
-        'time_repair': average_metric(infos, 'time_repair'),
-        'time_commit': average_metric(infos, 'time_commit'),
-        'result_fetch_latency': average_metric(infos, 'result_fetch_latency'),
-        'post_commit_gateway_latency': average_metric(infos, 'post_commit_gateway_latency'),
-        'notify_to_fetch_start_latency': average_metric(infos, 'notify_to_fetch_start_latency'),
-        'rounds': average_metric(infos, 'rounds'),
+        'Average Rounds': sum(rounds) / len(rounds),
+        'P50 Rounds': percentile(sorted_rounds, 50),
+        'P99 Rounds': percentile(sorted_rounds, 99),
+        'Max Rounds': max(rounds),
+        'Retried Requests': retried_requests,
+        'Retry Ratio': retried_requests / len(rounds),
     }
 
 
-def write_latency_breakdown_csv(output_csv, workflow_name, breakdown):
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    file_exists = os.path.isfile(output_csv)
-    with open(output_csv, 'a', newline='') as csvfile:
-        fieldnames = ['workflow'] + BREAKDOWN_COLUMNS
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        row = {'workflow': workflow_name}
-        row.update({k: f"{breakdown[k]:.6f}" for k in BREAKDOWN_COLUMNS})
-        writer.writerow(row)
-
-
-def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
+def analyze(file_path, output_csv=None, workflow_name=None):
     print(f"Analyzing {file_path}...")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -71,62 +69,42 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
 
     latencies = data.get('latencies', [])
     ids = data.get('ids', {})
-    
-    if not latencies:
-        print("No latency data found.")
-        return
-
-    # Latency analysis
-    # Filter out None or invalid latencies if any
     valid_latencies = [l for l in latencies if l is not None]
-    
     if not valid_latencies:
         print("No valid latency data.")
         return
 
-    avg_latency = sum(valid_latencies) / len(valid_latencies)
-    
-    # Sort for percentiles
     sorted_latencies = sorted(valid_latencies)
-    def get_percentile(p):
-        k = (len(sorted_latencies) - 1) * (p / 100.0)
-        f = math.floor(k)
-        c = math.ceil(k)
-        if f == c:
-            return sorted_latencies[int(k)]
-        d0 = sorted_latencies[int(f)] * (c - k)
-        d1 = sorted_latencies[int(c)] * (k - f)
-        return d0 + d1
-
-    p50_latency = get_percentile(50)
-    p99_latency = get_percentile(99)
-    latency_breakdown = build_latency_breakdown(ids)
+    avg_latency = sum(valid_latencies) / len(valid_latencies)
+    p50_latency = percentile(sorted_latencies, 50)
+    p99_latency = percentile(sorted_latencies, 99)
+    round_stats = build_round_stats(ids, data.get('rounds', []))
 
     print(f"Total Requests: {len(valid_latencies)}")
     print(f"Average Latency: {avg_latency:.4f} s")
     print(f"P50 Latency: {p50_latency:.4f} s")
     print(f"P99 Latency: {p99_latency:.4f} s")
-    print("Latency Breakdown:")
-    for key in BREAKDOWN_COLUMNS:
-        print(f"  {key}: {latency_breakdown[key]:.6f}")
+    print("Rounds:")
+    for key in ROUND_COLUMNS:
+        value = round_stats[key]
+        if key in ('Retried Requests', 'Max Rounds'):
+            print(f"  {key}: {int(value)}")
+        else:
+            print(f"  {key}: {value:.6f}")
 
-    # Throughput analysis
     start_times = []
     end_times = []
-    
-    for req_id, info in ids.items():
+    for info in ids.values():
         if 'st' in info and 'ed' in info:
             start_times.append(info['st'])
             end_times.append(info['ed'])
-    
+
     duration = 0
     throughput = 0
-    
     if start_times and end_times:
         min_start = min(start_times)
         max_end = max(end_times)
         duration = max_end - min_start
-        
         if duration > 0:
             throughput = len(valid_latencies) / duration
             print(f"Experiment Duration: {duration:.2f} s")
@@ -137,9 +115,7 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
         print("No timing information found in 'ids'.")
 
     if output_csv:
-        # Ensure directory exists
         os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-        
         file_exists = os.path.isfile(output_csv)
         with open(output_csv, 'a', newline='') as csvfile:
             first_col = 'workflow' if workflow_name else 'File'
@@ -151,12 +127,11 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
                 'P99 Latency',
                 'Experiment Duration',
                 'Average Throughput',
-            ] + BREAKDOWN_COLUMNS
+            ] + ROUND_COLUMNS
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            
             if not file_exists:
                 writer.writeheader()
-            
+
             row = {
                 first_col: workflow_name if workflow_name else os.path.basename(file_path),
                 'Total Requests': len(valid_latencies),
@@ -164,26 +139,23 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
                 'P50 Latency': f"{p50_latency:.4f}",
                 'P99 Latency': f"{p99_latency:.4f}",
                 'Experiment Duration': f"{duration:.2f}",
-                'Average Throughput': f"{throughput:.2f}"
+                'Average Throughput': f"{throughput:.2f}",
+                'Average Rounds': f"{round_stats['Average Rounds']:.6f}",
+                'P50 Rounds': f"{round_stats['P50 Rounds']:.6f}",
+                'P99 Rounds': f"{round_stats['P99 Rounds']:.6f}",
+                'Max Rounds': int(round_stats['Max Rounds']),
+                'Retried Requests': int(round_stats['Retried Requests']),
+                'Retry Ratio': f"{round_stats['Retry Ratio']:.6f}",
             }
-            row.update({k: f"{latency_breakdown[k]:.6f}" for k in BREAKDOWN_COLUMNS})
             writer.writerow(row)
         print(f"Results saved to {output_csv}")
 
-    if breakdown_csv:
-        write_latency_breakdown_csv(
-            breakdown_csv,
-            workflow_name if workflow_name else os.path.basename(file_path),
-            latency_breakdown,
-        )
-        print(f"Latency breakdown saved to {breakdown_csv}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', type=str, required=True, help='Path to merged result JSON file')
     parser.add_argument('--output-csv', type=str, help='Path to output CSV file')
-    parser.add_argument('--breakdown-csv', type=str, help='Path to output test8-style latency breakdown CSV file')
     parser.add_argument('--workflow', type=str, help='Workflow name for CSV output')
     args = parser.parse_args()
-    
-    analyze(args.file, args.output_csv, args.workflow, args.breakdown_csv)
+
+    analyze(args.file, args.output_csv, args.workflow)
