@@ -4,6 +4,22 @@ import os
 import math
 import csv
 
+
+def get_percentile(sorted_values, p):
+    k = (len(sorted_values) - 1) * (p / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_values[int(k)]
+    d0 = sorted_values[int(f)] * (c - k)
+    d1 = sorted_values[int(c)] * (k - f)
+    return d0 + d1
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def analyze(file_path, output_csv=None, workflow_name=None):
     print(f"Analyzing {file_path}...")
     if not os.path.exists(file_path):
@@ -32,23 +48,45 @@ def analyze(file_path, output_csv=None, workflow_name=None):
     
     # Sort for percentiles
     sorted_latencies = sorted(valid_latencies)
-    def get_percentile(p):
-        k = (len(sorted_latencies) - 1) * (p / 100.0)
-        f = math.floor(k)
-        c = math.ceil(k)
-        if f == c:
-            return sorted_latencies[int(k)]
-        d0 = sorted_latencies[int(f)] * (c - k)
-        d1 = sorted_latencies[int(c)] * (k - f)
-        return d0 + d1
 
-    p50_latency = get_percentile(50)
-    p99_latency = get_percentile(99)
+    p50_latency = get_percentile(sorted_latencies, 50)
+    p99_latency = get_percentile(sorted_latencies, 99)
 
     print(f"Total Requests: {len(valid_latencies)}")
     print(f"Average Latency: {avg_latency:.4f} s")
     print(f"P50 Latency: {p50_latency:.4f} s")
     print(f"P99 Latency: {p99_latency:.4f} s")
+
+    # Rounds analysis
+    valid_rounds = [
+        info['rounds']
+        for info in ids.values()
+        if is_number(info.get('rounds'))
+    ]
+    total_rounds = sum(valid_rounds)
+    avg_rounds = 0
+    p50_rounds = 0
+    p99_rounds = 0
+    max_rounds = 0
+    multi_round_requests = 0
+    multi_round_ratio = 0
+
+    if valid_rounds:
+        avg_rounds = total_rounds / len(valid_rounds)
+        sorted_rounds = sorted(valid_rounds)
+        p50_rounds = get_percentile(sorted_rounds, 50)
+        p99_rounds = get_percentile(sorted_rounds, 99)
+        max_rounds = max(valid_rounds)
+        multi_round_requests = sum(1 for rounds in valid_rounds if rounds > 1)
+        multi_round_ratio = multi_round_requests / len(valid_rounds)
+        print(f"Total Rounds: {total_rounds:.0f}")
+        print(f"Average Rounds: {avg_rounds:.4f}")
+        print(f"P50 Rounds: {p50_rounds:.4f}")
+        print(f"P99 Rounds: {p99_rounds:.4f}")
+        print(f"Max Rounds: {max_rounds:.0f}")
+        print(f"Multi-round Requests: {multi_round_requests} ({multi_round_ratio:.2%})")
+    else:
+        print("No rounds information found in 'ids'.")
 
     # Throughput analysis
     start_times = []
@@ -78,15 +116,38 @@ def analyze(file_path, output_csv=None, workflow_name=None):
 
     if output_csv:
         # Ensure directory exists
-        os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+        output_dir = os.path.dirname(output_csv)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         
         file_exists = os.path.isfile(output_csv)
+        first_col = 'workflow' if workflow_name else 'File'
+        fieldnames = [
+            first_col,
+            'Total Requests',
+            'Average Latency',
+            'P50 Latency',
+            'P99 Latency',
+            'Total Rounds',
+            'Average Rounds',
+            'P50 Rounds',
+            'P99 Rounds',
+            'Max Rounds',
+            'Multi-round Requests',
+            'Multi-round Ratio',
+            'Experiment Duration',
+            'Average Throughput'
+        ]
+        should_write_header = True
+        if file_exists and os.path.getsize(output_csv) > 0:
+            with open(output_csv, 'r', newline='') as existing_csv:
+                existing_header = next(csv.reader(existing_csv), [])
+            should_write_header = existing_header != fieldnames
+
         with open(output_csv, 'a', newline='') as csvfile:
-            first_col = 'workflow' if workflow_name else 'File'
-            fieldnames = [first_col, 'Total Requests', 'Average Latency', 'P50 Latency', 'P99 Latency', 'Experiment Duration', 'Average Throughput']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             
-            if not file_exists:
+            if should_write_header:
                 writer.writeheader()
             
             row = {
@@ -95,6 +156,13 @@ def analyze(file_path, output_csv=None, workflow_name=None):
                 'Average Latency': f"{avg_latency:.4f}",
                 'P50 Latency': f"{p50_latency:.4f}",
                 'P99 Latency': f"{p99_latency:.4f}",
+                'Total Rounds': f"{total_rounds:.0f}",
+                'Average Rounds': f"{avg_rounds:.4f}",
+                'P50 Rounds': f"{p50_rounds:.4f}",
+                'P99 Rounds': f"{p99_rounds:.4f}",
+                'Max Rounds': f"{max_rounds:.0f}",
+                'Multi-round Requests': multi_round_requests,
+                'Multi-round Ratio': f"{multi_round_ratio:.4f}",
                 'Experiment Duration': f"{duration:.2f}",
                 'Average Throughput': f"{throughput:.2f}"
             }

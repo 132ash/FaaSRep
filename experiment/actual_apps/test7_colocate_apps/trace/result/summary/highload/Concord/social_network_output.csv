@@ -1,2 +1,12 @@
 workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
 social_network,3742,24.0297,15.5904,92.1769,150.88,24.80
+#SOCIAL_NETWORK_USERS = 100			
+#STARTUP_POSTS = 2
+social_network,5307,0.1858,0.1684,0.4255,120.21,44.15
+#SOCIAL_NETWORK_USERS = 100			
+#STARTUP_POSTS = 1
+social_network,5307,30.7384,17.3531,131.4715,192.26,27.60
+#SOCIAL_NETWORK_USERS = 75
+#STARTUP_POSTS = 2
+social_network,5307,0.2081,0.1826,0.5053,120.20,44.15
+social_network,5307,0.2081,0.1826,0.5053,120.20,44.15

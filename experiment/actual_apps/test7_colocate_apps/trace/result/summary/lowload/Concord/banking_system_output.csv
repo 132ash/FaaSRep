@@ -1,2 +1,7 @@
 workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Average Throughput
 banking_system,48427,0.1266,0.1149,1.1401,13.45
+# ACCOUNTS = 100
+banking_system,1298,0.1099,0.1088,0.1377,120.04,10.81
+# ACCOUNTS = 75
+
+banking_system,1298,0.1087,0.1071,0.1385,120.04,10.81

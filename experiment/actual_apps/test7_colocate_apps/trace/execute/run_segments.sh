@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="${WORKFLOW:-travel_reservation}"
+WORKFLOW="${WORKFLOW:-banking_system}"
 SYSTEM="${SYSTEM:-Concord}"
 TRACE="${TRACE:-highload}"
 
@@ -24,13 +24,8 @@ echo "Results directory: $RESULT_DIR"
 #
 # Override at runtime, for example:
 #   TRACE=lowload TARGET_SEGMENT_INDICES_OVERRIDE="1 8 17 19 29" bash execute/run_segments.sh
-if [ -n "${TARGET_SEGMENT_INDICES_OVERRIDE:-}" ]; then
-    read -r -a TARGET_SEGMENT_INDICES <<< "$TARGET_SEGMENT_INDICES_OVERRIDE"
-elif [ "$TRACE" = "lowload" ]; then
-    TARGET_SEGMENT_INDICES=(1 8 17 19 29)
-else
-    TARGET_SEGMENT_INDICES=(1 6 17 24 26)
-fi
+TARGET_SEGMENT_INDICES=(6)
+# 1 8
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do
     SEGMENT_FILE="$SEGMENTS_DIR/segment_${TARGET_SEGMENT_IDX}.json"

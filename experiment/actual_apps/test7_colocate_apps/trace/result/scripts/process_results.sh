@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="${WORKFLOW:-travel_reservation}"
+WORKFLOW="${WORKFLOW:-banking_system}"
 SYSTEM="${SYSTEM:-Concord}"
 TRACE="${TRACE:-highload}"
 

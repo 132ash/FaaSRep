@@ -1,2 +1,12 @@
 workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
 banking_system,18583,20.9097,20.2160,40.6526,340.95,54.50
+# ACCOUNTS = 100
+banking_system,5103,0.1113,0.1083,0.1791,120.14,42.47
+# ACCOUNTS = 75
+banking_system,5307,0.1065,0.1040,0.1692,120.13,44.18
+# ACCOUNTS = 60
+banking_system,5307,0.1086,0.1054,0.1824,120.13,44.18
+# ACCOUNTS = 50
+banking_system,5307,0.1148,0.1101,0.1984,120.14,44.17
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Total Rounds,Average Rounds,P50 Rounds,P99 Rounds,Max Rounds,Multi-round Requests,Multi-round Ratio,Experiment Duration,Average Throughput
+banking_system,5307,0.1148,0.1101,0.1984,5585,1.0524,1.0000,2.0000,4,254,0.0479,120.14,44.17

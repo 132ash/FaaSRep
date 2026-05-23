@@ -1,0 +1,21 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
+# FLIGHT_IDS = 1000			
+# FLIGHT_CAPACITY = "1000"			
+# RENTAL_START = '2025-07-01'			
+# RENTAL_END = '2025-09-30'			
+# CAR_NUM = '1000'			
+travel_reservation,1298,0.1759,0.1722,0.2883,120.09,10.81
+# FLIGHT_IDS = 200			
+# FLIGHT_CAPACITY = "1000"			
+# RENTAL_START = '2025-07-01'			
+# RENTAL_END = '2025-09-30'			
+# CAR_NUM = '1000'			
+# DATE_FORMAT = "%Y-%m-%d"	travel_reservation,1298,0.1725,0.1691,0.2772,120.07,10.81
+travel_reservation,1298,0.1725,0.1691,0.2772,120.07,10.81
+# FLIGHT_IDS = 100			
+# FLIGHT_CAPACITY = "1000"			
+# RENTAL_START = '2025-07-01'			
+# RENTAL_END = '2025-09-15'			
+# CAR_NUM = '1000'			
+# DATE_FORMAT = "%Y-%m-%d"
+travel_reservation,1298,0.1721,0.1673,0.2896,120.09,10.81
