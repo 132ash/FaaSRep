@@ -5,6 +5,8 @@ import couchdb
 import boto3
 import sys
 import logging
+import gevent
+from gevent import queue
 
 sys.path.append('../../config')
 import config
@@ -51,6 +53,12 @@ class Repository:
         self.dynamo = boto3.resource('dynamodb', endpoint_url=dynamodb_url, aws_secret_access_key=dynamodb_access_key, aws_access_key_id=dynamodb_key_id, region_name=dynamodb_area)
         self.data_db = self.dynamo.Table('data')
         self.couch = couchdb.Server(couchdb_url)
+        self.collect_function_latency = getattr(config, 'COLLECT_FUNCTION_LATENCY', False)
+        self.latency_batch_size = getattr(config, 'LATENCY_BATCH_SIZE', 128)
+        self.latency_flush_interval = getattr(config, 'LATENCY_FLUSH_INTERVAL', 0.05)
+        self.latency_queue = queue.Queue()
+        if self.collect_function_latency:
+            gevent.spawn(self._latency_writer_loop)
         
     # get all function_name for every node seems to solve the problem of KeyError Exception in manager.py, line 103
     def get_current_node_functions(self, ip: str, mode: str) -> List[str]:
@@ -96,8 +104,39 @@ class Repository:
         log_db.save({'transaction_id': transaction_id, 'workflow': workflow_name, 'status': status})
     
     def save_latency(self, log):
-        latency_db = self.couch['workflow_latency']
-        latency_db.save(log)
+        if self.collect_function_latency:
+            self.latency_queue.put(log)
+
+    def save_latencies(self, logs):
+        if not self.collect_function_latency:
+            return
+        for log in logs:
+            self.latency_queue.put(log)
+
+    def _latency_writer_loop(self):
+        pending = []
+        while True:
+            try:
+                pending.append(self.latency_queue.get(timeout=self.latency_flush_interval))
+            except queue.Empty:
+                pass
+
+            while len(pending) < self.latency_batch_size:
+                try:
+                    pending.append(self.latency_queue.get_nowait())
+                except queue.Empty:
+                    break
+
+            if not pending:
+                continue
+
+            batch = pending
+            pending = []
+            try:
+                latency_db = self.couch['workflow_latency']
+                latency_db.update(batch)
+            except Exception as exc:
+                print(f"Failed to write latency batch to CouchDB: {exc}", file=sys.stderr)
 
     def param_wrapper(self, transaction_id, mode, func="" ,key=""):
         return f"{transaction_id}:{mode}:{func}:{key}" 

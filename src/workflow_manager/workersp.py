@@ -248,14 +248,16 @@ class WorkerSPManager:
         res = self.function_manager.run(state.create_timestamp, name, state.transaction_id, state.write_set, state.term)
         end = time.time()
         #log_message(f"function {name} in {state.transaction_id} done, res:{res}")
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res['lock_latency'], 'term':state.term})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start, 'term':state.term})
-        self.repo.save_latency({'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency'], 'term':state.term}) 
         if res.get("Abort", False): 
             if res['Abort_type'] == 'ERROR':
                 raise Exception(f"Function {name} in {state.transaction_id} failed with error: {res['error']}")
             #log_message(f"Function {name} in {state.transaction_id} aborted: {res['error']}, Abort_type:{res['Abort_type']}")
             return False, res['Abort_type']
+        self.repo.save_latencies([
+            {'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'lock', 'time': res.get('lock_latency', 0), 'term': state.term},
+            {'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start, 'term': state.term},
+            {'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res.get('io_latency', 0), 'term': state.term},
+        ])
         ## logging.info(f"function {info['function_name']} done, write_set: {res['write_set']}, exec_latency: {end - start}, io_latency: {res['io_latency']}")
         state.lock.acquire()
         if not state.valid:
