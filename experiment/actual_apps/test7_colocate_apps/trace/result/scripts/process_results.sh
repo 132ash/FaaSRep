@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="${WORKFLOW:-banking_system}"
+WORKFLOW="${WORKFLOW:-travel_reservation}"
 SYSTEM="${SYSTEM:-OCC}"
-TRACE="${TRACE:-lowload}"
+TRACE="${TRACE:-highload}"
 
 # Set paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

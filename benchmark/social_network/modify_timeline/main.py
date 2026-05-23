@@ -8,4 +8,5 @@ def main():
     timeline = json.loads(store.get(timeline_key))
     timeline["posts"].append(publish_post_id)
     timeline_length = len(timeline["posts"])
+    store.put(timeline_key, json.dumps(timeline))
     store.ret({'timeline_length':timeline_length, 'publish_post_id':publish_post_id})
