@@ -68,10 +68,12 @@ class Repository:
                     for host in self.get_all_addrs('common')
                     }
         self.subjection_collector:SubjectionCollector = None
+        self.collect_breakdown_latency = getattr(config, "COLLECT_BREAKDOWN_LATENCY", getattr(config, "COLLECT_FUNCTION_LATENCY", False))
         self.latency_queue = queue.Queue()
         self.latency_batch_size = getattr(config, "LATENCY_BATCH_SIZE", 128)
         self.latency_flush_interval = getattr(config, "LATENCY_FLUSH_INTERVAL", 0.05)
-        gevent.spawn(self._latency_writer_loop)
+        if self.collect_breakdown_latency:
+            gevent.spawn(self._latency_writer_loop)
 
     def shadowtable_init(self, ip):
         self.ip = ip
@@ -139,9 +141,13 @@ class Repository:
         log_db.save({'transaction_id': transaction_id, 'workflow': workflow_name, 'status': status})
     
     def save_latency(self, log):
+        if not self.collect_breakdown_latency:
+            return
         self.latency_queue.put(log)
 
     def save_latencies(self, logs):
+        if not self.collect_breakdown_latency:
+            return
         for log in logs:
             self.latency_queue.put(log)
 

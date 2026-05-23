@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Specify workflow name
-WORKFLOW="${WORKFLOW:-travel_reservation}"
-SYSTEM="${SYSTEM:-optimistic}"
+WORKFLOW="${WORKFLOW:-social_network}"
+SYSTEM="${SYSTEM:-pessimistic}"
 TRACE="${TRACE:-lowload}"
 
 # Set paths
@@ -24,7 +24,7 @@ echo "Results directory: $RESULT_DIR"
 #
 # Override at runtime, for example:
 #   TRACE=lowload TARGET_SEGMENT_INDICES_OVERRIDE="1 8 17 19 29" bash execute/run_segments.sh
-TARGET_SEGMENT_INDICES=(8)
+TARGET_SEGMENT_INDICES=(29)
 
 
 for TARGET_SEGMENT_IDX in "${TARGET_SEGMENT_INDICES[@]}"; do

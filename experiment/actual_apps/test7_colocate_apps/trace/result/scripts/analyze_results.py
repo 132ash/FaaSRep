@@ -5,7 +5,6 @@ import math
 import csv
 
 BREAKDOWN_COLUMNS = [
-    'e2e_latency',
     'scheduling_latency',
     'function_io_latency',
     'function_exec_latency',
@@ -15,7 +14,6 @@ BREAKDOWN_COLUMNS = [
     'result_fetch_latency',
     'post_commit_gateway_latency',
     'notify_to_fetch_start_latency',
-    'rounds',
 ]
 
 
@@ -60,7 +58,7 @@ def write_latency_breakdown_csv(output_csv, workflow_name, breakdown):
         writer.writerow(row)
 
 
-def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
+def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None, include_breakdown=False):
     print(f"Analyzing {file_path}...")
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -106,9 +104,11 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
     print(f"Average Latency: {avg_latency:.4f} s")
     print(f"P50 Latency: {p50_latency:.4f} s")
     print(f"P99 Latency: {p99_latency:.4f} s")
-    print("Latency Breakdown:")
-    for key in BREAKDOWN_COLUMNS:
-        print(f"  {key}: {latency_breakdown[key]:.6f}")
+    print(f"Average Rounds: {latency_breakdown['rounds']:.6f}")
+    if include_breakdown:
+        print("Latency Breakdown:")
+        for key in BREAKDOWN_COLUMNS:
+            print(f"  {key}: {latency_breakdown[key]:.6f}")
 
     # Throughput analysis
     start_times = []
@@ -151,7 +151,10 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
                 'P99 Latency',
                 'Experiment Duration',
                 'Average Throughput',
-            ] + BREAKDOWN_COLUMNS
+                'rounds',
+            ]
+            if include_breakdown:
+                fieldnames += BREAKDOWN_COLUMNS
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             
             if not file_exists:
@@ -164,13 +167,15 @@ def analyze(file_path, output_csv=None, workflow_name=None, breakdown_csv=None):
                 'P50 Latency': f"{p50_latency:.4f}",
                 'P99 Latency': f"{p99_latency:.4f}",
                 'Experiment Duration': f"{duration:.2f}",
-                'Average Throughput': f"{throughput:.2f}"
+                'Average Throughput': f"{throughput:.2f}",
+                'rounds': f"{latency_breakdown['rounds']:.6f}",
             }
-            row.update({k: f"{latency_breakdown[k]:.6f}" for k in BREAKDOWN_COLUMNS})
+            if include_breakdown:
+                row.update({k: f"{latency_breakdown[k]:.6f}" for k in BREAKDOWN_COLUMNS})
             writer.writerow(row)
         print(f"Results saved to {output_csv}")
 
-    if breakdown_csv:
+    if include_breakdown and breakdown_csv:
         write_latency_breakdown_csv(
             breakdown_csv,
             workflow_name if workflow_name else os.path.basename(file_path),
@@ -183,7 +188,8 @@ if __name__ == "__main__":
     parser.add_argument('--file', type=str, required=True, help='Path to merged result JSON file')
     parser.add_argument('--output-csv', type=str, help='Path to output CSV file')
     parser.add_argument('--breakdown-csv', type=str, help='Path to output test8-style latency breakdown CSV file')
+    parser.add_argument('--include-breakdown', action='store_true', help='Include breakdown columns and write breakdown CSV')
     parser.add_argument('--workflow', type=str, help='Workflow name for CSV output')
     args = parser.parse_args()
     
-    analyze(args.file, args.output_csv, args.workflow, args.breakdown_csv)
+    analyze(args.file, args.output_csv, args.workflow, args.breakdown_csv, args.include_breakdown)

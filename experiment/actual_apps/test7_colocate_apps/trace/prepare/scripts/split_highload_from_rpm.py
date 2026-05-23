@@ -5,7 +5,7 @@ import math
 import pandas as pd
 
 trace_name = 'highload'
-workflow = 'travel_reservation'
+workflow = 'social_network'
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()
@@ -32,7 +32,7 @@ def split_trace_2019():
     exp_duration = 3600 # 1 hour
     
     core_segment_duration = 2 * 60 # 2 minutes used for measurement
-    prefix_duration = 30 # 30 seconds warmup before each measured segment
+    prefix_duration = 10 # 30 seconds warmup before each measured segment
     
     output_dir = PREPARE_DIR / 'segments' / trace_name
     output_dir.mkdir(parents=True, exist_ok=True)

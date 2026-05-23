@@ -226,7 +226,8 @@ def run():
     # 停止 Checkpoint 协程
     cp_greenlet.kill()
 
-    collect_latency_breakdown()
+    if getattr(config, "COLLECT_BREAKDOWN_LATENCY", getattr(config, "COLLECT_FUNCTION_LATENCY", False)):
+        collect_latency_breakdown()
 
     # 保存最终结果
     save_checkpoint(filepath, workflow, trace_id, start_idx, exp_duration)

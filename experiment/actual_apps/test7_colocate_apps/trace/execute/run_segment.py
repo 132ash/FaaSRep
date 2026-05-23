@@ -211,7 +211,8 @@ def run(segment_file, output_file):
     # Wait a bit for trailing responses
     gevent.sleep(5)
 
-    collect_latency_breakdown()
+    if getattr(config, "COLLECT_BREAKDOWN_LATENCY", getattr(config, "COLLECT_FUNCTION_LATENCY", False)):
+        collect_latency_breakdown()
     
     save_results(output_file, workflow, segment_data, start_local_time)
     

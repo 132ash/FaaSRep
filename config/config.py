@@ -62,9 +62,9 @@ WORKFLOW_YAML_ADDR = {
                     #     'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                      #    'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
                     #     'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
-                     # 'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    #  'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
+                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 DEFAULT_CONTAINER_NUM = 32
 # cache setting
@@ -72,6 +72,14 @@ CACHE_ENABLED = True
 CLEAR_MEM = True
 FILLUP_CACHE = False
 EXPIRED_CACHE = True
+
+# Latency breakdown collection.
+# Keep disabled for trace latency/throughput experiments. Enable only when
+# running dedicated breakdown experiments because it adds CouchDB writes/reads.
+COLLECT_BREAKDOWN_LATENCY = False
+COLLECT_FUNCTION_LATENCY = COLLECT_BREAKDOWN_LATENCY
+LATENCY_BATCH_SIZE = 128
+LATENCY_FLUSH_INTERVAL = 0.05
 
 # validator setting
 VALIDATORS_PER_POOL = 4
@@ -84,7 +92,7 @@ BATCH_SIZE = 2
 
 # mode setting
 FAST_PATH = True
-OPTIMISTIC_REPAIR = True
+OPTIMISTIC_REPAIR = False
 
 
 # repair setting
@@ -130,20 +138,21 @@ DATA_ITEM_SIZE = 4 * 1024
 
 ## APPLICATION PARAMETERS V1
 # travel reservation
-FLIGHT_IDS = 100			
-FLIGHT_CAPACITY = "100"			
+FLIGHT_IDS = 200			
+FLIGHT_CAPACITY = "1000"			
 RENTAL_START = '2025-07-01'			
-RENTAL_END = '2025-07-31'			
-CAR_NUM = '300'			
+RENTAL_END = '2025-09-30'			
+CAR_NUM = '1000'			
 DATE_FORMAT = "%Y-%m-%d"			
+					
 			
 # banking system			
 BANKING_ACCOUNTS = 100
-BANKING_ORIGINAL_BALANCE = "10000"			
+BANKING_ORIGINAL_BALANCE = "100000"			
 LOGIN_FAIL_PROB = 0			
 			
 # social network			
-SOCIAL_NETWORK_USERS = 100			
+SOCIAL_NETWORK_USERS = 75			
 STARTUP_POSTS = 2
 
 
@@ -164,6 +173,5 @@ STARTUP_POSTS = 2
 # # social network			
 # SOCIAL_NETWORK_USERS = 200			
 # STARTUP_POSTS = 3
-
 
 

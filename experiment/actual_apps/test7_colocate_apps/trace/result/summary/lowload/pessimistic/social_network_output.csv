@@ -1,0 +1,2 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput,rounds
+social_network,8152,0.2141,0.2089,0.3194,1223.84,6.66,3.000000

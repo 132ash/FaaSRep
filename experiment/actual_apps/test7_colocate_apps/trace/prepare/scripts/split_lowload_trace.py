@@ -18,7 +18,7 @@ sys.path.append(str(ROOT_DIR))
 PREPARE_DIR = script_dir.parent
 
 from experiment.common import generate_param
-workflow = 'travel_reservation'
+workflow = 'social_network'
 
 def split_trace():
     # Configuration
@@ -28,7 +28,7 @@ def split_trace():
     exp_duration = 3600 # 1 hour
     
     core_segment_duration = 2 * 60 # 2 minutes used for measurement
-    prefix_duration = 30 # 30 seconds warmup before each measured segment
+    prefix_duration = 10 # 30 seconds warmup before each measured segment
     
     output_dir = PREPARE_DIR / 'segments' / 'lowload'
     output_dir.mkdir(parents=True, exist_ok=True)

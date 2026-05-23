@@ -384,10 +384,11 @@ class WorkerSPManager:
 
         if not state.repair:
             state.write_set.update(res["write_set"])
-            self.repo.save_latencies([
-                {'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start},
-                {'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}
-            ])
+            if getattr(config, "COLLECT_BREAKDOWN_LATENCY", getattr(config, "COLLECT_FUNCTION_LATENCY", False)):
+                self.repo.save_latencies([
+                    {'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start},
+                    {'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}
+                ])
            # #log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
             state.container_port[name] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
