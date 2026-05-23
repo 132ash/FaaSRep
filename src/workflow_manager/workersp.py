@@ -227,8 +227,6 @@ class WorkerSPManager:
         ##log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
         res = self.function_manager.run(name, state.transaction_id, state.write_set)
         end = time.time()
-        self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start})
-        self.repo.save_latency({'workflow_name':self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}) 
         if res.get("Abort", False):
             logging.error(f"function {name} trigger abort: {res['error']}")
             return False     
@@ -242,6 +240,10 @@ class WorkerSPManager:
         # ##log_message(f"Function {name} executed in {end - start:.2f}s, IO latency: {res['io_latency']:.2f}s saved.")
         state.read_set[info["function_name"]] = res["read_set"]
         state.lock.release()
+        self.repo.save_latencies([
+            {'workflow_name': self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'exec', 'time': end - start},
+            {'workflow_name': self.workflow_name, 'transaction_id': state.transaction_id, 'function_name': info['function_name'], 'phase': 'io', 'time': res['io_latency']}
+        ])
         return True
 
     def clear_mem(self, transaction_id):

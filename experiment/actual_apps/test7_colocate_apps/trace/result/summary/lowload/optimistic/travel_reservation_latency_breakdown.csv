@@ -1,0 +1,2 @@
+workflow,e2e_latency,scheduling_latency,function_io_latency,function_exec_latency,time_inside_validator,time_repair,time_commit,result_fetch_latency,post_commit_gateway_latency,notify_to_fetch_start_latency,rounds
+travel_reservation,0.157029,0.040281,0.002786,0.027115,0.003994,0.031401,0.027945,0.020989,0.023507,0.000540,2.000000

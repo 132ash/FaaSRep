@@ -1,0 +1,2 @@
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
+travel_reservation,19081,0.1410,0.1383,0.2043,1887.65,10.11
