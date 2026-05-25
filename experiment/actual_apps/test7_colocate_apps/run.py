@@ -30,8 +30,8 @@ dynamodb  = boto3.resource('dynamodb', endpoint_url=f'http://{DB_NODE_IP}:4567',
 
 # --- 全局测试参数 ---
 CLIENT_CNT = 32
-ROUND = 100
-all_workflows = ['social_network']
+ROUND = 50
+all_workflows = ['banking_system']
 # all_workflows = ['social_network']
 def worker_task(client_id, workflow, parameters_all_round, result_queue):
     """子进程中的客户端任务。"""
