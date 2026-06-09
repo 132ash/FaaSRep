@@ -1,16 +1,2 @@
-workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Experiment Duration,Average Throughput
-travel_reservation,3742,21.4737,13.5973,83.6908,110.40,33.90
-# FLIGHT_IDS = 1000			
-# FLIGHT_CAPACITY = "1000"			
-# RENTAL_START = '2025-07-01'			
-# RENTAL_END = '2025-09-30'			
-# CAR_NUM = '1000'			
-# DATE_FORMAT = "%Y-%m-%d"	
-travel_reservation,3933,0.2389,0.2103,0.5996,120.39,32.67
-# FLIGHT_IDS = 200			
-# FLIGHT_CAPACITY = "1000"			
-# RENTAL_START = '2025-07-01'			
-# RENTAL_END = '2025-08-31'			
-# CAR_NUM = '1000'			
-# DATE_FORMAT = "%Y-%m-%d"	
-travel_reservation,3933,2.8021,1.3720,9.2916,128.13,30.70
+workflow,Total Requests,Average Latency,P50 Latency,P99 Latency,Total Rounds,Average Rounds,P50 Rounds,P99 Rounds,Max Rounds,Multi-round Requests,Multi-round Ratio,Experiment Duration,Average Throughput
+travel_reservation,3765,2.7322,2.7435,7.4626,10822,2.8744,2.0000,17.0000,55,1991,0.5288,927.04,4.06

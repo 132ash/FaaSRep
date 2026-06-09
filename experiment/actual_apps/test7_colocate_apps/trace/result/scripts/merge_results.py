@@ -3,7 +3,7 @@ import os
 import argparse
 from pathlib import Path
 
-DEFAULT_WARMUP_SECONDS = 10
+DEFAULT_WARMUP_SECONDS = 5
 
 
 def get_segment_cutoff(data, warmup_seconds):

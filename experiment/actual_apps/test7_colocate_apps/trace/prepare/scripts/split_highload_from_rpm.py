@@ -6,7 +6,7 @@ import os
 import pandas as pd
 
 trace_name = 'highload'
-workflow = os.environ.get('WORKFLOW', 'banking_system')
+workflow = os.environ.get('WORKFLOW', 'travel_reservation')
 
 # Setup paths
 script_dir = Path(__file__).parent.resolve()
@@ -32,8 +32,8 @@ def split_trace_2019():
     csv_file = PREPARE_DIR / 'rpm' /  (trace_name + '.csv')
     exp_duration = 3600 # 1 hour
     
-    core_segment_duration = 2 * 60 # 2 minutes used for measurement
-    prefix_duration = 10 # 30 seconds warmup before each measured segment
+    core_segment_duration = 20 # 2 minutes used for measurement
+    prefix_duration = 5 # 30 seconds warmup before each measured segment
     
     output_dir = PREPARE_DIR / 'segments' / trace_name
     output_dir.mkdir(parents=True, exist_ok=True)

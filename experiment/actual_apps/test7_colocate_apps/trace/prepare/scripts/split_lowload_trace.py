@@ -19,7 +19,7 @@ sys.path.append(str(ROOT_DIR))
 PREPARE_DIR = script_dir.parent
 
 from experiment.common import generate_param
-workflow = os.environ.get('WORKFLOW', 'banking_system')
+workflow = os.environ.get('WORKFLOW', 'travel_reservation')
 
 def split_trace():
     # Configuration
@@ -28,8 +28,8 @@ def split_trace():
     start_idx = 105674
     exp_duration = 3600 # 1 hour
     
-    core_segment_duration = 2 * 60 # 2 minutes used for measurement
-    prefix_duration = 10 # 30 seconds warmup before each measured segment
+    core_segment_duration = 20 # 2 minutes used for measurement
+    prefix_duration = 5 # 30 seconds warmup before each measured segment
     
     output_dir = PREPARE_DIR / 'segments' / 'lowload'
     output_dir.mkdir(parents=True, exist_ok=True)
