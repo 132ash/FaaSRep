@@ -54,17 +54,17 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                    #  'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                    #   'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                    #    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    #  'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                    #    'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                    #     'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                     #    'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
-                    #     'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                     'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                      'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
+                       'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                     'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                       'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                        'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                        'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
+                        'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
                     #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                     #  'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
-                    'social_network': f"{ROOT_DIR}/benchmark/social_network",  
+                    # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 DEFAULT_CONTAINER_NUM = 32
 # cache setting
@@ -92,7 +92,7 @@ BATCH_SIZE = 2
 
 # mode setting
 FAST_PATH = True
-OPTIMISTIC_REPAIR = False
+OPTIMISTIC_REPAIR = True
 
 
 # repair setting
