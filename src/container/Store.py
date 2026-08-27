@@ -48,6 +48,11 @@ class Store:
         self.keys_from_RYW = metadata['keys_from_RYW']
         self.keys_from_upstream = metadata['keys_from_upstream']
         self.is_repair = is_repair
+        self.transaction_metadata = metadata.setdefault('transaction_metadata', {})
+
+    def set_transaction_metadata(self, key, value):
+        """Attach small control metadata to the transaction response."""
+        self.transaction_metadata[key] = value
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func , key, mode, txid=None):

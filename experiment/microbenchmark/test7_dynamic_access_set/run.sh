@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+CURRENT_SH_DIR=$(dirname "$(readlink -f "$0")")
+cd "$CURRENT_SH_DIR"
+
+WORKFLOW="c4"
+SYSTEM_MODE="hybrid"
+CLIENT_CNT=32
+ZIPF_PARAM=0.9
+RETRY_ABORT_SEED=20260827
+ABORT_PROBS=(0 0.25 0.50 0.75 1.00)
+
+for ABORT_PROB in "${ABORT_PROBS[@]}"; do
+    python3 run.py "$WORKFLOW" "$SYSTEM_MODE" "$CLIENT_CNT" "$ZIPF_PARAM" "$ABORT_PROB" "$RETRY_ABORT_SEED"
+done

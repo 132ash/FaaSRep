@@ -9,6 +9,7 @@ from workersp_repo import Repository
 from typing import Any, Dict, List
 import requests
 import re
+import json
 
 sys.path.append('../../config')
 import config
@@ -51,6 +52,10 @@ def log_message(message):
     for handler in logger.handlers:
         handler.flush()
 
+def log_event(event, **fields):
+    log_message(json.dumps({'event': event, 'timestamp': time.time(), **fields},
+                           sort_keys=True, default=str))
+
 RUNNING = config.RUNNING
 ABORTED = config.ABORTED
 REPAIRED = config.REPAIRED
@@ -92,7 +97,7 @@ class ReservePool:
                 self.pool.pop(transaction_id, None)
 
 class TransactionState:
-    def __init__(self, transaction_id: str, all_func: List[str], container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states):
+    def __init__(self, transaction_id: str, all_func: List[str], container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states, transaction_metadata=None, repair_epoch=0, attempt_id=''):
         self.transaction_id = transaction_id
         # {func: {key: version}} 
         self.read_set:Dict[str:Dict[str:str]] = read_set
@@ -112,6 +117,9 @@ class TransactionState:
         self.repair_states = repair_states 
         self.batch_id = batch_id
         self.repair_mode = repair_mode
+        self.repair_epoch = repair_epoch
+        self.attempt_id = attempt_id
+        self.transaction_metadata = transaction_metadata or {}
         self.repair_mode_changed = {}
 
 
@@ -156,30 +164,64 @@ class WorkerSPManager:
         # config of different modes.
         self.FAST_PATH = config.FAST_PATH
         self.OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
+        self.last_transition_timestamp = time.time()
+        gevent.spawn_later(10, self.report_progress)
+
+    def report_progress(self):
+        states = {
+            tx_id: {
+                'batch_id': state.batch_id,
+                'repair_mode': state.repair_mode,
+                'repair_epoch': state.repair_epoch,
+                'attempt_id': state.attempt_id,
+                'parent_executed': state.parent_executed,
+            }
+            for tx_id, state in self.states.items()
+        }
+        log_event('WORKERSP_PROGRESS_SNAPSHOT', workflow=self.workflow_name,
+                  batch_id='', tx_id='', function='', repair_mode='',
+                  repair_epoch=0, attempt_id='', state_before='',
+                  state_after='', active_transactions=states,
+                  queue_depth=sum(len(function.rq) for function in self.function_manager.functions.values()),
+                  last_transition_timestamp=self.last_transition_timestamp)
+        gevent.spawn_later(10, self.report_progress)
 
     # return the workflow state of the request
-    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_mode, repair_states) -> TransactionState:
+    def get_state(self, retry_after_abort, transaction_id: str, container_port, read_set, write_set, batch_id, RYW_subjection,  repair, repair_mode, repair_states, transaction_metadata=None, repair_epoch=0, attempt_id='') -> TransactionState:
+        self.last_transition_timestamp = time.time()
         self.lock.acquire()
         # first time to run or retry trigggered by gateway, create new state.
         if transaction_id not in self.states or retry_after_abort:
-            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
+            self.states[transaction_id] = TransactionState(transaction_id, self.func, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states, transaction_metadata, repair_epoch, attempt_id)
         else:
             state = self.states[transaction_id]
             state.lock.acquire()
             if repair:
                 state.repair = repair
                 # new repair mode appears, the execution state of functions should be reset.
-                if repair_mode != state.repair_mode:
+                if repair_epoch < state.repair_epoch:
+                    state.lock.release()
+                    self.lock.release()
+                    log_event('STALE_TRIGGER_REJECTED', workflow=self.workflow_name,
+                              batch_id=batch_id, tx_id=transaction_id, function='',
+                              repair_mode=repair_mode, repair_epoch=repair_epoch,
+                              attempt_id=attempt_id, state_before=(repair_epoch, repair_mode, attempt_id),
+                              state_after=(state.repair_epoch, state.repair_mode, state.attempt_id))
+                    return state
+                if (repair_epoch, repair_mode, attempt_id) != (state.repair_epoch, state.repair_mode, state.attempt_id):
                     for f in state.repair_mode_changed:
                         state.repair_mode_changed[f] = True
                         state.repair_states[f] = repair_states[f]
                 state.repair_mode = repair_mode
+                state.repair_epoch = repair_epoch
+                state.attempt_id = attempt_id
                 state.batch_id = batch_id
             else:
                 state.container_port.update(container_port)
                 state.read_set.update(read_set)
                 state.write_set.update(write_set)
                 state.RYW_subjection.update(RYW_subjection)
+                state.transaction_metadata.update(transaction_metadata or {})
             state.lock.release()
         state = self.states[transaction_id]
         self.lock.release()
@@ -197,7 +239,7 @@ class WorkerSPManager:
             del self.states[transaction_id]
         self.lock.release()
     
-    def validate_tx(self, transaction_id, read_set, write_set, container_port, RYW_subjection) -> None:
+    def validate_tx(self, transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata) -> None:
         url = 'http://{}/validate'.format(self.transaction_sink_addr)
         data = {
             'transaction_id': transaction_id,
@@ -205,11 +247,12 @@ class WorkerSPManager:
             'read_set': read_set,
             'write_set': write_set,
             'container_port': container_port,
-            'RYW_subjection': RYW_subjection
+            'RYW_subjection': RYW_subjection,
+            'transaction_metadata': transaction_metadata,
         }
         requests.post(url, json=data)
 
-    def tx_aborted_or_repaired(self,transaction_id, state,is_repair, batch_id='', repair_mode=''):
+    def tx_aborted_or_repaired(self,transaction_id, state,is_repair, batch_id='', repair_mode='', repair_epoch=0, attempt_id=''):
         if state == ABORTED:
             url = 'http://{}/abort'.format(self.transaction_sink_addr)
             #log_message(f"Transaction {transaction_id} in batch {batch_id} is aborted.")
@@ -217,13 +260,15 @@ class WorkerSPManager:
             #log_message(f"Transaction {transaction_id} in batch {batch_id} is repaired.")
             url = 'http://{}/fin_repair'.format(self.transaction_sink_addr)
         # trigger next run of the transaction under pessimistic repair mode
-        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'repair_mode':repair_mode, 'repair': is_repair}
+        data = {'batch_id':batch_id, 'transaction_id': transaction_id, 'workflow_name': self.workflow_name, 'repair_mode':repair_mode, 'repair': is_repair,
+                'repair_epoch': repair_epoch, 'attempt_id': attempt_id}
         requests.post(url, json=data)
 
-    def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode):
+    def trigger_repair(self, batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode, repair_epoch, attempt_id):
         base_url = 'http://127.0.0.1:{}/{}'
         #log_message(f"Triggering FASTPATH repair for transaction {transaction_id} in batch {batch_id}, function: {function_name}, repair_mode: {repair_mode}, PORT: {port}")
-        data = {'batch_id':batch_id, 'transaction_id': transaction_id, "no_parent_execution": no_parent_execution, 'repair': True, 'repair_mode': repair_mode}
+        data = {'batch_id':batch_id, 'transaction_id': transaction_id, "no_parent_execution": no_parent_execution, 'repair': True, 'repair_mode': repair_mode,
+                'repair_epoch': repair_epoch, 'attempt_id': attempt_id}
          # try:
         requests.post(base_url.format(port, 'run'), json=data)
         # except:
@@ -237,9 +282,9 @@ class WorkerSPManager:
     def trigger_function(self, state: TransactionState, function_name: str, no_parent_execution = False) -> None:
         if function_name == 'END':
             if not state.repair:
-                self.validate_tx(state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection)
+                self.validate_tx(state.transaction_id, state.read_set, state.write_set, state.container_port, state.RYW_subjection, state.transaction_metadata)
             else:
-                self.tx_aborted_or_repaired(state.transaction_id, REPAIRED, state.repair, state.batch_id, state.repair_mode)
+                self.tx_aborted_or_repaired(state.transaction_id, REPAIRED, state.repair, state.batch_id, state.repair_mode, state.repair_epoch, state.attempt_id)
             return
         func_info = self.function_info[function_name]
         if func_info['ip'] == self.host_addr:
@@ -305,6 +350,9 @@ class WorkerSPManager:
             'repair': state.repair,
             'repair_mode': state.repair_mode,
             'repair_states': state.repair_states
+            ,'transaction_metadata': state.transaction_metadata
+            ,'repair_epoch': state.repair_epoch
+            ,'attempt_id': state.attempt_id
         }
         requests.post(remote_url, json=data)
 
@@ -327,7 +375,15 @@ class WorkerSPManager:
             up_cnt = state.repair_subjection_upcnt.get(function_name, 0)
             # parent count: the sum of parents in workflow graph and parents in subject table
         #log_message(f"check runnable for function: {function_name}, up_cnt: {up_cnt}, parent_executed: {state.parent_executed[function_name]}, parent_cnt: {info['parent_cnt']}")
-        return state.parent_executed[function_name] == info['parent_cnt'] + up_cnt
+        runnable = state.parent_executed[function_name] == info['parent_cnt'] + up_cnt
+        log_event('RUNNABLE_CHECK', workflow=self.workflow_name,
+                  batch_id=state.batch_id, tx_id=state.transaction_id,
+                  function=function_name, repair_mode=state.repair_mode,
+                  repair_epoch=state.repair_epoch, attempt_id=state.attempt_id,
+                  state_before=state.parent_executed[function_name],
+                  state_after=runnable, workflow_parent_count=info['parent_cnt'],
+                  upstream_wait_count=up_cnt)
+        return runnable
 
     # run a function on local
     def run_function(self, state: TransactionState, function_name: str) -> None:
@@ -339,8 +395,10 @@ class WorkerSPManager:
         # if function in repair mode and not dirty, skip running
         if not state.repair or dirty:
             successful = self.run_normal(state, info)
+            if successful is None:
+                return
             if not successful:
-                self.tx_aborted_or_repaired(state.transaction_id,ABORTED,state.repair, state.batch_id, state.repair_mode)
+                self.tx_aborted_or_repaired(state.transaction_id,ABORTED,state.repair, state.batch_id, state.repair_mode, state.repair_epoch, state.attempt_id)
                 return
             
         if self.OPTIMISTIC_REPAIR:
@@ -370,12 +428,35 @@ class WorkerSPManager:
         gevent.joinall(jobs)
 
     def run_normal(self, state: TransactionState, info: Any) -> None:
+        self.last_transition_timestamp = time.time()
         start = time.time()
         name = info['function_name']
+        log_event('FUNCTION_START', workflow=self.workflow_name,
+                  batch_id=state.batch_id, tx_id=state.transaction_id,
+                  function=name, repair_mode=state.repair_mode,
+                  repair_epoch=state.repair_epoch, attempt_id=state.attempt_id,
+                  state_before='RUNNABLE', state_after='RUNNING')
         #log_message(f"Running function {name} for transaction {state.transaction_id}, repair: {state.repair}, repair_mode: {state.repair_mode}, REPAIR_STATES: {state.repair_states.get(name, {})}")
-        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, state.repair_states.get(name, {}))
+        attempt_identity = (state.repair_epoch, state.repair_mode, state.attempt_id)
+        repair_state = state.repair_states.get(name, {}).copy()
+        repair_state['_repair_epoch'] = state.repair_epoch
+        repair_state['_attempt_id'] = state.attempt_id
+        res = self.function_manager.run(name, state.transaction_id, state.write_set, state.repair, state.repair_mode, state.batch_id, repair_state)
         end = time.time()
+        if res.get('stale_result', False) or (state.repair and attempt_identity != (state.repair_epoch, state.repair_mode, state.attempt_id)):
+            log_event('STALE_RESULT_DROPPED', workflow=self.workflow_name,
+                      batch_id=state.batch_id, tx_id=state.transaction_id,
+                      function=name, repair_mode=attempt_identity[1],
+                      repair_epoch=attempt_identity[0], attempt_id=attempt_identity[2],
+                      state_before=attempt_identity,
+                      state_after=(state.repair_epoch, state.repair_mode, state.attempt_id))
+            return None
         if res.get("Abort", False):
+            log_event('FUNCTION_ABORT', workflow=self.workflow_name,
+                      batch_id=state.batch_id, tx_id=state.transaction_id,
+                      function=name, repair_mode=state.repair_mode,
+                      repair_epoch=state.repair_epoch, attempt_id=state.attempt_id,
+                      state_before='RUNNING', state_after='ABORTED')
             log_message(f"Function {name} for transaction {state.transaction_id}, repair: {state.repair}, error:{res['error']}, error_traceback:{res.get('traceback', '')}, port:{res['port']}")
             return False
         state.lock.acquire()
@@ -393,12 +474,30 @@ class WorkerSPManager:
             state.container_port[name] = res['port']
             state.read_set[info["function_name"]] = res["read_set"]
             state.RYW_subjection[name] = res["RYW_subjection"]
+            state.transaction_metadata.update(res.get('transaction_metadata', {}))
 
 
         state.lock.release()
+        log_event('FUNCTION_FINISH', workflow=self.workflow_name,
+                  batch_id=state.batch_id, tx_id=state.transaction_id,
+                  function=name, repair_mode=state.repair_mode,
+                  repair_epoch=state.repair_epoch, attempt_id=state.attempt_id,
+                  state_before='RUNNING', state_after='FINISHED')
         return True
 
     def clear_mem(self, transaction_id):
+        state = self.states.get(transaction_id)
+        if state:
+            jobs = []
+            for function_name in self.func:
+                port = state.container_port.get(function_name)
+                if port:
+                    jobs.append(gevent.spawn(
+                        requests.post,
+                        f'http://127.0.0.1:{port}/clear',
+                        json={'transaction_id': transaction_id},
+                    ))
+            gevent.joinall(jobs)
         self.repo.clear_mem(transaction_id)
     
     def clear_db(self, transaction_id):

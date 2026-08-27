@@ -185,11 +185,20 @@ def generate_social_media_parameters(client_cnt, round_cnt):
             parameters_inputs[client_id].append(parameters_input)
     return parameters_inputs
 
-def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_param, read_ratio):
+def generate_micro_benchmark_parameters(
+    client_cnt,
+    round_cnt,
+    workflow,
+    zipf_param,
+    read_ratio,
+    retry_abort_prob=None,
+    retry_abort_seed=None,
+):
     repo = repository.Repository()
     text_size = 4 * 1024
     dataset = json.load(open(DS_JSON_PATH, 'r', encoding='utf-8'))
     all_func = repo.get_all_functions(workflow)
+    abort_candidates = sorted(all_func)
     dataset_len = len(dataset)
     
     # --- 使用新的 ZipfGenerator ---
@@ -197,11 +206,33 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
     alpha = zipf_param if zipf_param is not None else 0
     zipf_sampler = ZipfGenerator(dataset_len, alpha)
     
+    if retry_abort_prob is not None and not 0 <= retry_abort_prob <= 1:
+        raise ValueError("retry_abort_prob must be between 0 and 1")
+
+    # Draw exactly once per transaction.  A per-transaction seed is retained in
+    # the generated input so an experiment runner can reproduce every choice.
+    seed_source = random.Random(retry_abort_seed) if retry_abort_seed is not None else random
     client_round_inputs = []
     for client_id in range(client_cnt):
         round_inputs = []
         for round_id in range(round_cnt):
-            parameters_input = {'f1': {'payload_size': text_size, 'keys': {func: {} for func in all_func}}}
+            sample_seed = seed_source.getrandbits(64) if retry_abort_prob is not None else None
+            retry_abort_func = "NONE"
+            if retry_abort_prob is not None:
+                sample_rng = random.Random(sample_seed)
+                if sample_rng.random() < retry_abort_prob:
+                    retry_abort_func = sample_rng.choice(abort_candidates)
+
+            parameters_input = {
+                'f1': {
+                    'payload_size': text_size,
+                    'keys': {func: {} for func in all_func},
+                    'retry_abort_func': retry_abort_func,
+                    # This is experiment bookkeeping. It is deliberately not in
+                    # c4's function schema and therefore is not sent downstream.
+                    'retry_abort_seed': sample_seed,
+                }
+            }
             
             # 根据 read_ratio 生成操作列表
             ops_list = None
@@ -241,11 +272,28 @@ def generate_micro_benchmark_parameters(client_cnt, round_cnt, workflow, zipf_pa
         client_round_inputs.append(round_inputs)
     return client_round_inputs
 
-def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, micro_workflow=None, zipf_param=None, read_ratio=None):
+def generate_workflow_inputs_for_clients(
+    workflow,
+    client_cnt,
+    round_cnt,
+    micro_workflow=None,
+    zipf_param=None,
+    read_ratio=None,
+    retry_abort_prob=None,
+    retry_abort_seed=None,
+):
     if workflow == 'travel_reservation':
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
-        return generate_micro_benchmark_parameters(client_cnt, round_cnt, micro_workflow, zipf_param, read_ratio)
+        return generate_micro_benchmark_parameters(
+            client_cnt,
+            round_cnt,
+            micro_workflow,
+            zipf_param,
+            read_ratio,
+            retry_abort_prob,
+            retry_abort_seed,
+        )
     elif workflow == 'banking_system':
         return generate_banking_system_parameters(client_cnt, round_cnt)
     elif workflow == 'social_network':

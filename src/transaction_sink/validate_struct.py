@@ -8,6 +8,7 @@ import logging
 from typing import Dict
 import sys
 import time
+import json
 from batch_state_struct import PessimisticBatchState, OptimisticTransactionState
 import gevent.lock
 import gevent.queue  # 添加 gevent 队列导入
@@ -69,16 +70,38 @@ class RepairingBatchState:
         self.tx_finished_table_per_batch = {}
         self.state_lock  = gevent.lock.BoundedSemaphore()
         self.workflow_name = workflow_name
+        self.terminal_events = set()
+        self.last_transition_timestamp = time.time()
 
     def register_batch(self, batch_id, tx_list, batch_size):
-        self.transaction_list_per_batch[batch_id] = tx_list
-        self.tx_finished_table_per_batch[batch_id] = {'total':batch_size, "finished": 0}     
-        self.pessimistic_state_per_batch[batch_id] = PessimisticBatchState(batch_id, tx_list, batch_size)
-        for tx_id in tx_list:
-            self.optimistic_state_per_transaction[tx_id] = OptimisticTransactionState(batch_id, tx_id)
+        self.state_lock.acquire()
+        try:
+            self.last_transition_timestamp = time.time()
+            self.transaction_list_per_batch[batch_id] = tx_list
+            self.tx_finished_table_per_batch[batch_id] = {'total':batch_size, "finished": 0}
+            self.pessimistic_state_per_batch[batch_id] = PessimisticBatchState(batch_id, tx_list, batch_size)
+            for tx_id in tx_list:
+                self.optimistic_state_per_transaction[tx_id] = OptimisticTransactionState(batch_id, tx_id)
+        finally:
+            self.state_lock.release()
+        log_message(json.dumps({
+            'event': 'BATCH_REGISTER', 'workflow': self.workflow_name,
+            'batch_id': batch_id, 'tx_id': '', 'function': '',
+            'repair_mode': '', 'repair_epoch': 0, 'attempt_id': '',
+            'state_before': '', 'state_after': 'REGISTERED',
+            'total': batch_size, 'timestamp': time.time(),
+        }, sort_keys=True))
         #log_message(f"[REPAIR REGISTER] tx_finished_table_per_batch: {self.tx_finished_table_per_batch}")
 
     def update_subjection_info(self, batch_id:str, batch_sub, tx_sub, sub_per_tx_optimistic={}):
+        self.state_lock.acquire()
+        try:
+            return self._update_subjection_info_locked(
+                batch_id, batch_sub, tx_sub, sub_per_tx_optimistic)
+        finally:
+            self.state_lock.release()
+
+    def _update_subjection_info_locked(self, batch_id:str, batch_sub, tx_sub, sub_per_tx_optimistic={}):
         """
         Update the subjection info for the given batch. 
         batch_sub: {prev_batch_id:[txs]}
@@ -107,10 +130,19 @@ class RepairingBatchState:
         return ready_txs, opt_txs_become_pessi
 
     def clear_opt_table_after_finish(self, batch_id_list):
-        for batch_id in batch_id_list:
-            for tx_id in self.transaction_list_per_batch[batch_id]:
-                self.optimistic_state_per_transaction.pop(tx_id, None)
-            self.transaction_list_per_batch.pop(batch_id, None)
+        self.state_lock.acquire()
+        try:
+            for batch_id in batch_id_list:
+                for tx_id in self.transaction_list_per_batch.get(batch_id, []):
+                    self.optimistic_state_per_transaction.pop(tx_id, None)
+                self.transaction_list_per_batch.pop(batch_id, None)
+            finished_batches = set(batch_id_list)
+            self.terminal_events = {
+                identity for identity in self.terminal_events
+                if identity[0] not in finished_batches
+            }
+        finally:
+            self.state_lock.release()
 
     def reminder_successor_tx_pessi(self, batch_id, tx_id, batch_finished):
         ready_txs = {}
@@ -123,7 +155,45 @@ class RepairingBatchState:
         #log_message(f"[PES REMINDER NEXT] batch_id {batch_id} finished:{batch_finished}, and tx_id: {tx_id} fin, {ready_txs} is pessi ready.")
         return ready_txs 
        
-    def after_transaction_finish(self, origin_batch_id, repair_mode, tx_id, state, skip_repair):
+    def after_transaction_finish(self, origin_batch_id, repair_mode, tx_id, state, skip_repair,
+                                 repair_epoch=1, attempt_id=''):
+        # Idempotency is defined by the repair epoch and mode. attempt_id is
+        # diagnostic identity and must not let a duplicate terminal transition
+        # increment progress a second time.
+        event_identity = (origin_batch_id, tx_id, repair_epoch, repair_mode)
+        self.state_lock.acquire()
+        try:
+            if event_identity in self.terminal_events:
+                log_message(json.dumps({
+                    'event': 'DUPLICATE_TERMINAL_EVENT', 'workflow': self.workflow_name,
+                    'batch_id': origin_batch_id, 'tx_id': tx_id,
+                    'repair_mode': repair_mode, 'repair_epoch': repair_epoch,
+                    'attempt_id': attempt_id, 'timestamp': time.time(),
+                }, sort_keys=True))
+                return {}, {}
+            if (not skip_repair and tx_id not in self.optimistic_state_per_transaction):
+                log_message(json.dumps({
+                    'event': 'STALE_RESULT_DROPPED', 'workflow': self.workflow_name,
+                    'batch_id': origin_batch_id, 'tx_id': tx_id,
+                    'repair_mode': repair_mode, 'repair_epoch': repair_epoch,
+                    'attempt_id': attempt_id, 'timestamp': time.time(),
+                }, sort_keys=True))
+                return {}, {}
+            self.terminal_events.add(event_identity)
+            self.last_transition_timestamp = time.time()
+            log_message(json.dumps({
+                'event': 'TX_TERMINAL_EVENT_RECEIVED', 'workflow': self.workflow_name,
+                'batch_id': origin_batch_id, 'tx_id': tx_id, 'function': '',
+                'repair_mode': repair_mode, 'repair_epoch': repair_epoch,
+                'attempt_id': attempt_id, 'state_before': WAITING,
+                'state_after': state, 'timestamp': time.time(),
+            }, sort_keys=True))
+            return self._after_transaction_finish_locked(
+                origin_batch_id, repair_mode, tx_id, state, skip_repair)
+        finally:
+            self.state_lock.release()
+
+    def _after_transaction_finish_locked(self, origin_batch_id, repair_mode, tx_id, state, skip_repair):
         finished_txs_and_state = []
         tasks_tx_finish_repair = {} # {batch_id: {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}}
         tasks_cascaded_repair = {}
@@ -155,6 +225,15 @@ class RepairingBatchState:
             batch_id, tx_id, state = finished_txs_and_state.pop(0)
             #log_message(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}, state: {state}, batch_finished: {self.tx_finished_table_per_batch[batch_id]['finished']}/{self.tx_finished_table_per_batch[batch_id]['total']}")
             self.tx_finished_table_per_batch[batch_id]["finished"] += 1
+            log_message(json.dumps({
+                'event': 'BATCH_PROGRESS', 'workflow': self.workflow_name,
+                'batch_id': batch_id, 'tx_id': tx_id, 'function': '',
+                'repair_mode': repair_mode, 'repair_epoch': 0,
+                'attempt_id': '', 'state_before': '', 'state_after': state,
+                'finished': self.tx_finished_table_per_batch[batch_id]['finished'],
+                'total': self.tx_finished_table_per_batch[batch_id]['total'],
+                'timestamp': time.time(),
+            }, sort_keys=True))
             batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
             ready_successor_tx_pessi = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
             if state == ABORTED:
@@ -196,6 +275,36 @@ class TransactionSink:
         self.batch_size = batch_size
         self.repairing_batch_state:RepairingBatchState = RepairingBatchState(workflow_name) 
         self.last_batch_time = time.time()
+        self.abort_errors = {}
+        gevent.spawn_later(10, self.report_progress)
+
+    def report_progress(self):
+        state = self.repairing_batch_state
+        state.state_lock.acquire()
+        unfinished = {
+            batch_id: {
+                **counts,
+                'non_terminal_tx_ids': [
+                    tx_id for tx_id in state.transaction_list_per_batch.get(batch_id, [])
+                    if not state.pessimistic_state_per_batch.get(batch_id)
+                    or state.pessimistic_state_per_batch[batch_id].finished_tx_list[
+                        state.pessimistic_state_per_batch[batch_id].tx_idx[tx_id]
+                    ] is None
+                ],
+            }
+            for batch_id, counts in state.tx_finished_table_per_batch.items()
+        }
+        last_transition_timestamp = state.last_transition_timestamp
+        state.state_lock.release()
+        log_message(json.dumps({
+            'event': 'SINK_PROGRESS_SNAPSHOT', 'workflow': self.workflow_name,
+            'batch_id': '', 'tx_id': '', 'function': '', 'repair_mode': '',
+            'repair_epoch': 0, 'attempt_id': '', 'state_before': '',
+            'state_after': '', 'active_batches': unfinished,
+            'queue_depth': self.queue.qsize(), 'timestamp': time.time(),
+            'last_transition_timestamp': last_transition_timestamp,
+        }, sort_keys=True))
+        gevent.spawn_later(10, self.report_progress)
 
     def init_batch_processor(self):
         """初始化批处理器，类似 function_manager 的 init 方法"""
@@ -259,14 +368,15 @@ class TransactionSink:
         # #log_message(f"[PROCESS BATCH] workflow: {self.workflow_name}, batch_id: {transformed_batch['batch_id']}, size: {len(batch)}, queue remaining: {self.queue.qsize()}")
         
    
-    def append(self, transaction_id: str, read_set: Dict[str, Dict], write_set: Dict[str, int], container_port: Dict[str, str], RYW_subjection:Dict[str, dict]):
+    def append(self, transaction_id: str, read_set: Dict[str, Dict], write_set: Dict[str, int], container_port: Dict[str, str], RYW_subjection:Dict[str, dict], transaction_metadata=None):
         """将事务添加到队列中"""
         transaction_data = {
             'transaction_id': transaction_id,
             'read_set': read_set, 
             'write_set': write_set, 
             'container_port': container_port, 
-            'RYW_subjection': RYW_subjection
+            'RYW_subjection': RYW_subjection,
+            'transaction_metadata': transaction_metadata or {},
         }
         
         try:
@@ -288,6 +398,7 @@ class TransactionSink:
             "write_set": {},
             "RYW_subjection": {},
             "container_port": {},
+            "transaction_metadata": {},
             "transaction_list":[]
         }
 
@@ -297,6 +408,7 @@ class TransactionSink:
             transformed_batch["write_set"][tx_id]=tx["write_set"]
             transformed_batch["RYW_subjection"][tx_id] = tx["RYW_subjection"]
             transformed_batch["container_port"][tx_id] = tx["container_port"]
+            transformed_batch["transaction_metadata"][tx_id] = tx.get("transaction_metadata", {})
             transformed_batch["transaction_list"].append(tx_id)
         return transformed_batch
 
@@ -306,8 +418,19 @@ class TransactionSink:
         self.validate_batch_check()
 
 
-    def fin_repair_or_abort(self, batch_id, transaction_id, repair_mode, state, skip_repair):
-        tasks_tx_finish_repair, tasks_cascaded_repair = self.repairing_batch_state.after_transaction_finish(batch_id, repair_mode, transaction_id, state, skip_repair)
+    def fin_repair_or_abort(self, batch_id, transaction_id, repair_mode, state, skip_repair,
+                            repair_epoch=1, attempt_id='', error=''):
+        if state == ABORTED and error:
+            self.abort_errors[transaction_id] = error
+        tasks_tx_finish_repair, tasks_cascaded_repair = self.repairing_batch_state.after_transaction_finish(
+            batch_id, repair_mode, transaction_id, state, skip_repair,
+            repair_epoch, attempt_id)
+        for task_table in (tasks_tx_finish_repair, tasks_cascaded_repair):
+            for task in task_table.values():
+                task['aborted_errors'] = {
+                    tx_id: self.abort_errors.pop(tx_id, '')
+                    for tx_id in task.get('aborted_txs', [])
+                }
         if tasks_tx_finish_repair:
             tasks = [gevent.spawn(self.repair_finish_on_validator, tasks_tx_finish_repair)]
             gevent.joinall(tasks)

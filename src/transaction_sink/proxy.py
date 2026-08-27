@@ -50,14 +50,14 @@ class Dispatcher:
        self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
        gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
 
-    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair=False):
-        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state, skip_repair)
+    def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair=False, repair_epoch=1, attempt_id='', error=''):
+        self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state, skip_repair, repair_epoch, attempt_id, error)
 
     def register_repair_info_after_validate(self, workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx):
         return self.sinks[workflow_name].register_repair_info_after_validate(batch_id, batch_sub, tx_sub, sub_per_tx)
     
-    def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection):
-        self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection)
+    def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata=None):
+        self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata)
 
     def sink_release_optimistic_info(self, workflow_name, batch_list):
         self.sinks[workflow_name].clear_opt_table_after_finish(batch_list)
@@ -80,7 +80,8 @@ def fin_repair():
     repair_mode = data['repair_mode']
     skip_repair = data.get('skip_repair', False)
     # logging.info(f"[FIN REPAIR] workflow: {workflow_name}, batch_id: {batch_id}, transaction_id: {transaction_id}, repair_mode: {repair_mode}")
-    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED, skip_repair)
+    dispatcher.fin_repair_or_abort_within_batch(workflow_name, batch_id, transaction_id, repair_mode, REPAIRED, skip_repair,
+                                                data.get('repair_epoch', 1), data.get('attempt_id', ''))
     return json.dumps({'status': 'ok'})
 
 @app.route('/abort', methods = ['POST'])
@@ -91,7 +92,8 @@ def abort():
     error = data.get("error", "")
     logging.info(f"[ABORT] workflow: {workflow_name}, transaction_id: {transaction_id}, REPAIR: {data.get('repair', False)}, error:{error}")
     if data.get('repair', False):
-        dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED)
+        dispatcher.fin_repair_or_abort_within_batch(workflow_name, data['batch_id'], transaction_id,  data['repair_mode'], ABORTED,
+                                                    repair_epoch=data.get('repair_epoch', 1), attempt_id=data.get('attempt_id', ''), error=error)
     else:
         notify_url = "http://{}/notify".format(config.GATEWAY_ADDR)
         payload = {
@@ -112,7 +114,8 @@ def validate():
     write_set = data['write_set']
     container_port = data['container_port']
     RYW_subjection = data.get('RYW_subjection', {})
-    dispatcher.validate_transaction(workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection)
+    transaction_metadata = data.get('transaction_metadata', {})
+    dispatcher.validate_transaction(workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata)
     return json.dumps({'status': 'ok'})
 
 @app.route('/repair_pessi', methods = ['POST'])
@@ -144,4 +147,3 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
     server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
     server.serve_forever()
-   

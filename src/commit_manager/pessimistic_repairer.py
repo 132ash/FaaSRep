@@ -78,6 +78,11 @@ class PessimisticRepairer:
             for key, _ in ws.items():
                 self.tx_write_table_per_batch[batch_id][key][tx_idx] = None
             self.write_table_lock_per_batch[batch_id].release()
+            log_message(
+                self.logger,
+                f"ABORT_WRITER_REMOVED batch_id={batch_id} tx_id={aborted_tx_id} "
+                f"keys={list(ws.keys())}",
+            )
         #log_message(self.logger, f"[PESSIMISTIC ABORT] Modified write table for aborted transactions {aborted_txs} in batch {batch_id}. Remaining transactions: {successed_tx_table.keys()}, write set: {self.tx_write_table_per_batch[batch_id]}")
 
     def pessimistic_get_commit_keys(self, batch_id):
@@ -87,7 +92,9 @@ class PessimisticRepairer:
             # Find the rightmost non-None writer info
             for writer_info in writer_list[::-1]:
                 if writer_info is not None:
-                    commit_keys_all[key] = True
+                    # Override the serializer's validation-time writer with the
+                    # last writer still present after application aborts.
+                    commit_keys_all[key] = writer_info
                     break
         #log_message(self.logger, f"[PESSIMISTIC COMMIT KEYS] Batch {batch_id} all commit keys: {commit_keys_all}")
         return commit_keys_all

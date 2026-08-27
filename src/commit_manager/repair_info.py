@@ -35,17 +35,20 @@ class RepairInfo:
         # self.downstream_func_table[batch_id] = {}
         # self.upstream_func_table[batch_id] = {"next_func":{}, "next_dict":{}}
 
-    def construct_repair_metadata(self, batch_id, expired_keys, crosstx_subjection, RYW_subjection, worker_set, txid_list, container_port):
+    def construct_repair_metadata(self, batch_id, expired_keys, crosstx_subjection, RYW_subjection, worker_set, txid_list, container_port, transaction_metadata=None):
         '''
         Construct the repair metadata for the given batch. Only add RYW info and expired keys to the metadata when pessimistic repair is enabled.        
         '''
         #  metadata: {"dirty":False, "up_cnt": 0, "RYW_keys":{key:func}, "upstream_keys": {key:{'tx_id': prev_tx_id, 'func': prev_func}}}
         expired_keys_per_ip = {ip:set() for ip in worker_set}
+        transaction_metadata = transaction_metadata or {}
         for tx_id in txid_list:
             for func, next_funcs in self.workflow_graph_topo.items():
                 # update basic info used in opt and pessi: RYW and next_port.
                 RYW_sub = RYW_subjection.get(tx_id, {}).get(func, {})
                 basic_info_dict = self.get_func_basic_info_dict(batch_id, tx_id, func)
+                tx_metadata = transaction_metadata.get(tx_id, {})
+                basic_info_dict['transaction_metadata'] = tx_metadata
                 basic_info_dict['RYW_keys'] = RYW_sub
                 if next_funcs[0] == 'END':
                     basic_info_dict['successor_port'] = {'END':''}
@@ -71,6 +74,11 @@ class RepairInfo:
                     opt_func_info['dirty'] = upstream_func_dict.get('dirty', False) 
                     # this key is RYW, remove from expired keys.
                     expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
+                retry_abort_func = tx_metadata.get('retry_abort_func', 'NONE')
+                if retry_abort_func == func:
+                    # Apply this last: RYW propagation above may copy another
+                    # function's dirty bit into this function.
+                    opt_func_info['dirty'] = True
                 expired_keys_per_ip[func_ip] = expired_keys_per_ip[func_ip].union(expired_keys.get(tx_id, {}).get(func, {}))
                 #log_message(self.logger, f"[VALIDATE OPTIMISTIC METADATA] Constructing repair metadata for batch {batch_id}, tx {tx_id}, func {func}, opt_func_info: {opt_func_info}, expired_keys_per_ip: {expired_keys_per_ip}")    
         return expired_keys_per_ip

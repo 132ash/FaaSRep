@@ -95,8 +95,8 @@ class Dispatcher:
         #log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
-    def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states) -> TransactionState:
-        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states)
+    def get_state(self, retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states, transaction_metadata=None, repair_epoch=0, attempt_id='') -> TransactionState:
+        return self.managers[workflow_name].get_state(retry_after_abort, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair, repair_mode, repair_states, transaction_metadata, repair_epoch, attempt_id)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -104,8 +104,8 @@ class Dispatcher:
     def trigger_crosstx_function(self, workflow_name, function_name, transaction_id):
         self.managers[workflow_name].crosstx_trigger_function(transaction_id, function_name)
 
-    def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode):
-        self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode)
+    def trigger_repair(self, batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode, repair_epoch, attempt_id):
+        self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode, repair_epoch, attempt_id)
 
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
@@ -137,10 +137,12 @@ def repair():
     workflow_name = data['workflow_name']
     function_name = data['function_name']
     repair_mode = data['repair_mode']
+    repair_epoch = data.get('repair_epoch', 1)
+    attempt_id = data.get('attempt_id', '')
     no_parent_execution = data['no_parent_execution']
     port = data['port']
     ##log_message(f"FASTPATH repair. batch_id: {batch_id}, transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, port: {port}")
-    dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode)
+    dispatcher.trigger_repair(batch_id, transaction_id, workflow_name, function_name, no_parent_execution, port, repair_mode, repair_epoch, attempt_id)
     return json.dumps({'status': 'ok'})
 
 
@@ -174,9 +176,19 @@ def req():
     repair = data.get('repair', False)
     repair_mode = data.get('repair_mode', "")
     repair_states = data.get('repair_states', {})
+    transaction_metadata = data.get('transaction_metadata', {})
+    repair_epoch = data.get('repair_epoch', 1 if repair else 0)
+    attempt_id = data.get('attempt_id', '')
     # if repair:
         ##log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
-    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states)
+    state = dispatcher.get_state(retry_after_abort, workflow_name, transaction_id, container_port, read_set, write_set, batch_id, RYW_subjection, repair,repair_mode, repair_states, transaction_metadata, repair_epoch, attempt_id)
+    if repair and (state.repair_epoch, state.repair_mode, state.attempt_id) != (repair_epoch, repair_mode, attempt_id):
+        log_message(json.dumps({'event': 'STALE_TRIGGER_REJECTED', 'workflow': workflow_name,
+                                'batch_id': batch_id, 'tx_id': transaction_id,
+                                'function': function_name, 'repair_mode': repair_mode,
+                                'repair_epoch': repair_epoch, 'attempt_id': attempt_id,
+                                'timestamp': time.time()}))
+        return json.dumps({'status': 'stale'})
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -187,13 +199,16 @@ def clear():
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     abort_clear = data.get('abort', False)
-    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
+    # Containers retain optimistic contexts because a predecessor abort may
+    # promote the transaction to pessimistic repair. Clear them only after the
+    # gateway has observed a terminal outcome.
     # if abort_clear:
     #     if FAST_PATH:
     #         ##log_message(f"transaction {transaction_id} abort, return its containers to pool.")
     #         dispatcher.reserve_pools[workflow_name].release([transaction_id])
     # else:
-    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
+    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run
+    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
     return json.dumps({'status': 'ok'})
 
 @app.route('/prepare', methods = ['POST'])

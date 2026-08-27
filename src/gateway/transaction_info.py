@@ -11,9 +11,11 @@ VALIDATOR_ADDR = config.VALIDATOR_ADDR
 class RunningTXTable:
     def __init__(self):
         self.running_txs = {}
+        self.last_transition_timestamp = time.time()
     
     def registerTX(self, workflow, tx_id, tx_params):
-        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'pessimistic':False}
+        self.last_transition_timestamp = time.time()
+        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'pessimistic':False, 'error': ''}
 
     def finishTX(self, tx_id):
         first_run_finish_time = self.running_txs[tx_id]["first_run_finish_time"]
@@ -44,13 +46,17 @@ class RunningTXTable:
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
 
-    def notifyTX(self, transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time=None, notify_received_time=None, abort = False, pessimistic_txs=None):
+    def notifyTX(self, transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time=None, notify_received_time=None, abort = False, pessimistic_txs=None, abort_errors=None):
+        self.last_transition_timestamp = time.time()
         if pessimistic_txs is None:
             pessimistic_txs = {}
+        if abort_errors is None:
+            abort_errors = {}
         if abort:
             for tx_id in transaction_id_list:
                 self.running_txs[tx_id]['abort'] = True
                 self.running_txs[tx_id]['finished'] = True
+                self.running_txs[tx_id]['error'] = abort_errors.get(tx_id, '')
                 self.running_txs[tx_id]['cond'].set()
         else:
             for tx_id in transaction_id_list:

@@ -57,6 +57,28 @@ app = Flask(__name__)
 repo = Repository()
 txTable = RunningTXTable()
 
+def report_gateway_progress():
+    snapshot = {
+        tx_id: {
+            'workflow': state['workflow'],
+            'finished': state['finished'],
+            'abort': state['abort'],
+            'pessimistic': state['pessimistic'],
+        }
+        for tx_id, state in txTable.running_txs.items()
+    }
+    log_message(json.dumps({
+        'event': 'GATEWAY_PROGRESS_SNAPSHOT', 'workflow': '',
+        'batch_id': '', 'tx_id': '', 'function': '', 'repair_mode': '',
+        'repair_epoch': 0, 'attempt_id': '', 'state_before': '',
+        'state_after': '', 'active_transactions': snapshot,
+        'last_transition_timestamp': txTable.last_transition_timestamp,
+        'timestamp': time.time(),
+    }, sort_keys=True))
+    gevent.spawn_later(10, report_gateway_progress)
+
+gevent.spawn_later(10, report_gateway_progress)
+
 workflow_metadata = {}
 metadata_lock = gevent.lock.BoundedSemaphore()
 
@@ -117,6 +139,12 @@ def run():
     parameters = data['parameters']
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
     txTable.registerTX(workflow, transaction_id, parameters)
+    log_message(json.dumps({
+        'event': 'TX_REGISTER', 'workflow': workflow, 'batch_id': '',
+        'tx_id': transaction_id, 'function': '', 'repair_mode': '',
+        'repair_epoch': 0, 'attempt_id': '', 'state_before': '',
+        'state_after': 'RUNNING', 'timestamp': time.time(),
+    }, sort_keys=True))
     workflow_metadata = get_workflow_metadata(workflow)
     #log_message(f'processing request {transaction_id} ..., function_ip:{workflow_metadata["function_ip"]}')
     start = time.time()
@@ -125,6 +153,12 @@ def run():
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id):
         exec_first_run_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
+        log_message(json.dumps({
+            'event': 'WAIT_TX_BEGIN', 'workflow': workflow, 'batch_id': '',
+            'tx_id': transaction_id, 'function': '', 'repair_mode': '',
+            'repair_epoch': 0, 'attempt_id': '', 'state_before': 'RUNNING',
+            'state_after': 'WAITING', 'timestamp': time.time(),
+        }, sort_keys=True))
         aborted = txTable.waitTX(transaction_id)
         # if aborted:
         #     #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
@@ -135,7 +169,16 @@ def run():
         # retry = True
     #log_message(f"transaction {transaction_id} in {workflow}  finished running, checking finished or aborted...")
     if aborted:
-        message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id})
+        abort_error = txTable.running_txs[transaction_id].get('error', '')
+        message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id,
+                              'e2e_latency': time.time() - start, 'rounds': 2,
+                              'error': abort_error})
+        log_message(json.dumps({
+            'event': 'TX_TERMINAL_ABORT', 'workflow': workflow, 'batch_id': '',
+            'tx_id': transaction_id, 'function': '', 'repair_mode': '',
+            'repair_epoch': 0, 'attempt_id': '', 'state_before': 'WAITING',
+            'state_after': 'ABORTED', 'timestamp': time.time(),
+        }, sort_keys=True))
         txTable.running_txs.pop(transaction_id, None)
     else:
         first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time, notify_received_time, pessimistic = txTable.finishTX(transaction_id)
@@ -164,6 +207,12 @@ def run():
             'notify_to_fetch_start_latency': notify_to_fetch_start_latency,
             'rounds':rounds
         })
+        log_message(json.dumps({
+            'event': 'TX_TERMINAL_COMMIT', 'workflow': workflow, 'batch_id': '',
+            'tx_id': transaction_id, 'function': '', 'repair_mode': '',
+            'repair_epoch': 0, 'attempt_id': '', 'state_before': 'WAITING',
+            'state_after': 'COMMITTED', 'timestamp': time.time(),
+        }, sort_keys=True))
     #log_message(f"transaction {transaction_id} in {workflow} aborted: {aborted}, clearing states")
     if config.CLEAR_MEM:
         clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
@@ -177,11 +226,20 @@ def notify():
     transaction_id_lists = data['transaction_id_lists']
     timestamps = data['timestamps']
     aborted_txs_from_validator = data.get('aborted_txs', [])
+    aborted_errors = data.get('aborted_errors', {})
     pessimistic_txs = data.get('pessimistic_txs', [])
+    log_message(json.dumps({
+        'event': 'NOTIFY_RECEIVED', 'workflow': '', 'batch_id': '',
+        'tx_id': '', 'function': '', 'repair_mode': '', 'repair_epoch': 0,
+        'attempt_id': '', 'state_before': '', 'state_after': 'RECEIVED',
+        'transaction_count': sum(len(items) for items in transaction_id_lists),
+        'timestamp': time.time(),
+    }, sort_keys=True))
     #log_message(f"notify txs, aborted_txs_from_validator:{aborted_txs_from_validator}, successed_transaction_id_lists:{transaction_id_lists}, timestamps:{timestamps}, abort:{data.get('abort', False)}")
     #log_message(f'notify, running_txs:{list(txTable.running_txs.keys())}')
     if aborted_txs_from_validator:
-        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, abort=True, pessimistic_txs={})
+        txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, abort=True,
+                         pessimistic_txs={}, abort_errors=aborted_errors)
     for transaction_id_list, timestamp_per_batch, pessimistic_txs_per_batch in zip(transaction_id_lists, timestamps, pessimistic_txs):
         if data.get('abort', False):
             txTable.notifyTX(transaction_id_list, 0,0, 0, abort=True, pessimistic_txs={})

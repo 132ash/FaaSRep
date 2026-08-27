@@ -82,7 +82,17 @@ class SerializerProcess(Process):
         
     def run(self):
         last_task_time = time.time()
+        last_snapshot_time = 0
         while True:
+            if time.time() - last_snapshot_time >= 10:
+                self.log_message(
+                    f"SERIALIZER_PROGRESS_SNAPSHOT workflow={self.workflow_name} "
+                    f"batch_write_info={list(self.batch_write_info.keys())} "
+                    f"commit_suspended_batches={self.commit_suspended_batches} "
+                    f"batch_validator_assignment={self.batch_validator_assignment} "
+                    f"key_writer_waits={{{', '.join(f'{key}:{[writer[0] for writer in writers]}' for key, writers in self.key_writers.items())}}}"
+                )
+                last_snapshot_time = time.time()
             try:
                 msg = self.req_queue.get(timeout=1)
                 last_task_time = time.time()
@@ -93,6 +103,10 @@ class SerializerProcess(Process):
                 continue
             
             handler_id, batch_id, op, data = msg
+            self.log_message(
+                f"SERIALIZER_REQUEST_DEQUEUED workflow={self.workflow_name} "
+                f"batch_id={batch_id} op={op} handler_id={handler_id}"
+            )
             # find dirty set, and subjection set send to the validator to repair.
             # if the batch is ready to commit, send the commit list to the handler.
             if op == VALIDATE:
@@ -218,10 +232,18 @@ class SerializerProcess(Process):
             for key in current_batch_write_info['writes'].keys():
                 #self.#log_message(f"[COMMIT] {current_batch_id} commit {key}:writers {self.key_writers[key]}")
                 current_key_writers = self.key_writers[key]
-                _,  writer_tx_id,  writer_func = current_key_writers.pop(0)
-                if current_batch_commit_keys.pop(key, False):
+                validation_writer = current_key_writers.pop(0)
+                _,  writer_tx_id,  writer_func = validation_writer
+                selected_writer = current_batch_commit_keys.pop(key, None)
+                if selected_writer:
+                    writer_tx_id, writer_func = selected_writer
                     self.key_version_table[key] = version
                     commit_keys_on_worker[key] = (writer_tx_id, writer_func, version)
+                    self.log_message(
+                        f"COMMIT_WRITER_SELECTED batch_id={current_batch_id} key={key} "
+                        f"validation_writer={validation_writer[1:]} "
+                        f"selected_writer={selected_writer}"
+                    )
                 if len(current_key_writers) > 0:
                     cascaded_batch_id, _, _ = current_key_writers[0]
                     self.batch_write_info[cascaded_batch_id]['ready_write_cnt'] += 1
@@ -234,5 +256,3 @@ class SerializerProcess(Process):
 
 
         
-
-

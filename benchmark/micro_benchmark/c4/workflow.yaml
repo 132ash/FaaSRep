@@ -6,6 +6,9 @@ functions:
     payload_size:
       from: GLOBAL
       type: int
+    retry_abort_func:
+      from: GLOBAL
+      type: str
   name: f1
   next:
     nodes:
@@ -16,6 +19,8 @@ functions:
       type: str
     payload_size:
       type: int
+    retry_abort_func:
+      type: str
   source: f1
 - input:
     keys:
@@ -24,6 +29,9 @@ functions:
     payload_size:
       from: f1
       type: int
+    retry_abort_func:
+      from: f1
+      type: str
   name: f2
   next:
     nodes:
@@ -34,6 +42,8 @@ functions:
       type: str
     payload_size:
       type: int
+    retry_abort_func:
+      type: str
   source: f2
 - input:
     keys:
@@ -42,6 +52,9 @@ functions:
     payload_size:
       from: f2
       type: int
+    retry_abort_func:
+      from: f2
+      type: str
   name: f3
   next:
     nodes:
@@ -52,6 +65,8 @@ functions:
       type: str
     payload_size:
       type: int
+    retry_abort_func:
+      type: str
   source: f3
 - input:
     keys:
@@ -60,6 +75,9 @@ functions:
     payload_size:
       from: f3
       type: int
+    retry_abort_func:
+      from: f3
+      type: str
   name: f4
   next:
     type: FINISH
@@ -68,4 +86,6 @@ functions:
       type: str
     payload_size:
       type: int
+    retry_abort_func:
+      type: str
   source: f4
