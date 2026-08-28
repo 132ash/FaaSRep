@@ -93,7 +93,7 @@ BATCH_TIMEOUT = 0.015
 ABORT_PROB = 0
 
 # batch setting
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 
 # mode setting
 FAST_PATH = True

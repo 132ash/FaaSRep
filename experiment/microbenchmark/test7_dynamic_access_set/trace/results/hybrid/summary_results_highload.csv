@@ -1,0 +1,3 @@
+trace,segment_index,configured_abort_prob,actual_abort_count,success_count,success_p50,success_p99,success_throughput
+highload,2,0.5,5471,13005,0.21582293510437012,0.4060671138763425,43.321758615562395
+highload,2,0.0,0,13005,0.17435526847839355,0.23003376007080076,43.32671094664799
