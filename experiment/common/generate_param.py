@@ -208,6 +208,8 @@ def generate_micro_benchmark_parameters(
     
     if retry_abort_prob is not None and not 0 <= retry_abort_prob <= 1:
         raise ValueError("retry_abort_prob must be between 0 and 1")
+    if retry_abort_prob is not None and workflow != "c4":
+        raise ValueError("retry abort injection is supported only by c4")
 
     # Draw exactly once per transaction.  A per-transaction seed is retained in
     # the generated input so an experiment runner can reproduce every choice.
@@ -227,12 +229,18 @@ def generate_micro_benchmark_parameters(
                 'f1': {
                     'payload_size': text_size,
                     'keys': {func: {} for func in all_func},
-                    'retry_abort_func': retry_abort_func,
-                    # This is experiment bookkeeping. It is deliberately not in
-                    # c4's function schema and therefore is not sent downstream.
-                    'retry_abort_seed': sample_seed,
                 }
             }
+            # Only c4 declares retry_abort_func in its workflow schema. Keep
+            # every other microbenchmark workflow's input interface unchanged.
+            if workflow == "c4":
+                parameters_input['f1']['retry_abort_func'] = retry_abort_func
+                # The seed is driver bookkeeping, not a workflow input.  In
+                # particular, never send ``None`` here: gateway.store_input()
+                # writes every supplied field to Redis, whose encoder rejects
+                # NoneType and turns the /run response into an HTTP 500.
+                if sample_seed is not None:
+                    parameters_input['f1']['retry_abort_seed'] = sample_seed
             
             # 根据 read_ratio 生成操作列表
             ops_list = None

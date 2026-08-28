@@ -71,3 +71,15 @@ python3 inspect_progress.py
 
 The inspector is read-only. It does not clean Redis, containers, batch state,
 or client processes.
+
+## Open-loop trace slices
+
+The companion driver under [`trace/`](trace/) reuses the lowload/highload
+segment schedules from the actual-app trace experiment and generates c4 inputs
+for each arrival. Run it with:
+
+```bash
+bash trace/run_segments.sh
+```
+
+See [`trace/README.md`](trace/README.md) for segment and probability overrides.
