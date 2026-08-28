@@ -135,6 +135,7 @@ class ValidatorProcess(Process):
         self.successed_tx_list_per_batch = {}  # {batch_id: [tx_id1, tx_id2, ...]}
         self.aborted_tx_list_per_batch = {}
         self.aborted_error_per_batch = {}
+        self.retry_tx_list_per_batch = {}
         self.time_tuple_per_batch = {}  # {batch_id: [first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time]}
         gevent.spawn_later(DISPATCH_INTERVAL, self._dispatch_loop)
         gevent.spawn_later(10, self.report_progress)
@@ -168,15 +169,48 @@ class ValidatorProcess(Process):
             self.successed_tx_list_per_batch[batch_id] = {txid:True for txid in batch['transaction_list']}
             self.aborted_tx_list_per_batch[batch_id] = []
             self.aborted_error_per_batch[batch_id] = {}
+            self.retry_tx_list_per_batch[batch_id] = []
             self.read_set_per_batch[batch_id] = batch['read_set']
             self.write_set_per_batch[batch_id] = batch['write_set']
             self.transaction_metadata_per_batch[batch_id] = batch.get('transaction_metadata', {})
             self.container_port_per_batch[batch_id] = batch['container_port']
-            expired_keys_per_ip, pessi_sink_info = self.validate(batch_id, batch)
+            expired_keys_per_ip, pessi_sink_info, retry_txs = self.validate(
+                batch_id, batch)
+            self.retry_tx_list_per_batch[batch_id] = retry_txs
+            retained_txs = [
+                tx_id for tx_id in batch['transaction_list']
+                if tx_id not in set(retry_txs)
+            ]
+            self.tx_list_per_batch[batch_id] = retained_txs
+            self.successed_tx_list_per_batch[batch_id] = {
+                tx_id: True for tx_id in retained_txs
+            }
+            for table in (
+                    self.read_set_per_batch, self.write_set_per_batch,
+                    self.transaction_metadata_per_batch,
+                    self.container_port_per_batch):
+                table[batch_id] = {
+                    tx_id: value for tx_id, value in table[batch_id].items()
+                    if tx_id in self.successed_tx_list_per_batch[batch_id]
+                }
             self.register_lock.release()
             repair_start_time = time.time()
             self.time_tuple_per_batch[batch_id] = [last_task_time, repair_start_time, 0, 0]
-            self.repair_engine.repair_batch_after_validate(batch_id, self.container_port_per_batch[batch_id], self.read_set_per_batch[batch_id], self.write_set_per_batch[batch_id], self.tx_list_per_batch[batch_id], expired_keys_per_ip, pessi_sink_info)
+            self.repair_engine.repair_batch_after_validate(
+                batch_id, self.container_port_per_batch[batch_id],
+                self.read_set_per_batch[batch_id],
+                self.write_set_per_batch[batch_id], retained_txs,
+                expired_keys_per_ip, pessi_sink_info)
+            # repair_batch_after_validate can yield while waiting for repair
+            # greenlets. A terminal REPAIR_FINISH may commit and clean this
+            # batch before control returns here, so do not read the shared
+            # per-batch tables after that call.
+            if not retained_txs:
+                self.time_tuple_per_batch[batch_id][2] = time.time()
+                ready_batch_list, keys_for_commit_on_worker = self.serializer_request(
+                    batch_id, COMMIT, {'commit_keys': {}})
+                self.commit_batch_list(
+                    ready_batch_list, keys_for_commit_on_worker)
             log_message(self.logger, f"VALIDATE_END workflow={self.workflow_name} batch_id={batch_id}")
 
         elif op == REPAIR_FINISH:
@@ -199,6 +233,7 @@ class ValidatorProcess(Process):
         elif op == CASCADED_COMMIT:
             aborted_txs = []
             aborted_errors = {}
+            retry_txs = []
             txid_lists = []
             timestamps = []
             pes_transactions = []
@@ -209,6 +244,7 @@ class ValidatorProcess(Process):
             for batch_id in data:
                 aborted_txs.extend(self.aborted_tx_list_per_batch[batch_id])
                 aborted_errors.update(self.aborted_error_per_batch[batch_id])
+                retry_txs.extend(self.retry_tx_list_per_batch.get(batch_id, []))
                 txid_lists.append(self.successed_tx_list_per_batch[batch_id])
                 timestamps.append(self.time_tuple_per_batch[batch_id])
                 pes_transactions.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
@@ -219,8 +255,18 @@ class ValidatorProcess(Process):
             #         ]
             #     gevent.joinall(jobs)
             #log_message(self.logger, f"[CASCADED COMMIT] : {data} WITH {txid_lists}")
-            self.notify_gateway(txid_lists, True, timestamps, aborted_txs, pes_transactions, aborted_errors)
+            self.repair_engine.sink_release_optimistic_info(data)
+            commit_finish_time = time.time()
+            for committed_batch_id in data:
+                self.time_tuple_per_batch[committed_batch_id][3] = \
+                    commit_finish_time
+            # A retried tx may also be the old batch_id. Remove all validator
+            # state before waking the gateway so the same txid cannot collide
+            # with its previous batch during the new validation attempt.
             self.clean_batch_info(data)
+            self.notify_gateway(
+                txid_lists, True, timestamps, aborted_txs, pes_transactions,
+                aborted_errors, retry_txs)
 
     def serializer_request(self, batch_id, op, data):
         res_event = event.AsyncResult()
@@ -236,14 +282,24 @@ class ValidatorProcess(Process):
 
     def validate(self, batch_id, batch):
         self.repair_info.batch_init(batch_id)
-        serializer_input = {'transaction_list':batch['transaction_list'], 'read_set':batch['read_set'], 'write_set':batch['write_set']}
-        expired_keys, subjection_set, pessi_sink_info = self.serializer_request(batch_id, VALIDATE, serializer_input)
+        serializer_input = {
+            'transaction_list': batch['transaction_list'],
+            'read_set': batch['read_set'],
+            'write_set': batch['write_set'],
+            'transaction_metadata': batch.get('transaction_metadata', {}),
+        }
+        expired_keys, subjection_set, pessi_sink_info, retry_txs = \
+            self.serializer_request(batch_id, VALIDATE, serializer_input)
+        retained_txs = [
+            tx_id for tx_id in batch['transaction_list']
+            if tx_id not in set(retry_txs)
+        ]
         expired_keys_per_ip = self.repair_info.construct_repair_metadata(
             batch_id, expired_keys, subjection_set, batch['RYW_subjection'],
-            self.worker_ip_set, batch['transaction_list'], batch['container_port'],
+            self.worker_ip_set, retained_txs, batch['container_port'],
             batch.get('transaction_metadata', {}))
         #log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
-        return expired_keys_per_ip, pessi_sink_info
+        return expired_keys_per_ip, pessi_sink_info, retry_txs
 
     def clean_batch_info(self, batch_id_list):
         #log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")
@@ -255,6 +311,7 @@ class ValidatorProcess(Process):
             self.transaction_metadata_per_batch.pop(batch_id, None)
             self.aborted_tx_list_per_batch.pop(batch_id, None)
             self.aborted_error_per_batch.pop(batch_id, None)
+            self.retry_tx_list_per_batch.pop(batch_id, None)
             self.successed_tx_list_per_batch.pop(batch_id, None)
             self.repair_engine.clean_table_of_batch(batch_id)
             self.container_port_per_batch.pop(batch_id, None)
@@ -270,6 +327,7 @@ class ValidatorProcess(Process):
             return
         if commit_batch_list:
             txid_lists, timestamps, abort_txs, pes_txs = [], [], [], []
+            retry_txs = []
             abort_errors = {}
             worker_commit_set = {worker_ip:{'keys':[], 'txs':[], 'aborted_txs': []} for worker_ip in self.worker_ip_set}
             for key, commit_key_info in keys_for_commit_per_ip.items():
@@ -284,6 +342,7 @@ class ValidatorProcess(Process):
                 aborted_txs_this_batch = self.aborted_tx_list_per_batch.get(batch_id, [])
                 abort_txs.extend(self.aborted_tx_list_per_batch.get(batch_id, []))
                 abort_errors.update(self.aborted_error_per_batch.get(batch_id, {}))
+                retry_txs.extend(self.retry_tx_list_per_batch.get(batch_id, []))
                 pes_txs.append(self.repair_engine.pessimistic_repair_txs_per_batch[batch_id])
                 for worker_ip in self.worker_ip_set:
                     worker_commit_set[worker_ip]['txs'].extend(successed_tx_list)
@@ -299,8 +358,12 @@ class ValidatorProcess(Process):
             commit_finish_time = time.time()
             for batch_id in commit_batch_list:
                 self.time_tuple_per_batch[batch_id][3] = commit_finish_time
-            self.notify_gateway(txid_lists, True, timestamps, abort_txs, pes_txs, abort_errors)
+            # See the cascaded-commit path above: retry notification must be
+            # published only after the old batch namespace has been released.
             self.clean_batch_info(commit_batch_list)
+            self.notify_gateway(
+                txid_lists, True, timestamps, abort_txs, pes_txs,
+                abort_errors, retry_txs)
 
 
     def trigger_worker_commit(self, ip, commit_list):
@@ -316,7 +379,8 @@ class ValidatorProcess(Process):
 
         requests.post(url, json=data)
 
-    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs, pessi_txs, aborted_errors=None):
+    def notify_gateway(self, txid_lists, success:bool, timestamps, aborted_txs,
+                       pessi_txs, aborted_errors=None, retry_txs=None):
         url = 'http://{}/notify'.format(GATEWAY_ADDR)
         log_message(self.logger, f"GATEWAY_NOTIFY_START tx_count={sum(len(items) for items in txid_lists)} aborted={len(aborted_txs)}")
         #log_message(self.logger, f"[NOTIFY] Notify gateway: {url}, transaction_id_lists: {txid_lists}, timestamps:{timestamps}, pessimistic_txs:{pessi_txs}")
@@ -326,7 +390,8 @@ class ValidatorProcess(Process):
             'timestamps':timestamps,
             'aborted_txs': aborted_txs,
             'aborted_errors': aborted_errors or {},
-            'pessimistic_txs': pessi_txs
+            'pessimistic_txs': pessi_txs,
+            'retry_txs': retry_txs or [],
         }
         r = requests.post(url, json=data)
         log_message(self.logger, f"GATEWAY_NOTIFY_FINISH status={r.status_code}")

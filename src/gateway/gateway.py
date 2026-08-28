@@ -24,7 +24,11 @@ def log_message(message):
 monkey.patch_all()
 from flask import Flask, request
 from gateway_repo import Repository
-from transaction_info import RunningTXTable
+from transaction_info import (
+    RunningTXTable,
+    is_injected_retry_abort,
+    prepare_occ_retry_parameters,
+)
 import requests
 import time
 
@@ -105,12 +109,14 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     for n in start_functions:
         ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
-        if not retry:
-            repo.store_input(transaction_id, ip, func_param)
+        # OCC retry cleanup removes the old request-local input as well, so
+        # every execution attempt must restore the start-function input.
+        repo.store_input(transaction_id, ip, func_param)
         jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
+
 
 @app.route('/run', methods = ['POST'])
 def run():
@@ -130,6 +136,7 @@ def run():
     start = time.time()
     aborted = False
     retry = False
+    occ_retries = 0
     # run the workflow,  the workflow may abort in the middle.
     while not txTable.TxFinished(transaction_id):
         exec_first_run_latency = run_workflow(workflow,workflow_metadata, transaction_id, parameters, retry)
@@ -140,18 +147,35 @@ def run():
             'state_after': 'WAITING', 'timestamp': time.time(),
         }, sort_keys=True))
         aborted = txTable.waitTX(transaction_id)
-        # if aborted:
-        #     #log_message(f"[ABORT] transaction {transaction_id} aborted, clear state, just return.")
-        #     # clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True) for ip in workflow_metadata['all_addrs']]
-        #     # gevent.joinall(clear_jobs)
-        #     break
-        #     txTable.resetTX(transaction_id)
-        # retry = True
+        abort_error = txTable.running_txs[transaction_id].get('error', '')
+        injected_abort = is_injected_retry_abort(aborted, abort_error)
+        if txTable.retryRequested(transaction_id) or injected_abort:
+            log_message(json.dumps({
+                'event': 'OCC_RETRY_BEGIN', 'workflow': workflow,
+                'batch_id': '', 'tx_id': transaction_id, 'function': '',
+                'repair_mode': '', 'repair_epoch': 0, 'attempt_id': '',
+                'state_before': (
+                    'INJECTED_ABORT' if injected_abort else 'VALIDATION_ABORT'
+                ),
+                'state_after': 'RETRYING', 'timestamp': time.time(),
+            }, sort_keys=True))
+            clear_jobs = [
+                gevent.spawn(clear_mem, ip, transaction_id, workflow, False)
+                for ip in workflow_metadata['all_addrs']
+            ]
+            gevent.joinall(clear_jobs)
+            txTable.resetTX(transaction_id)
+            parameters = prepare_occ_retry_parameters(
+                parameters, workflow_metadata['start_functions'])
+            retry = True
+            occ_retries += 1
+            aborted = False
     #log_message(f"transaction {transaction_id} in {workflow}  finished running, checking finished or aborted...")
     if aborted:
         abort_error = txTable.running_txs[transaction_id].get('error', '')
         message = json.dumps({'status':'aborted', "res": {}, 'transaction_id':transaction_id,
                               'e2e_latency': time.time() - start, 'rounds': 2,
+                              'occ_retries': occ_retries,
                               'error': abort_error})
         log_message(json.dumps({
             'event': 'TX_TERMINAL_ABORT', 'workflow': workflow, 'batch_id': '',
@@ -185,7 +209,8 @@ def run():
             'result_fetch_latency': result_fetch_latency,
             'post_commit_gateway_latency': post_commit_gateway_latency,
             'notify_to_fetch_start_latency': notify_to_fetch_start_latency,
-            'rounds':rounds
+            'rounds': rounds,
+            'occ_retries': occ_retries,
         })
         log_message(json.dumps({
             'event': 'TX_TERMINAL_COMMIT', 'workflow': workflow, 'batch_id': '',
@@ -207,6 +232,7 @@ def notify():
     timestamps = data['timestamps']
     aborted_txs_from_validator = data.get('aborted_txs', [])
     aborted_errors = data.get('aborted_errors', {})
+    retry_txs = data.get('retry_txs', [])
     pessimistic_txs = data.get('pessimistic_txs', [])
     log_message(json.dumps({
         'event': 'NOTIFY_RECEIVED', 'workflow': '', 'batch_id': '',
@@ -220,6 +246,8 @@ def notify():
     if aborted_txs_from_validator:
         txTable.notifyTX(aborted_txs_from_validator, 0, 0, 0, abort=True,
                          pessimistic_txs={}, abort_errors=aborted_errors)
+    if retry_txs:
+        txTable.notifyRetry(retry_txs)
     for transaction_id_list, timestamp_per_batch, pessimistic_txs_per_batch in zip(transaction_id_lists, timestamps, pessimistic_txs):
         if data.get('abort', False):
             txTable.notifyTX(transaction_id_list, 0,0, 0, abort=True, pessimistic_txs={})

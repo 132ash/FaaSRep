@@ -6,7 +6,7 @@
 
 论文 `atc26_FaaSRep.pdf` 的 §7.3 指出，FaaSRep 的 reconciliation 默认假设同一请求在首次执行和重试阶段具有稳定访问集。如果系统检测到访问集变化，则把该动态事务视为 application-level abort：丢弃该事务的 buffered writes，将其从提交历史中移除；如果该事务是其他事务的依赖前驱，则受影响事务可能需要由 optimistic repair 转为 pessimistic repair。
 
-本实验不真正改变访问集，也不实现访问集比较和检测，而是在事务重试阶段注入 application-level abort，模拟“系统已经检测到访问集变化”的结果。本阶段不把 abort 事务转为 OCC，也不重新提交该事务，只将其从当前 batch 的成功事务和写集合中移除。
+本实验不真正改变访问集，而是用 `retry_abort_func` 抽样需要按 OCC 语义处理的请求。validation 时，若该请求的所有函数均为 clean，则保留在 reconciliation 流程中且不触发主动 abort；若任一函数为 dirty，则将请求从当前 batch 的依赖和 writer 集合中移除，待 batch 提交后由 gateway 清理旧上下文并从头重试。重试时清除 `retry_abort_func`，因此同一请求不会再次触发实验主动 abort，最终客户端只应收到成功结果。
 
 实验还需要验证高并发下的 optimistic-to-pessimistic 转换是否存在并发缺陷。系统一旦卡住，实验程序不得因 timeout 自动退出、重试或清理现场，而应保留阻塞状态，并通过 workersp、container、transaction sink、commit manager、serializer 和 gateway 的日志定位最后一次有效状态转移。
 
@@ -102,15 +102,9 @@ if store.is_optimistic_repair and retry_abort_func == function_name:
 
 abort 检查应在当前函数的数据读写之前执行。首次执行和 pessimistic repair 均不得注入 abort。异常消息必须带固定标识 `INJECTED_DYNAMIC_ACCESS_ABORT`，用来区分实验注入、应用自身异常和系统错误。
 
-## 5. 保证目标函数在重试阶段执行
+## 5. Validation 阶段的 OCC 分流
 
-当前 fast path 只重新执行 dirty 函数。`src/container/proxy.py` 中，clean 函数不会运行应用代码。如果选中的 abort 目标函数是 clean，简单修改 microbenchmark 函数将导致：
-
-- 配置为 100% 时仍可能有事务不 abort；
-- 实际 abort 比例低于配置概率；
-- f1～f4 的实际 abort 位置不均匀。
-
-因此需要将 `retry_abort_func` 作为轻量 transaction metadata 沿控制路径传递：
+`retry_abort_func` 作为轻量 transaction metadata 沿控制路径传递：
 
 ```text
 microbenchmark function / Store
@@ -123,35 +117,31 @@ microbenchmark function / Store
 
 建议在 Store 中增加 transaction metadata 字段和设置接口。函数在首次执行时登记 `retry_abort_func`，container response 将其与 read set、write set、RYW metadata 一起返回。workersp 汇总并随 validation 请求传给 sink，sink 将其纳入 transformed batch，validator 再传给 `RepairInfo.construct_repair_metadata()`。
 
-构建 optimistic repair metadata 时，如果事务的 `retry_abort_func` 不是 `NONE`，必须将该目标函数强制标记为：
+serializer 完成正常 stale-read/dependency 检查后再处理被选中的请求：
 
-```python
-dirty = True
-```
+- 所有函数 clean：保留请求，不强制目标函数 dirty；fast path 复用 clean 结果，因此不会运行主动 abort 代码。
+- 存在 dirty 函数：在该请求写入 `key_writers` 之前将其标记为 OCC retry，并删除以该请求为后继的 batch/transaction dependency。
 
-只强制执行目标函数，不把 c4 全部函数设为 dirty。这样不会把完整 workflow 重执行开销混入所有实验点。Pessimistic repair 当前仍会把函数标记为 dirty并保留 transaction metadata，但注入逻辑不得在 pessimistic 模式再次 abort。
+validator、sink 和 repair engine 只接收过滤后的 transaction list。原请求的 buffered writes 不提交；batch 提交后 gateway 收到独立的 `retry_txs` 通知，清理 WorkerSP/container/shadow state，用同一 txid 重新执行，并把输入中的 `retry_abort_func` 改为 `NONE`。
 
-## 6. Abort 后的系统行为
+作为防御性兜底，gateway 若仍收到带 `INJECTED_DYNAMIC_ACCESS_ABORT` 标识的终态 abort，也必须将其转换为同样的内部 OCC retry，而不能返回失败请求。
 
-目标函数触发 abort 后，预期状态流为：
+## 6. OCC retry 的系统行为
+
+被选中且 dirty 的请求预期状态流为：
 
 ```text
-target function
-  -> container catches injected exception
-  -> /abort sent to transaction sink
-  -> transaction marked terminal-aborted
-  -> buffered writes discarded
-  -> transaction removed from successful transaction set
-  -> transaction removed from batch writer selection
-  -> affected optimistic successors marked need_pessimistic_repair
-  -> successors wait until readiness condition holds
-  -> dependency graph rebuilt without aborted predecessor
-  -> successors perform pessimistic repair
-  -> batch commits when every transaction is aborted or ready-to-commit
-  -> gateway separately notifies committed and aborted requests
+serializer detects dirty OCC request
+  -> remove request from current batch dependencies and writer selection
+  -> retained requests reconcile and commit normally
+  -> validator notifies gateway through retry_txs
+  -> gateway clears the old attempt
+  -> retry_abort_func becomes NONE
+  -> same txid executes and validates again
+  -> final successful result returns to the client
 ```
 
-被注入 abort 的事务自身不转为 OCC、不重新进入 gateway retry 循环，也不参与 commit。它只作为一个 terminal-aborted 请求返回客户端。
+该内部 validation abort 计入 `occ_retries`，但不作为 terminal-aborted 请求写入 raw result。真正的应用异常仍使用原有 application-level abort 路径。
 
 ## 7. Abort writer 的提交语义修正
 
@@ -448,20 +438,17 @@ rounds
 pessimistic
 submit_timestamp
 response_timestamp
+occ_retries
 error
 ```
 
-周期性 progress 文件还应包含尚未返回的 txid。正常完成概率点后，汇总：
+周期性 progress 文件还应包含尚未返回的 txid。正常完成概率点后，summary 仅保留：
 
-- submitted、terminal、committed、aborted；
-- 实际 abort 比例；
-- f1～f4 abort 数量和比例；
-- terminal throughput；
-- commit throughput；
-- abort throughput；
-- terminal、commit、abort 的 P50/P99 latency；
-- optimistic-to-pessimistic transaction 数量和比例；
-- `submitted == committed + aborted` 完整性检查。
+- `configured_abort_prob`；
+- `actual_abort_count`，即所有成功请求的 `occ_retries` 之和；
+- `success_count`；
+- `success_p50`、`success_p99`；
+- `success_throughput`。
 
 由于没有 timeout，正常完成的汇总中不存在 timeout 类别。若系统卡住，则该概率点不生成“正常完成”的 summary row，而是保留：
 
@@ -471,21 +458,19 @@ error
 - 最后一条状态转移时间；
 - 实验仍在运行的现场。
 
-100% abort 时，commit throughput 应为 0，commit latency 记为 NA；terminal/abort latency 和 terminal throughput 仍然有效。
+任一请求最终返回非 `ok` 状态时，该概率点不得生成正常 summary row。
 
 ## 13. 验证顺序
 
 正式运行前按以下顺序验证：
 
 1. `p=0`：没有 injected abort，结果应接近原 c4 基线。
-2. 单 client 分别强制 f1、f2、f3、f4：四个位置均只在 optimistic repair 阶段 abort；pessimistic repair 不注入 abort。
-3. 两事务且前驱 abort：后继准确执行 optimistic-to-pessimistic 转换。
-4. batch 最后 writer abort：提交更早的未 abort writer。
-5. 某 key 的全部 writer abort：该 key 不进入 commit set。
-6. 重复 `/abort` 和旧 optimistic result 晚到：finished count 只增加一次。
-7. 人工构造 optimistic/pessimistic attempt 重叠：旧 attempt 不删除新 context。
-8. 32 clients、`p=1`：若系统正确，全部请求最终返回 aborted；若卡住，则保留现场并用 progress snapshot 定位。
-9. 执行完整的五个概率点。
+2. 被选中且全 clean：留在 repair 流程，不执行主动 abort。
+3. 被选中且存在 dirty 函数：从当前 batch 移除，writer/dependency 中均不再出现该 txid。
+4. gateway 收到 `retry_txs`：清理旧上下文、保留同一 txid、将 `retry_abort_func` 改为 `NONE` 后重试。
+5. batch 中全部请求均需 OCC retry：空 batch 正常提交和释放，不残留 sink/serializer 状态。
+6. 32 clients、`p=1`：全部请求最终返回 `ok`，summary 的 `actual_abort_count` 等于内部 OCC retry 总次数。
+7. 执行完整的五个概率点。
 
 ## 14. 预期修改文件
 

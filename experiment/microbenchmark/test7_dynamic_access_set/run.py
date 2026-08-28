@@ -29,7 +29,7 @@ RAW_FIELDS = [
     'tx_id', 'client_id', 'round', 'configured_abort_prob',
     'expected_abort', 'abort_target', 'retry_abort_seed', 'status',
     'e2e_latency', 'rounds', 'pessimistic', 'submit_timestamp',
-    'response_timestamp', 'error',
+    'response_timestamp', 'occ_retries', 'error',
 ]
 
 
@@ -93,6 +93,8 @@ def append_raw(raw_path, row, write_lock):
 
 
 def append_json_log(log_path, payload, write_lock):
+    if not config.ENABLE_EXPERIMENT_LOGGING:
+        return
     line = json.dumps(payload, sort_keys=True) + '\n'
     with write_lock:
         with log_path.open('a', encoding='utf-8') as output:
@@ -180,6 +182,7 @@ def client_worker(client_id, workflow, abort_prob, parameters, raw_path,
             'pessimistic': bool(response and response.get('rounds', 2) == 3),
             'submit_timestamp': submit_timestamp,
             'response_timestamp': response_timestamp,
+            'occ_retries': response.get('occ_retries', 0) if response else 0,
             'error': error,
         }, write_lock)
         append_json_log(client_log_path, {
@@ -243,14 +246,18 @@ def progress_reporter(abort_prob, progress, progress_path, client_log_path,
             'timestamp': time.time(),
             'clients': clients,
         }
-        temporary_path = progress_path.with_suffix('.tmp')
-        temporary_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True), encoding='utf-8')
-        temporary_path.replace(progress_path)
-        append_json_log(
-            client_log_path,
-            {key: value for key, value in snapshot.items() if key != 'clients'},
-            write_lock,
-        )
+        if config.ENABLE_EXPERIMENT_LOGGING:
+            temporary_path = progress_path.with_suffix('.tmp')
+            temporary_path.write_text(
+                json.dumps(snapshot, indent=2, sort_keys=True),
+                encoding='utf-8')
+            temporary_path.replace(progress_path)
+            append_json_log(
+                client_log_path,
+                {key: value for key, value in snapshot.items()
+                 if key != 'clients'},
+                write_lock,
+            )
         phase = 'final' if stop_event.is_set() else 'progress'
         print(
             f'[{phase}] p={abort_prob:.2f} '
@@ -353,7 +360,7 @@ def main():
         completed_rows = list(csv.DictReader(source))
     normal_completion = (
         len(completed_rows) == client_count * ROUND
-        and all(row['status'] in {'ok', 'aborted'} for row in completed_rows)
+        and all(row['status'] == 'ok' for row in completed_rows)
         and all(process.exitcode == 0 for process in processes)
     )
     if not normal_completion:

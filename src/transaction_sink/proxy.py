@@ -48,8 +48,11 @@ class Dispatcher:
     def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair=False, repair_epoch=1, attempt_id='', error=''):
         self.sinks[workflow_name].fin_repair_or_abort(batch_id, transaction_id, repair_mode, state, skip_repair, repair_epoch, attempt_id, error)
 
-    def register_repair_info_after_validate(self, workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx):
-        return self.sinks[workflow_name].register_repair_info_after_validate(batch_id, batch_sub, tx_sub, sub_per_tx)
+    def register_repair_info_after_validate(self, workflow_name, batch_id,
+                                            batch_sub, tx_sub, sub_per_tx,
+                                            transaction_list):
+        return self.sinks[workflow_name].register_repair_info_after_validate(
+            batch_id, batch_sub, tx_sub, sub_per_tx, transaction_list)
 
     def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata=None):
         self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata)
@@ -121,7 +124,10 @@ def repair_pessimistic():
     batch_sub =  data['batch_sub']
     tx_sub =  data['tx_sub']
     sub_per_tx = data.get('whole_tx_sub', {})
-    res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
+    transaction_list = data.get('transaction_list', [])
+    res = dispatcher.register_repair_info_after_validate(
+        workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx,
+        transaction_list)
     return res
 
 @app.route('/release_opt', methods = ['POST'])

@@ -5,6 +5,11 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
 STORAGE_NODE_IP = '10.2.29.142'
 
+# Global switch for run-scoped files under ``logging/``. Disable this for
+# performance measurements; restart long-lived services and recreate workflow
+# containers after changing it.
+ENABLE_EXPERIMENT_LOGGING = False
+
 def _append_no_proxy_hosts(*hosts):
     existing = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
     no_proxy_hosts = [host.strip() for host in existing.split(",") if host.strip()]
@@ -173,5 +178,4 @@ STARTUP_POSTS = 2
 # # social network			
 # SOCIAL_NETWORK_USERS = 200			
 # STARTUP_POSTS = 3
-
 

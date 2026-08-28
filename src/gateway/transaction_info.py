@@ -1,4 +1,6 @@
 from gevent import event
+import copy
+import json
 import sys
 import requests
 import time
@@ -9,6 +11,22 @@ import config
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
 
 
+def prepare_occ_retry_parameters(parameters, start_functions):
+    if not isinstance(parameters, dict):
+        parameters = json.loads(parameters)
+    retry_parameters = copy.deepcopy(parameters)
+    for function_name in start_functions:
+        function_input = retry_parameters.get(function_name)
+        if (isinstance(function_input, dict) and
+                'retry_abort_func' in function_input):
+            function_input['retry_abort_func'] = 'NONE'
+    return retry_parameters
+
+
+def is_injected_retry_abort(aborted, error):
+    return aborted and 'INJECTED_DYNAMIC_ACCESS_ABORT' in (error or '')
+
+
 class RunningTXTable:
     def __init__(self):
         self.running_txs = {}
@@ -16,7 +34,11 @@ class RunningTXTable:
     
     def registerTX(self, workflow, tx_id, tx_params):
         self.last_transition_timestamp = time.time()
-        self.running_txs[tx_id] = {'workflow':workflow, "params":tx_params,"finished":False,"abort":False ,"cond":event.Event(), 'pessimistic':False, 'error': ''}
+        self.running_txs[tx_id] = {
+            'workflow': workflow, 'params': tx_params, 'finished': False,
+            'abort': False, 'retry': False, 'cond': event.Event(),
+            'pessimistic': False, 'error': '',
+        }
 
     def finishTX(self, tx_id):
         first_run_finish_time = self.running_txs[tx_id]["first_run_finish_time"]
@@ -40,12 +62,25 @@ class RunningTXTable:
     
     def resetTX(self, tx_id):
         self.running_txs[tx_id]['abort'] = False
+        self.running_txs[tx_id]['retry'] = False
         self.running_txs[tx_id]['finished'] = False
+        self.running_txs[tx_id]['pessimistic'] = False
+        self.running_txs[tx_id]['error'] = ''
         condition = self.running_txs[tx_id]['cond']
         condition.clear()
     
     def TxFinished(self, tx_id):
         return self.running_txs[tx_id]['finished']
+
+    def retryRequested(self, tx_id):
+        return self.running_txs[tx_id]['retry']
+
+    def notifyRetry(self, transaction_id_list):
+        self.last_transition_timestamp = time.time()
+        for tx_id in transaction_id_list:
+            self.running_txs[tx_id]['retry'] = True
+            self.running_txs[tx_id]['finished'] = True
+            self.running_txs[tx_id]['cond'].set()
 
     def notifyTX(self, transaction_id_list, first_run_finish_time, repair_start_time, repair_finish_time, commit_finish_time=None, notify_received_time=None, abort = False, pessimistic_txs=None, abort_errors=None):
         self.last_transition_timestamp = time.time()

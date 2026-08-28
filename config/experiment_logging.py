@@ -13,11 +13,21 @@ from pathlib import Path
 import re
 import uuid
 
+try:
+    from . import config as runtime_config
+except ImportError:
+    import config as runtime_config
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOGGING_ROOT = PROJECT_ROOT / 'logging'
 ACTIVE_EXPERIMENT_FILE = LOGGING_ROOT / 'ACTIVE_EXPERIMENT'
 _SAFE_COMPONENT = re.compile(r'[^A-Za-z0-9_.-]+')
+_LOGGING_DISABLED_LEVEL = logging.CRITICAL + 1
+
+
+def experiment_logging_enabled():
+    return getattr(runtime_config, 'ENABLE_EXPERIMENT_LOGGING', True)
 
 
 def _safe_component_name(component):
@@ -106,11 +116,14 @@ class ExperimentFileHandler(logging.Handler):
 
 def make_experiment_logger(name, component):
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
     logger.propagate = False
     for existing_handler in logger.handlers:
         existing_handler.close()
     logger.handlers.clear()
+    if not experiment_logging_enabled():
+        logger.setLevel(_LOGGING_DISABLED_LEVEL)
+        return logger
+    logger.setLevel(logging.INFO)
     handler = ExperimentFileHandler(component)
     handler.setFormatter(logging.Formatter(
         '[%(asctime)s.%(msecs)03d] %(message)s',
@@ -122,10 +135,13 @@ def make_experiment_logger(name, component):
 
 def configure_root_experiment_logging(component):
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
     for existing_handler in root_logger.handlers:
         existing_handler.close()
     root_logger.handlers.clear()
+    if not experiment_logging_enabled():
+        root_logger.setLevel(_LOGGING_DISABLED_LEVEL)
+        return root_logger
+    root_logger.setLevel(logging.INFO)
     handler = ExperimentFileHandler(component)
     handler.setFormatter(logging.Formatter(
         '[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s',

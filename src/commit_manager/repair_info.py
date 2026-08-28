@@ -74,11 +74,6 @@ class RepairInfo:
                     opt_func_info['dirty'] = upstream_func_dict.get('dirty', False) 
                     # this key is RYW, remove from expired keys.
                     expired_keys.get(tx_id, {}).get(func, {}).pop(key, None)
-                retry_abort_func = tx_metadata.get('retry_abort_func', 'NONE')
-                if retry_abort_func == func:
-                    # Apply this last: RYW propagation above may copy another
-                    # function's dirty bit into this function.
-                    opt_func_info['dirty'] = True
                 expired_keys_per_ip[func_ip] = expired_keys_per_ip[func_ip].union(expired_keys.get(tx_id, {}).get(func, {}))
                 #log_message(self.logger, f"[VALIDATE OPTIMISTIC METADATA] Constructing repair metadata for batch {batch_id}, tx {tx_id}, func {func}, opt_func_info: {opt_func_info}, expired_keys_per_ip: {expired_keys_per_ip}")    
         return expired_keys_per_ip

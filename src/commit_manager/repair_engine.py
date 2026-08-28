@@ -55,7 +55,8 @@ class RepairEngine:
             requests.post(FAKE_SINK_URL, json={'batch_id': batch_id})
             self.pessi_register_lock.release() 
             return
-        ready_txs, opt_txs_become_pessi = self.register_on_sink(batch_id, pessi_sink_info)
+        ready_txs, opt_txs_become_pessi = self.register_on_sink(
+            batch_id, pessi_sink_info, tx_list)
         self.pessi_register_lock.release()    
         txs_for_optimistic_repair = []
         txs_for_pessimistic_repair = []
@@ -173,10 +174,17 @@ class RepairEngine:
         }
         requests.post(url, json=data)
 
-    def register_on_sink(self,batch_id, pessi_sink_info):
+    def register_on_sink(self, batch_id, pessi_sink_info, transaction_list):
         ip = self.tx_sink_addr
         url = f'http://{ip}:6000/repair_pessi'
-        data = {'batch_id': batch_id,'workflow_name': self.workflow_name,'batch_sub': pessi_sink_info['batch_sub'],'tx_sub': pessi_sink_info['tx_sub'],'whole_tx_sub': pessi_sink_info['whole_tx_sub']}
+        data = {
+            'batch_id': batch_id,
+            'workflow_name': self.workflow_name,
+            'batch_sub': pessi_sink_info['batch_sub'],
+            'tx_sub': pessi_sink_info['tx_sub'],
+            'whole_tx_sub': pessi_sink_info['whole_tx_sub'],
+            'transaction_list': transaction_list,
+        }
         res = requests.post(url, json=data).json()
         #log_message(self.logger, f"[PESSI] registering repair metadata on sink {ip}, batch_id: {batch_id}, data: {data}, ready_txs: {res['ready_txs']}")
         return res['ready_txs'], res['opt_txs_become_pessi']

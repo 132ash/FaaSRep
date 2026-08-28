@@ -13,6 +13,13 @@ import time
 from pathlib import Path
 
 
+EXPERIMENT_LOGGING_ENABLED = (
+    os.environ.get('FAASNAP_EXPERIMENT_LOGGING', '1').lower()
+    not in {'0', 'false', 'no', 'off'}
+)
+_LOGGING_DISABLED_LEVEL = logging.CRITICAL + 1
+
+
 class ActiveExperimentFileHandler(logging.Handler):
     """Container-side equivalent of config.experiment_logging handler."""
 
@@ -57,14 +64,19 @@ from redis_component import RedisShadowTable, RedisCache, RepairSidecar
 
 # 容器内的根 logger 也按当前实验分流，不再输出到终端。
 root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
 root_logger.handlers.clear()
-container_log_handler = ActiveExperimentFileHandler()
-container_log_handler.setFormatter(logging.Formatter(
-    '%(asctime)s [%(levelname)s] %(message)s'))
-root_logger.addHandler(container_log_handler)
+if EXPERIMENT_LOGGING_ENABLED:
+    root_logger.setLevel(logging.INFO)
+    container_log_handler = ActiveExperimentFileHandler()
+    container_log_handler.setFormatter(logging.Formatter(
+        '%(asctime)s [%(levelname)s] %(message)s'))
+    root_logger.addHandler(container_log_handler)
+else:
+    root_logger.setLevel(_LOGGING_DISABLED_LEVEL)
 
 def log_event(event, **fields):
+    if not EXPERIMENT_LOGGING_ENABLED:
+        return
     payload = {'event': event, 'timestamp': time.time(), **fields}
     logging.info(json.dumps(payload, sort_keys=True, default=str))
 

@@ -10,6 +10,11 @@ from datetime import datetime
 import logging
 from pathlib import Path
 import sys
+from occ_retry import (
+    is_occ_request,
+    remove_transaction_dependencies,
+    transaction_is_clean,
+)
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
 from experiment_logging import make_experiment_logger
@@ -94,12 +99,16 @@ class SerializerProcess(Process):
             if op == VALIDATE:
                 self.batch_validator_assignment[batch_id] = handler_id
                 version = get_timestamp()
-                expired_set, subjection_set, pessi_sink_info = self.accessed_set_validate(batch_id, version, data['transaction_list'], data['read_set'], data['write_set'])
+                expired_set, subjection_set, pessi_sink_info, retry_txs = self.accessed_set_validate(
+                    batch_id, version, data['transaction_list'], data['read_set'],
+                    data['write_set'], data.get('transaction_metadata', {}))
                 #self.#log_message(f"[VALIDATE] {batch_id}: expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
                 # if not batch_need_repair:
                 #     self.commit_keys_per_batch[batch_id] = self.batch_write_info[batch_id]['writes'].copy()  # commit keys for this batch.
                 #     commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
-                self.result_pipes[handler_id].put((batch_id, (expired_set, subjection_set, pessi_sink_info)))
+                self.result_pipes[handler_id].put(
+                    (batch_id, (expired_set, subjection_set,
+                                pessi_sink_info, retry_txs)))
                 
             elif op == COMMIT:
                 self.commit_keys_per_batch[batch_id] = data['commit_keys']
@@ -121,9 +130,13 @@ class SerializerProcess(Process):
         return commit_list_for_current_handler, commit_keys_on_worker
 
 
-    def accessed_set_validate(self, batch_id,version, transaction_list, read_set_per_batch, write_set_per_batch):
+    def accessed_set_validate(self, batch_id, version, transaction_list,
+                              read_set_per_batch, write_set_per_batch,
+                              transaction_metadata=None):
         expired_set = {}
         subjection_set = {}
+        retry_txs = []
+        transaction_metadata = transaction_metadata or {}
         pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':{}, 'whole_tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
         tx_index_inside_batch = {tx_id: i for i, tx_id in enumerate(transaction_list)}
@@ -132,8 +145,18 @@ class SerializerProcess(Process):
             subjection_set[tx_id] = {}
             rs = read_set_per_batch[tx_id]
             self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info, tx_index_inside_batch)
+            if (is_occ_request(transaction_metadata.get(tx_id)) and
+                    not transaction_is_clean(subjection_set[tx_id])):
+                retry_txs.append(tx_id)
+                expired_set.pop(tx_id, None)
+                subjection_set.pop(tx_id, None)
+                remove_transaction_dependencies(tx_id, pessi_sink_info)
+                self.log_message(
+                    f"OCC_RETRY_SELECTED batch_id={batch_id} tx_id={tx_id}"
+                )
+                continue
             self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id])
-        return expired_set, subjection_set, pessi_sink_info
+        return expired_set, subjection_set, pessi_sink_info, retry_txs
 
     def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info, tx_index_inside_batch:dict):
         pessi_nearest_writer = {'batch':(None, None), 'tx':None, 'tx_cross':None} # nearest writer info for pessimistic repair.

@@ -1,9 +1,13 @@
 # Dynamic access-set retry-abort experiment
 
-This experiment injects an application-level abort at one uniformly selected
-`c4` function during optimistic repair. Pessimistic repair never injects an
-abort. The experiment does not alter an access set and it never retries an
-injected-abort transaction.
+This experiment marks a configurable fraction of `c4` requests for OCC-style
+handling. At validation, a selected request whose functions are all clean stays
+in reconciliation and does not inject an abort. A selected dirty request is
+removed from its current batch and retried from scratch with abort injection
+disabled. Pessimistic repair never injects an abort, and every experiment
+request is expected to return successfully. The gateway also treats an
+unexpected `INJECTED_DYNAMIC_ACCESS_ABORT` as the same internal OCC retry
+signal rather than exposing it as a failed request.
 
 Fixed settings: `c4`, 32 closed-loop clients, 100 requests/client, 4 KiB
 objects, Zipf 0.9, fast path and optimistic repair enabled, and the sink's
@@ -30,6 +34,11 @@ The initializer replaces only c4's CouchDB metadata. A full
 
 `run.py` checks the live CouchDB `c4_function_info` schema and refuses to submit
 requests when `retry_abort_func` has not been deployed.
+
+The summary contains only `configured_abort_prob`, `actual_abort_count`
+(internal OCC retries), `success_count`, successful-request P50/P99 latency,
+and successful-request throughput. Any terminal failure prevents a normal
+summary row from being written.
 
 There are deliberately no HTTP, process-join, collector, or watchdog timeouts.
 Each probability point creates a unique directory under the repository's

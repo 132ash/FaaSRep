@@ -115,6 +115,11 @@ class RepairingBatchState:
                 for tx_id in self.transaction_list_per_batch.get(batch_id, []):
                     self.optimistic_state_per_transaction.pop(tx_id, None)
                 self.transaction_list_per_batch.pop(batch_id, None)
+                # Normally these are removed when the last repair finishes.
+                # An all-OCC-retry batch has no retained transaction, so its
+                # commit/release path performs the cleanup here instead.
+                self.pessimistic_state_per_batch.pop(batch_id, None)
+                self.tx_finished_table_per_batch.pop(batch_id, None)
             finished_batches = set(batch_id_list)
             self.terminal_events = {
                 identity for identity in self.terminal_events
@@ -122,6 +127,34 @@ class RepairingBatchState:
             }
         finally:
             self.state_lock.release()
+
+    def retain_batch_transactions(self, batch_id, retained_transaction_list):
+        """Remove OCC-retried requests from a batch before repair starts."""
+        self.state_lock.acquire()
+        try:
+            retained_transaction_list = list(retained_transaction_list)
+            original = self.transaction_list_per_batch[batch_id]
+            retained = set(retained_transaction_list)
+            removed = [tx_id for tx_id in original if tx_id not in retained]
+            self.transaction_list_per_batch[batch_id] = retained_transaction_list
+            self.tx_finished_table_per_batch[batch_id]['total'] = len(
+                retained_transaction_list)
+            self.pessimistic_state_per_batch[batch_id].retain_transactions(
+                retained_transaction_list)
+            for tx_id in removed:
+                self.optimistic_state_per_transaction.pop(tx_id, None)
+            self.last_transition_timestamp = time.time()
+        finally:
+            self.state_lock.release()
+        if removed:
+            log_message(json.dumps({
+                'event': 'OCC_RETRY_REMOVED_FROM_BATCH',
+                'workflow': self.workflow_name, 'batch_id': batch_id,
+                'tx_id': '', 'function': '', 'repair_mode': '',
+                'repair_epoch': 0, 'attempt_id': '',
+                'state_before': original, 'state_after': retained_transaction_list,
+                'removed_tx_ids': removed, 'timestamp': time.time(),
+            }, sort_keys=True))
 
     def reminder_successor_tx_pessi(self, batch_id, tx_id, batch_finished):
         ready_txs = {}
@@ -446,8 +479,11 @@ class TransactionSink:
         self.repairing_batch_state.clear_opt_table_after_finish(batch_list)
 
     # called only in pessimistic repair, to update the subjection info of the batch.
-    def register_repair_info_after_validate(self, batch_id, batch_sub, tx_sub, sub_per_tx):
+    def register_repair_info_after_validate(self, batch_id, batch_sub, tx_sub,
+                                            sub_per_tx, transaction_list):
         #log_message(f"[PESSIMISTIC REGISTER] batch_id: {batch_id}, batch_sub: {batch_sub}, tx_sub: {tx_sub}, sub_per_tx_optimistic: {sub_per_tx}")
+        self.repairing_batch_state.retain_batch_transactions(
+            batch_id, transaction_list)
         ready_txs, opt_txs_become_pessi = self.repairing_batch_state.update_subjection_info(batch_id, batch_sub, tx_sub, sub_per_tx)
         return {'ready_txs': ready_txs, 'opt_txs_become_pessi':opt_txs_become_pessi}
     

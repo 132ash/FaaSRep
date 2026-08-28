@@ -29,6 +29,27 @@ class PessimisticBatchState:
         self.pessi_transaction_info = {txid:{'next_txs':[], 'prev_fin_cnt':0, 'fin_repair':False} for txid in tx_list}
         self.pessimistic_repair_ready = {txid:False for txid in tx_list}
 
+    def retain_transactions(self, retained_transaction_list):
+        """Shrink a pre-registered batch before any transaction is repaired."""
+        retained = set(retained_transaction_list)
+        self.transaction_list = [
+            tx_id for tx_id in self.transaction_list if tx_id in retained
+        ]
+        self.batch_size = len(self.transaction_list)
+        self.finished_tx_list = [None] * self.batch_size
+        self.tx_idx = {
+            tx_id: index for index, tx_id in enumerate(self.transaction_list)
+        }
+        self.pessi_transaction_info = {
+            tx_id: self.pessi_transaction_info[tx_id]
+            for tx_id in self.transaction_list
+        }
+        self.pessimistic_repair_ready = {
+            tx_id: self.pessimistic_repair_ready[tx_id]
+            for tx_id in self.transaction_list
+        }
+        self.fin_consecutive_cnt = -1
+
     def trigger_successor(self, next_trigger_txs, ready_txs):
         for tx_id in next_trigger_txs:
             self.pessi_transaction_info[tx_id]['prev_fin_cnt'] -= 1

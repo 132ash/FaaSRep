@@ -10,6 +10,7 @@ from pathlib import Path
 from docker.types import Mount
 from gevent.lock import BoundedSemaphore
 sys.path.append('../../config')
+import config
 
 
 base_url = 'http://127.0.0.1:{}/{}'
@@ -84,17 +85,29 @@ class ContainerPool:
 class Container:
     @classmethod
     def create(cls, client, image_name, port, attr, container_pool: ContainerPool):
-        HOST_LOGGING_DIR.mkdir(parents=True, exist_ok=True)
-        container = client.containers.run(image_name,
-                                          detach=True,
-                                          ports={'5000/tcp': str(port)},
-                                          labels=['workflow'],
-                                          volumes={
-                                              str(HOST_LOGGING_DIR): {
-                                                  'bind': '/logging',
-                                                  'mode': 'rw',
-                                              }
-                                          })
+        logging_enabled = getattr(
+            config, 'ENABLE_EXPERIMENT_LOGGING', True)
+        volumes = None
+        if logging_enabled:
+            HOST_LOGGING_DIR.mkdir(parents=True, exist_ok=True)
+            volumes = {
+                str(HOST_LOGGING_DIR): {
+                    'bind': '/logging',
+                    'mode': 'rw',
+                }
+            }
+        container = client.containers.run(
+            image_name,
+            detach=True,
+            ports={'5000/tcp': str(port)},
+            labels=['workflow'],
+            volumes=volumes,
+            environment={
+                'FAASNAP_EXPERIMENT_LOGGING': (
+                    '1' if logging_enabled else '0'
+                )
+            },
+        )
         res = cls(container, port, attr, container_pool)
         res.wait_start()
         return res
