@@ -5,24 +5,19 @@ monkey.patch_all()
 from multiprocessing import Process
 import time
 import re
-import os
 import validator_repo
 from datetime import datetime
 import logging
+from pathlib import Path
+import sys
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import make_experiment_logger
 
 repo = validator_repo.Repository()
 VALIDATE = 1
 COMMIT = 3
 CASCADED_COMMIT = 4
-
-log_file = '../../logging/serializer.log'
-
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
-
-# 配置logging模块
-
 
 def get_timestamp():
     # use timestamp as the version of batch.
@@ -57,21 +52,8 @@ class SerializerProcess(Process):
             self.function_pos[func] = extract_ip(ip)  # Extract IP without port
 
     def setup_logger(self):
-        logger = logging.getLogger(f'{self.workflow_name}_serializer')
-        logger.setLevel(logging.INFO)
-        # 创建文件处理器
-        handler = logging.FileHandler(f'../../logging/{self.workflow_name}_serializer.log', mode='a')
-        handler.setLevel(logging.INFO)
-        
-        # 创建格式化器
-        formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                    datefmt='%Y-%m-%d %H:%M:%S')
-        handler.setFormatter(formatter)
-        # 添加处理器到logger
-        if not logger.handlers:
-            logger.addHandler(handler)
-        
-        return logger
+        component = f'{self.workflow_name}_serializer'
+        return make_experiment_logger(component, component)
 
 
     def log_message(self, message):

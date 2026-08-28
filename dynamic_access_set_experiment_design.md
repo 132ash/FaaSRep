@@ -88,19 +88,19 @@ retry_abort_seed=None
 
 ### 4.3 函数代码
 
-修改 `scripts/init/micro_benchmark/microbenchmark_func/main.py`。每个函数取得 `retry_abort_func` 后，仅在 repair 阶段且自身是目标函数时调用现有的 `store.abort_tx()`：
+修改 `scripts/init/micro_benchmark/microbenchmark_func/main.py`。每个函数取得 `retry_abort_func` 后，仅在 optimistic repair 阶段且自身是目标函数时调用现有的 `store.abort_tx()`：
 
 ```python
 func_input = store.fetch_input()
 retry_abort_func = func_input.get("retry_abort_func", "NONE")
 
-if store.is_repair and retry_abort_func == function_name:
+if store.is_optimistic_repair and retry_abort_func == function_name:
     store.abort_tx(
         f"INJECTED_DYNAMIC_ACCESS_ABORT target={function_name}"
     )
 ```
 
-abort 检查应在当前函数的数据读写之前执行。首次执行不得 abort。异常消息必须带固定标识 `INJECTED_DYNAMIC_ACCESS_ABORT`，用来区分实验注入、应用自身异常和系统错误。
+abort 检查应在当前函数的数据读写之前执行。首次执行和 pessimistic repair 均不得注入 abort。异常消息必须带固定标识 `INJECTED_DYNAMIC_ACCESS_ABORT`，用来区分实验注入、应用自身异常和系统错误。
 
 ## 5. 保证目标函数在重试阶段执行
 
@@ -129,7 +129,7 @@ microbenchmark function / Store
 dirty = True
 ```
 
-只强制执行目标函数，不把 c4 全部函数设为 dirty。这样不会把完整 workflow 重执行开销混入所有实验点。Pessimistic repair 当前会把函数标记为 dirty，仍需保留并记录同一 abort metadata，使进入 pessimistic repair 的目标事务也能在对应函数处 abort。
+只强制执行目标函数，不把 c4 全部函数设为 dirty。这样不会把完整 workflow 重执行开销混入所有实验点。Pessimistic repair 当前仍会把函数标记为 dirty并保留 transaction metadata，但注入逻辑不得在 pessimistic 模式再次 abort。
 
 ## 6. Abort 后的系统行为
 
@@ -478,7 +478,7 @@ error
 正式运行前按以下顺序验证：
 
 1. `p=0`：没有 injected abort，结果应接近原 c4 基线。
-2. 单 client 分别强制 f1、f2、f3、f4：四个位置均只在 repair 阶段 abort。
+2. 单 client 分别强制 f1、f2、f3、f4：四个位置均只在 optimistic repair 阶段 abort；pessimistic repair 不注入 abort。
 3. 两事务且前驱 abort：后继准确执行 optimistic-to-pessimistic 转换。
 4. batch 最后 writer abort：提交更早的未 abort writer。
 5. 某 key 的全部 writer abort：该 key 不进入 commit set。

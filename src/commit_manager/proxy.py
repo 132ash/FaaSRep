@@ -1,10 +1,16 @@
 from gevent import monkey
 monkey.patch_all()
-from flask import Flask, request
 import sys
-from validator import ValidatorPool
 import json
 from datetime import datetime
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import configure_root_experiment_logging
+configure_root_experiment_logging('commit_manager_proxy')
+
+from flask import Flask, request
+from validator import ValidatorPool
 app = Flask(__name__)
 
 sys.path.append('../../config')
@@ -43,6 +49,6 @@ def finish_repair():
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
+    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app,
+                        log=None, error_log=None)
     server.serve_forever()

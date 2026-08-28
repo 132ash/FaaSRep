@@ -4,35 +4,15 @@ from gevent import monkey
 import gevent.lock
 import uuid
 import sys
-import os
 import logging
-# 配置日志记录
-log_file = '../../logging/gateway.log'
+from pathlib import Path
 
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import make_experiment_logger, configure_root_experiment_logging
 
 def setup_logger():
-    logger = logging.getLogger('gateway')
-    logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    
-    # 创建格式化器
-    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                datefmt='%Y-%m-%d %H:%M:%S')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    # 添加处理器到logger
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
+    configure_root_experiment_logging('gateway_runtime')
+    return make_experiment_logger('gateway', 'gateway')
 
 # 全局logger实例
 logger = setup_logger()
@@ -255,8 +235,10 @@ def clear_container():
     workflow = data['workflow']
     addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
     jobs = []
-    print("clearing containers...")
-    print(addrs)
+    log_message(json.dumps({
+        'event': 'CLEAR_BEGIN', 'workflow': workflow,
+        'worker_addresses': addrs, 'timestamp': time.time(),
+    }, sort_keys=True))
     for addr in addrs:
         clear_url = f'http://{addr}/clear_container'
         jobs.append(gevent.spawn(requests.get, clear_url))
@@ -268,6 +250,6 @@ import logging
 
 #  python gateway.py  10.2.29.142  8000
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
+    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app,
+                        log=None, error_log=None)
     server.serve_forever()

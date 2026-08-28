@@ -4,16 +4,8 @@ from redis_component import RedisShadowTable, RedisCache
 import os
 import threading
 import time
-import sys
 import logging
-
-logging.basicConfig(
-    level=logging.INFO,  # 设置日志级别为 INFO
-    format='%(asctime)s [%(levelname)s] %(message)s',  # 日志格式
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ]
-)
+import container_config
 
 class Store:
     def __init__(self):
@@ -37,7 +29,8 @@ class Store:
         self.db_server = db_server
         self.validator_addr = validator_addr
 
-    def runtime_init(self, input, output, is_repair, transaction_id, metadata):
+    def runtime_init(self, input, output, is_repair, repair_mode,
+                     transaction_id, metadata):
         self.transaction_id = transaction_id
         self.input = input
         self.output = output
@@ -48,6 +41,10 @@ class Store:
         self.keys_from_RYW = metadata['keys_from_RYW']
         self.keys_from_upstream = metadata['keys_from_upstream']
         self.is_repair = is_repair
+        self.repair_mode = repair_mode
+        self.is_optimistic_repair = (
+            is_repair and repair_mode == container_config.OPT_REPAIR
+        )
         self.transaction_metadata = metadata.setdefault('transaction_metadata', {})
 
     def set_transaction_metadata(self, key, value):
@@ -124,11 +121,16 @@ class Store:
             if upstream_func:
                 upstream_ip = self.function_pos[upstream_func]
                 value = self.redis_shadow_table.raw_fetch_data(self.param_wrapper(upstream_func, key, 'PUT'), upstream_ip)
-                print(f"[RYW GET] key:{key}, upstream_func:{upstream_func}, value:{value}", flush=True)
+                logging.info(
+                    "[RYW GET] tx_id=%s function=%s key=%s upstream_func=%s",
+                    self.transaction_id, self.function_name, key, upstream_func)
                 self.RYW_subjection_collect[key] = upstream_func
             else:
                 value_version_pair =  self.redis_cache.cache_get(key)
-                print(f"[CACHE GET] key:{key}, value_version_pair:{value_version_pair}", flush=True)
+                logging.info(
+                    "[CACHE GET] tx_id=%s function=%s key=%s version=%s",
+                    self.transaction_id, self.function_name, key,
+                    value_version_pair.get("version"))
                 self.read_set[key] = value_version_pair["version"]
                 value = value_version_pair["value"]
         # SECOND run or not RYW, read from cache or shadow table.

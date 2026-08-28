@@ -51,7 +51,7 @@ class Function:
                 if container == None:
                     raise Exception("Container creation failed")
                 self.container_pool.put(container)
-            print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
+            print(f"function={self.info.function_name} container_pool_created size={self.container_pool.len()}")
         
     # put the request into request queue
     def send_request(self, transaction_id, write_set, is_repair,repair_mode,batch_id, repair_states):

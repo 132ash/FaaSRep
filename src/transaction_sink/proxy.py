@@ -1,15 +1,10 @@
 import sys
 import logging
-# 配置日志记录
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    # 设置日志级别为 INFO
-    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',  # 日志格式
-    datefmt='%Y-%m-%d %H:%M:%S',  # 设置日期格式
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ]
-)
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import configure_root_experiment_logging
+configure_root_experiment_logging('transaction_sink_runtime')
 
 
 from gevent import monkey
@@ -40,14 +35,14 @@ OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
 
 REPAIRED = config.REPAIRED
-ABORTED = config.ABORTED    
+ABORTED = config.ABORTED
 WAITING = config.RUNNING
 
 
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
        self.host_addr = sys.argv[1] + ':' + sys.argv[2]
-       self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}  
+       self.sinks = {name: TransactionSink(name, config.BATCH_SIZE, self.host_addr) for name in info_addrs}
        gevent.spawn_later(VALIDATE_INTERVAL, self._validate_loop)
 
     def fin_repair_or_abort_within_batch(self, workflow_name, batch_id, transaction_id,repair_mode, state, skip_repair=False, repair_epoch=1, attempt_id='', error=''):
@@ -55,7 +50,7 @@ class Dispatcher:
 
     def register_repair_info_after_validate(self, workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx):
         return self.sinks[workflow_name].register_repair_info_after_validate(batch_id, batch_sub, tx_sub, sub_per_tx)
-    
+
     def validate_transaction(self, workflow_name, transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata=None):
         self.sinks[workflow_name].append(transaction_id, read_set, write_set, container_port, RYW_subjection, transaction_metadata)
 
@@ -124,7 +119,7 @@ def repair_pessimistic():
     workflow_name = data['workflow_name']
     batch_id = data['batch_id']
     batch_sub =  data['batch_sub']
-    tx_sub =  data['tx_sub']  
+    tx_sub =  data['tx_sub']
     sub_per_tx = data.get('whole_tx_sub', {})
     res = dispatcher.register_repair_info_after_validate(workflow_name, batch_id, batch_sub, tx_sub, sub_per_tx)
     return res
@@ -140,10 +135,11 @@ def release_opt_table():
 # python3 proxy.py  10.2.30.50 6000
 # python3 proxy.py  10.2.27.23 6000
 # python3 proxy.py  10.2.30.62 6000
+# python3 proxy.py  10.2.29.142  6000
 
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%H:%M:%S', level='INFO')
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
+    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app,
+                        log=None, error_log=None)
     server.serve_forever()

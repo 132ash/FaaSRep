@@ -85,7 +85,17 @@ def generate_workflow_chain(n):
                 }
             }
         }
-        
+
+        # Dynamic-access-set injection is intentionally scoped to c4.  Keep
+        # this in the generator so running workflow_setup.py cannot silently
+        # overwrite c4/workflow.yaml with the old schema.
+        if n == 4:
+            function_def['input']['retry_abort_func'] = {
+                'from': 'GLOBAL' if i == 1 else f'f{i-1}',
+                'type': 'str'
+            }
+            function_def['output']['retry_abort_func'] = {'type': 'str'}
+
         if i < n: 
             function_def['next'] = {
                 'type': 'pass',

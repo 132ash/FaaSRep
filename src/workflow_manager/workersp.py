@@ -10,6 +10,10 @@ from typing import Any, Dict, List
 import requests
 import re
 import json
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import make_experiment_logger
 
 sys.path.append('../../config')
 import config
@@ -17,32 +21,8 @@ import config
 sys.path.append('../function_manager')
 from function_manager import FunctionManager
 
-log_file = '../../logging/workersp.log'
-
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
-
 def setup_logger():
-    logger = logging.getLogger('workersp')
-    logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    
-    # 创建格式化器
-    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                datefmt='%Y-%m-%d %H:%M:%S')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    # 添加处理器到logger
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
+    return make_experiment_logger('workersp', 'workersp')
 
 # 全局logger实例
 logger = setup_logger()

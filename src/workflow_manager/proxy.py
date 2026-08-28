@@ -1,33 +1,14 @@
 import sys
 import logging
 import os
-# 配置日志记录 - 输出到文件并每次运行时刷新
-log_file = '../../logging/proxy.log'
+from pathlib import Path
 
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import make_experiment_logger, configure_root_experiment_logging
 
 def setup_logger():
-    logger = logging.getLogger('proxy')
-    logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    
-    # 创建格式化器
-    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                datefmt='%Y-%m-%d %H:%M:%S')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    # 添加处理器到logger
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
+    configure_root_experiment_logging('workersp_runtime')
+    return make_experiment_logger('workflow_manager_proxy', 'workflow_manager_proxy')
 
 # 全局logger实例
 logger = setup_logger()
@@ -68,7 +49,7 @@ ABORTED = 2
 
 class Dispatcher:
     def __init__(self, info_addrs: Dict[str, str]) -> None:
-        print("Clearing previous containers.")
+        log_message("Clearing previous containers.")
         os.system('docker rm -f $(docker ps -aq --filter label=workflow)')
         time.sleep(3)
     # Ensure no related containers exist before continuing
@@ -109,7 +90,7 @@ class Dispatcher:
 
     def clear_mem(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_mem(transaction_id)
-    
+
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
 
@@ -119,7 +100,7 @@ class Dispatcher:
     def clear_containers(self):
         for workflow_name in self.all_workflows:
             self.managers[workflow_name].clear_containers()
-    
+
 
 
 
@@ -166,7 +147,7 @@ def req():
     function_name = data['function_name']
     no_parent_execution = data['no_parent_execution']
     retry_after_abort = data.get('retry', False)
-    # collected repair metadata, transported between functions. 
+    # collected repair metadata, transported between functions.
     container_port = data.get('container_port', {})
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
@@ -217,7 +198,7 @@ def prepare():
     repair_metadata = data['repair_metadata'] # {txid: {func: [{func_name:xxx, ip:xx, transaction_id, xxx, workflow_name:xx}]}
     # update cache on this node.
     repo.update_cache(data['expired_keys'])
-    
+
     if repair_metadata:
         repo.fillup_repair_matadata(repair_metadata, data['mode'])
 
@@ -264,9 +245,11 @@ GET_NODE_INFO_INTERVAL = 0.1
 # python3 proxy.py  10.2.30.50 7500
 # python3 proxy.py  10.2.27.23 7500
 # python3 proxy.py  10.2.30.62 7500
+# python3 proxy.py  10.2.29.142  7500
 
 from gevent.pywsgi import WSGIServer
 import logging
 if __name__ == '__main__':
-    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app)
+    server = WSGIServer((sys.argv[1], int(sys.argv[2])), app,
+                        log=None, error_log=None)
     server.serve_forever()

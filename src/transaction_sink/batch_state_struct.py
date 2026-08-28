@@ -88,10 +88,15 @@ class OptimisticTransactionState:
         """
         Update the optimistic repair state after repair. return the repair is rejected or not.
         """
-        successors_to_be_pessimistic = []
+        # An application-requested abort is terminal.  It may race with the
+        # validator marking this transaction for pessimistic repair; accepting
+        # the promotion first would otherwise discard the abort after the
+        # container has already cleaned up its transaction context.
+        if repair_state == ABORTED:
+            self.optimistic_repair_state = ABORTED
+            self.need_pessimistic_repair = False
+            return False, self.transaction_subjection
         if self.need_pessimistic_repair and optimistic_repair_mode == OPT_REPAIR:
             return True, []
         self.optimistic_repair_state = repair_state
-        if self.optimistic_repair_state == ABORTED:
-            successors_to_be_pessimistic = self.transaction_subjection
-        return False, successors_to_be_pessimistic
+        return False, []

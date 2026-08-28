@@ -2,6 +2,7 @@ from gevent import event
 import sys
 import requests
 import time
+import logging
 sys.path.append('../../config')
 import config
 
@@ -33,7 +34,7 @@ class RunningTXTable:
         while not self.running_txs[tx_id]['finished']:
             condition.wait()
         if self.running_txs[tx_id]['abort']:
-            print(f"transaction {tx_id} aborted")
+            logging.info("transaction %s aborted", tx_id)
             return True
         return False
     

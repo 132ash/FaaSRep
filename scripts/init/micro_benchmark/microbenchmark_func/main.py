@@ -15,7 +15,7 @@ def main():
     func_input = store.fetch_input()
     retry_abort_func = func_input.get("retry_abort_func") or "NONE"
     store.set_transaction_metadata("retry_abort_func", retry_abort_func)
-    if store.is_repair and retry_abort_func == function_name:
+    if store.is_optimistic_repair and retry_abort_func == function_name:
         store.abort_tx(
             f"INJECTED_DYNAMIC_ACCESS_ABORT target={function_name}"
         )

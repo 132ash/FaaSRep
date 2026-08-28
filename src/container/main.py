@@ -1,11 +1,12 @@
 import time
 import string
 import random
+import logging
 
 def main():
     input_res = store.fetch(store.input.keys())
     for k in input_res.keys():
-        print(k)
+        logging.info('fetched input key: %s', k)
     output_res = {}
     for (k, v) in store.output.items():
         result = 'a' * v['size']

@@ -9,11 +9,14 @@ from typing import Dict
 import sys
 import time
 import json
+from pathlib import Path
 from batch_state_struct import PessimisticBatchState, OptimisticTransactionState
 import gevent.lock
 import gevent.queue  # 添加 gevent 队列导入
 sys.path.append('../../config')
 import config
+sys.path.append(str(Path(__file__).resolve().parents[2] / 'config'))
+from experiment_logging import make_experiment_logger
 
 REPAIRED = config.REPAIRED
 ABORTED = config.ABORTED    
@@ -26,32 +29,8 @@ VALIDATOR_ADDR = config.VALIDATOR_ADDR
 VALIDATE_INTERVAL = config.VALIDATE_INTERVAL
 BATCH_TIMEOUT = config.BATCH_TIMEOUT # 50ms
 
-log_file = '../../logging/sink.log'
-
-# 删除旧的日志文件（如果存在）
-if os.path.exists(log_file):
-    os.remove(log_file)
-
 def setup_logger():
-    logger = logging.getLogger('sink')
-    logger.setLevel(logging.INFO)
-    # 创建文件处理器
-    file_handler = logging.FileHandler(log_file, mode='a')
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    
-    # 创建格式化器
-    formatter = logging.Formatter('[%(asctime)s.%(msecs)03d] %(message)s', 
-                                datefmt='%Y-%m-%d %H:%M:%S')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    # 添加处理器到logger
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
+    return make_experiment_logger('sink', 'transaction_sink')
 
 # 全局logger实例
 logger = setup_logger()
@@ -204,16 +183,35 @@ class RepairingBatchState:
             if not PESSIMISTIC_REPAIR:
                 rejected, successors_to_be_pessimistic = self.optimistic_state_per_transaction[tx_id].optimistic_state_change_after_repair(repair_mode, state)
                 if rejected:
-                    #log_message(f"[OPTIMISTIC REPAIR REJECTED] Opt repair of Transaction {tx_id} in batch {origin_batch_id} is rejected, state: {state}, it needs pessi repair.")
-                    return False, []
+                    log_message(json.dumps({
+                        'event': 'OPTIMISTIC_RESULT_REJECTED',
+                        'workflow': self.workflow_name,
+                        'batch_id': origin_batch_id, 'tx_id': tx_id,
+                        'function': '', 'repair_mode': repair_mode,
+                        'repair_epoch': 0, 'attempt_id': '',
+                        'state_before': WAITING, 'state_after': state,
+                        'reason': 'pessimistic_repair_required',
+                        'timestamp': time.time(),
+                    }, sort_keys=True))
+                    # The caller iterates over both return values as task maps.
+                    # Returning (False, []) here caused a Flask 500 while a
+                    # normal optimistic/pessimistic race was being handled.
+                    return {}, {}
                 if random.random() < ABORT_PROB:
                     state = ABORTED
                 if state == ABORTED:
                     for next_tx_id in successors_to_be_pessimistic:
                         #log_message(f"[OPTIMISTIC REPAIR CASCADED] {tx_id} IN {origin_batch_id} aborted, Transaction {next_tx_id} should be repaired pessimistically.")
-                        if not self.optimistic_state_per_transaction[next_tx_id].need_pessimistic_repair:
-                            self.optimistic_state_per_transaction[next_tx_id].need_pessimistic_repair = True
-                            next_batch_id = self.optimistic_state_per_transaction[next_tx_id].batch_id
+                        next_state = self.optimistic_state_per_transaction[next_tx_id]
+                        # A successor may have independently aborted its own
+                        # optimistic attempt before this predecessor abort is
+                        # processed.  Its abort is terminal and must not be
+                        # replaced by a pessimistic attempt whose container
+                        # context has already been cleaned up.
+                        if (next_state.optimistic_repair_state != ABORTED and
+                                not next_state.need_pessimistic_repair):
+                            next_state.need_pessimistic_repair = True
+                            next_batch_id = next_state.batch_id
                             if self.pessimistic_state_per_batch[next_batch_id].pessimistic_repair_ready[next_tx_id]:
                                 tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].append(next_tx_id)
                 if self.pessimistic_state_per_batch[origin_batch_id].pessimistic_repair_ready[tx_id]:
@@ -243,7 +241,13 @@ class RepairingBatchState:
                     for pessi_ready_tx in tx_ids:      
                         optimistic_state = self.optimistic_state_per_transaction[pessi_ready_tx]
                         #log_message(f"[AFTER OPT REPAIRED] {pessi_ready_tx} in {next_batch_id} is pessi_ready, its opt repair state:{optimistic_state.optimistic_repair_state}, need_pessimistic_repair: {optimistic_state.need_pessimistic_repair}")
-                        if optimistic_state.need_pessimistic_repair:
+                        # Terminal optimistic abort wins a race with promotion.
+                        # Checking it first prevents a later pessimistic trigger
+                        # from targeting an already-cleaned container context.
+                        if optimistic_state.optimistic_repair_state == ABORTED:
+                            finished_txs_and_state.append(
+                                (next_batch_id, pessi_ready_tx, ABORTED))
+                        elif optimistic_state.need_pessimistic_repair:
                             #log_message(f"[PESSIMISTIC REPAIR] {pessi_ready_tx} in {next_batch_id} SEND TO pessi repair")
                             tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].append(pessi_ready_tx)
                         elif optimistic_state.optimistic_repair_state != WAITING:

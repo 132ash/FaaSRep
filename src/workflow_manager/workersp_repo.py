@@ -10,6 +10,7 @@ from datetime import datetime
 from subjection_collector import SubjectionCollector
 import sys
 import json
+import logging
 
 sys.path.append('../../config')
 import config
@@ -174,7 +175,7 @@ class Repository:
                 latency_db = self.couch['workflow_latency']
                 latency_db.update(batch)
             except Exception as exc:
-                print(f"Failed to write latency batch to CouchDB: {exc}", file=sys.stderr)
+                logging.exception("Failed to write latency batch to CouchDB: %s", exc)
 
     def param_wrapper(self, transaction_id, mode, func="" ,key=""):
         return f"{transaction_id}:{mode}:{func}:{key}" 
@@ -187,7 +188,7 @@ class Repository:
     # input_keys: specify the keys you want
     def fetch_result(self, transaction_id, func, output):
         keys = output.keys()
-        print(f"fetching result. Keys: {keys}")
+        logging.info("fetching result key_count=%s keys=%s", len(keys), keys)
         result = {}
         for k in keys:
             redis_key = self.param_wrapper(transaction_id, 'RET', func, k)
@@ -250,7 +251,7 @@ class Repository:
                 continue
             except redis.exceptions.RedisError as e:
                 # 捕获其他可能的 Redis 错误
-                print(f"RedisError on SET for key {redis_key}: {e}")
+                logging.exception("RedisError on SET for key %s: %s", redis_key, e)
                 continue
 
     def clear_aborted_txs(self, aborted_txs):
@@ -272,5 +273,7 @@ class Repository:
             else:
                 version = item['version']
             self.cache_redis[key] = json.dumps({"value": item['value'], "version": version})
-        print(f"cache filled up expired_cache:{config.EXPIRED_CACHE}. Waiting for request.")
+        logging.info(
+            "cache filled up expired_cache=%s; waiting for request",
+            config.EXPIRED_CACHE)
 

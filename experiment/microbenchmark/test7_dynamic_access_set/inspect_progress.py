@@ -5,16 +5,7 @@ import time
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parents[2]
-COMPONENT_LOGS = {
-    'gateway': ROOT_DIR / 'logging' / 'gateway.log',
-    'workersp': ROOT_DIR / 'logging' / 'workersp.log',
-    'transaction_sink': ROOT_DIR / 'logging' / 'sink.log',
-    'serializer': ROOT_DIR / 'logging' / 'c4_serializer.log',
-    'validator_0': ROOT_DIR / 'logging' / 'c4_validator_0.log',
-    'validator_1': ROOT_DIR / 'logging' / 'c4_validator_1.log',
-    'validator_2': ROOT_DIR / 'logging' / 'c4_validator_2.log',
-    'validator_3': ROOT_DIR / 'logging' / 'c4_validator_3.log',
-}
+LOGGING_ROOT = ROOT_DIR / 'logging'
 
 
 def last_nonempty_line(path):
@@ -36,23 +27,29 @@ def last_nonempty_line(path):
 
 
 def main():
-    client_snapshots = {}
-    waiting = []
-    for path in sorted((SCRIPT_DIR / 'logs').glob('client_progress_*.json')):
-        try:
-            snapshot = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, json.JSONDecodeError) as exc:
-            snapshot = {'error': repr(exc)}
-        client_snapshots[path.name] = snapshot
-        waiting.extend(snapshot.get('currently_waiting_tx_ids', []))
+    try:
+        run_id = (LOGGING_ROOT / 'ACTIVE_EXPERIMENT').read_text(
+            encoding='utf-8').strip()
+    except OSError as exc:
+        raise SystemExit(f'no active experiment: {exc}')
+    run_dir = LOGGING_ROOT / run_id
+    progress_path = run_dir / 'client_progress.json'
+    try:
+        client_snapshot = json.loads(progress_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as exc:
+        client_snapshot = {'error': repr(exc)}
+    component_logs = sorted(run_dir.glob('*.log'))
     report = {
         'event': 'READ_ONLY_PROGRESS_INSPECTION',
+        'run_id': run_id,
+        'log_directory': str(run_dir),
         'timestamp': time.time(),
-        'currently_waiting_tx_ids': waiting,
-        'client_snapshots': client_snapshots,
+        'currently_waiting_tx_ids': client_snapshot.get(
+            'currently_waiting_tx_ids', []),
+        'client_snapshot': client_snapshot,
         'component_last_log_line': {
-            component: last_nonempty_line(path)
-            for component, path in COMPONENT_LOGS.items()
+            path.name: last_nonempty_line(path)
+            for path in component_logs
         },
     }
     print(json.dumps(report, indent=2, sort_keys=True))

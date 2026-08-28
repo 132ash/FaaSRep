@@ -10,6 +10,44 @@ import sys
 import boto3
 import traceback
 import time
+from pathlib import Path
+
+
+class ActiveExperimentFileHandler(logging.Handler):
+    """Container-side equivalent of config.experiment_logging handler."""
+
+    logging_root = Path('/logging')
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.run_directory = None
+        self.stream = None
+
+    def emit(self, record):
+        try:
+            run_id = (self.logging_root / 'ACTIVE_EXPERIMENT').read_text(
+                encoding='utf-8').strip()
+            if not run_id or Path(run_id).name != run_id:
+                return
+            run_dir = self.logging_root / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            if run_dir != self.run_directory or self.stream is None:
+                if self.stream is not None:
+                    self.stream.close()
+                self.run_directory = run_dir
+                self.stream = (run_dir / 'container.log').open(
+                    'a', encoding='utf-8')
+            self.stream.write(self.format(record) + '\n')
+            self.stream.flush()
+        except OSError:
+            # Logging must never alter transaction progress.
+            return
+
+    def close(self):
+        if self.stream is not None:
+            self.stream.close()
+            self.stream = None
+        super().close()
 
 from flask import Flask, request
 from gevent.pywsgi import WSGIServer
@@ -17,14 +55,14 @@ from Store import Store
 import container_config
 from redis_component import RedisShadowTable, RedisCache, RepairSidecar
 
-# 配置日志记录
-logging.basicConfig(
-    level=logging.INFO,  # 设置日志级别为 INFO
-    format='%(asctime)s [%(levelname)s] %(message)s',  # 日志格式
-    handlers=[
-        logging.StreamHandler(sys.stdout)  # 将日志输出到标准输出
-    ]
-)
+# 容器内的根 logger 也按当前实验分流，不再输出到终端。
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.handlers.clear()
+container_log_handler = ActiveExperimentFileHandler()
+container_log_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(message)s'))
+root_logger.addHandler(container_log_handler)
 
 def log_event(event, **fields):
     payload = {'event': event, 'timestamp': time.time(), **fields}
@@ -357,7 +395,9 @@ class Runner:
             current_store = Store()
             current_store.init(self.function, self.shadow_table, self.cache, db_server, self.fast_path_enabled, self.function_pos, self.validator_addr)
             
-            current_store.runtime_init(self.input, self.output, is_repair, transaction_id, TxMetaData_thisFunc)
+            current_store.runtime_init(
+                self.input, self.output, is_repair, ctx_data['repair_mode'],
+                transaction_id, TxMetaData_thisFunc)
             local_ctx = {'workflow_name': self.workflow, 'function_name': self.function, 'store': current_store}
             # pre-exec
             # Serialize application code for the same transaction/function.
@@ -556,5 +596,6 @@ def clear():
     return {'status': 'ok', 'removed': removed}
 
 if __name__ == '__main__':
-    server = WSGIServer(('0.0.0.0', 5000), proxy)
+    server = WSGIServer(('0.0.0.0', 5000), proxy,
+                        log=None, error_log=None)
     server.serve_forever()
