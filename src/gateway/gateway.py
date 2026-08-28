@@ -74,7 +74,11 @@ def get_workflow_metadata(workflow_name):
         for func in workflow_metadata[workflow_name]['start_functions']:
             info = repo.get_function_info(func, workflow_name + '_function_info')
             workflow_metadata[workflow_name]['function_ip'][func] = info['ip']
-        workflow_metadata[workflow_name]['all_addrs'] = repo.get_all_addrs(workflow_name + '_workflow_metadata')
+        # Transaction cleanup only needs workers that host this workflow.
+        # The workflow metadata contains every configured worker, including
+        # nodes that did not participate and have no state to clear.
+        workflow_metadata[workflow_name]['all_addrs'] = \
+            repo.get_function_addrs(workflow_name)
     metadata_lock.release()
     return workflow_metadata[workflow_name]
 
@@ -261,7 +265,7 @@ def notify():
 def clear_container():
     data = request.get_json(force=True, silent=True)
     workflow = data['workflow']
-    addrs = repo.get_all_addrs(workflow + '_workflow_metadata')
+    addrs = repo.get_function_addrs(workflow)
     jobs = []
     log_message(json.dumps({
         'event': 'CLEAR_BEGIN', 'workflow': workflow,

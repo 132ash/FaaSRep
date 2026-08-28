@@ -467,18 +467,47 @@ class WorkerSPManager:
 
     def clear_mem(self, transaction_id):
         state = self.states.get(transaction_id)
-        if state:
-            jobs = []
-            for function_name in self.func:
-                port = state.container_port.get(function_name)
-                if port:
-                    jobs.append(gevent.spawn(
-                        requests.post,
-                        f'http://127.0.0.1:{port}/clear',
-                        json={'transaction_id': transaction_id},
-                    ))
-            gevent.joinall(jobs)
+        if state is None:
+            # This worker did not participate in the transaction, so it has
+            # neither a container context nor transaction-local shadow data.
+            return False
+
+        state.lock.acquire()
+        try:
+            local_ports = [
+                state.container_port[function_name]
+                for function_name in self.func
+                if (function_name in state.container_port
+                    and self.function_info[function_name]['ip'] ==
+                    self.host_addr)
+            ]
+        finally:
+            state.lock.release()
+
+        def clear_container_context(port):
+            try:
+                response = requests.post(
+                    f'http://127.0.0.1:{port}/clear',
+                    json={'transaction_id': transaction_id}, timeout=2)
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                # A container can disappear during an administrative pool
+                # reset. Its in-memory context is already gone in that case;
+                # continue clearing workersp and Redis state.
+                log_event(
+                    'CONTAINER_CONTEXT_CLEAR_FAILED',
+                    workflow=self.workflow_name, batch_id=state.batch_id,
+                    tx_id=transaction_id, function='', repair_mode='',
+                    repair_epoch=0, attempt_id='', state_before=port,
+                    state_after='UNREACHABLE', error=str(exc))
+
+        jobs = [
+            gevent.spawn(clear_container_context, port)
+            for port in set(local_ports)
+        ]
+        gevent.joinall(jobs)
         self.repo.clear_mem(transaction_id)
+        return True
     
     def clear_db(self, transaction_id):
         self.repo.clear_db(transaction_id)

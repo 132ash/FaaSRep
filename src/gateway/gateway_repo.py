@@ -72,6 +72,15 @@ class Repository:
         for item in db.find({'selector': {'function_name': function_name}}):
             return item
 
+    def get_function_addrs(self, workflow_name: str) -> List[str]:
+        """Return only workers that host a function in this workflow."""
+        db = self.couch[workflow_name + '_function_info']
+        return list(dict.fromkeys(
+            doc['ip'] for doc_id in db
+            for doc in [db[doc_id]]
+            if doc.get('function_name') and doc.get('ip')
+        ))
+
     def create_request_doc(self, request_id: str) -> None:
         if request_id in self.couch['results']:
             doc = self.couch['results'][request_id]

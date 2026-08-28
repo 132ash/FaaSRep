@@ -108,8 +108,6 @@ ABORTED = '3'
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 
-CLEAR_MEM = True
-
 # used in scalabiliy test.
 SCALABILITY_TEST = False
 TRACE_TEST = True
@@ -178,4 +176,3 @@ STARTUP_POSTS = 2
 # # social network			
 # SOCIAL_NETWORK_USERS = 200			
 # STARTUP_POSTS = 3
-

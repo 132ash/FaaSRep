@@ -89,7 +89,7 @@ class Dispatcher:
         self.managers[workflow_name].trigger_repair(batch_id, transaction_id, function_name, no_parent_execution, port, repair_mode, repair_epoch, attempt_id)
 
     def clear_mem(self, workflow_name, transaction_id):
-        self.managers[workflow_name].clear_mem(transaction_id)
+        return self.managers[workflow_name].clear_mem(transaction_id)
 
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
@@ -188,9 +188,13 @@ def clear():
     #         ##log_message(f"transaction {transaction_id} abort, return its containers to pool.")
     #         dispatcher.reserve_pools[workflow_name].release([transaction_id])
     # else:
-    dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run
-    dispatcher.del_state(workflow_name, transaction_id) # and remove state for every node
-    return json.dumps({'status': 'ok'})
+    participated = dispatcher.clear_mem(workflow_name, transaction_id)
+    if participated:
+        dispatcher.del_state(workflow_name, transaction_id)
+    return json.dumps({
+        'status': 'ok',
+        'cleared': participated,
+    })
 
 @app.route('/prepare', methods = ['POST'])
 def prepare():
