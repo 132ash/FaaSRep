@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
@@ -90,6 +91,21 @@ class ContainerSaturationTest(unittest.TestCase):
         function.dispatch_request()
         self.assertEqual(function.num_processing, 0)
         self.assertEqual(len(function.rq), 1)
+
+
+class ParameterCompatibilityTest(unittest.TestCase):
+    def test_direct_c4_name_uses_microbenchmark_generator(self):
+        from experiment.common import generate_param
+
+        expected = [[{'f1': {}}]]
+        with mock.patch.object(
+                generate_param, 'generate_micro_benchmark_parameters',
+                return_value=expected) as generator:
+            actual = generate_param.generate_workflow_inputs_for_clients(
+                'c4', 1, 1, zipf_param=0.9)
+
+        self.assertIs(actual, expected)
+        generator.assert_called_once_with(1, 1, 'c4', 0.9, None)
 
 
 if __name__ == '__main__':

@@ -22,6 +22,7 @@ DATE_FORMAT = config.DATE_FORMAT
 # mircobenchmark parameters
 microbenchmark_dir = script_dir.parent / "microbenchmark"
 actual_apps_dir = script_dir.parent / "actual_apps"
+micro_workflow_dir = Path(config.ROOT_DIR) / "benchmark" / "micro_benchmark"
 TEXT_SIZE_SMALL = 8
 TEXT_SIZE_LARGE = 8 * 1024  # 8B / 8KB
 DS_JSON_PATH  = microbenchmark_dir / "db_keys.json"
@@ -246,6 +247,13 @@ def generate_workflow_inputs_for_clients(workflow, client_cnt, round_cnt, micro_
         return generate_travel_reservation_parameters(client_cnt, round_cnt)
     elif workflow == 'microbenchmark':
         return generate_micro_benchmark_parameters(client_cnt, round_cnt, micro_workflow, zipf_param, read_ratio)
+    elif micro_workflow is None and (micro_workflow_dir / workflow).is_dir():
+        # Trace preparation historically passes the configured workflow name
+        # directly (for example ``c4``), while the microbenchmark runners use
+        # ``workflow='microbenchmark', micro_workflow='c4'``. Accept both forms
+        # so generated trace slices remain usable across the two interfaces.
+        return generate_micro_benchmark_parameters(
+            client_cnt, round_cnt, workflow, zipf_param, read_ratio)
     elif workflow == 'banking_system':
         return generate_banking_system_parameters(client_cnt, round_cnt)
     elif workflow == 'social_network':
