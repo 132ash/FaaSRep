@@ -51,13 +51,19 @@ class ContainerPool:
     
     def check_pool_full_and_occupy(self):
         self.lock.acquire()
-        if self.num_exec + len(self.pool) > self.max_containers:
+        if self.num_exec + len(self.pool) >= self.max_containers:
             # logging.info('hit container limit, function: %s', self.function_name)
             self.lock.release()
             return False
         self.num_exec += 1
         self.lock.release()
         return True
+
+    def release_occupied_slot(self):
+        """Release a slot reserved for a container that failed to start."""
+        self.lock.acquire()
+        self.num_exec -= 1
+        self.lock.release()
 
     def len(self):
         return len(self.pool)

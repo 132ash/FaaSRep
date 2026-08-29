@@ -64,10 +64,10 @@ class Function:
         # 1. try to get a workable container from pool
         container = self.container_pool.pop()
         
-        # create a new container
-        while container is None:
-        # if container is None:
-            # logging.warning(f"Container pool is empty, creating a new container for function: {self.info.function_name}")
+        # Try to grow the pool once. If every slot is occupied, leave the
+        # request queued and let the periodic dispatcher retry it later. A
+        # tight loop here starves the gevent hub and freezes the whole WorkerSP.
+        if container is None:
             container = self.create_container()
            
         # the number of exec container hits limit
@@ -110,6 +110,8 @@ class Function:
                 logging.warning(f"创建容器失败 (端口: {port}, 尝试: {attempt + 1}/{max_retries})")
                 # 短暂等待后重试，给操作系统一点时间清理端口
                 gevent.sleep(0.1)
+        self.container_pool.release_occupied_slot()
+        return None
 
     # after the destruction of container
     # its port should be give back to port manager
