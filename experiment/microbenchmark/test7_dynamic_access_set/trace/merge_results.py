@@ -133,11 +133,11 @@ def parse_args():
         description='Merge raw trace slices into one row per abort probability.')
     parser.add_argument(
         '--raw-dir', type=Path,
-        default=script_dir / 'results/hybrid/raw_results/highload',
+        default=script_dir / 'results/FaaSRep/raw_results/highload',
         help='directory containing *_raw.csv files')
     parser.add_argument(
         '--output', type=Path,
-        default=script_dir / 'results/hybrid/summary_results_highload_merged.csv',
+        default=script_dir / 'results/FaaSRep/summary_results_highload_merged.csv',
         help='merged summary CSV to write')
     return parser.parse_args()
 

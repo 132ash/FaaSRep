@@ -1,0 +1,2 @@
+trace,configured_abort_prob,actual_abort_count,success_count,success_p50,success_p75,success_p90,success_p99,success_throughput
+highload,0.0,0,6583,0.23738455772399902,0.2577265501022339,0.27978096008300785,0.3136408185958863,43.82904808089077

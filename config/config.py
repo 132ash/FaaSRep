@@ -59,8 +59,8 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
+                    'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
                     #  'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
-                      'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
                     #    'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
                     #  'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
                     #    'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
