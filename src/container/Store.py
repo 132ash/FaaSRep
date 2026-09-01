@@ -1,6 +1,8 @@
 from gevent import monkey
 monkey.patch_all()
 from redis_component import RedisShadowTable, RedisCache
+from shadow_client import BokiClient
+from transaction_errors import ActiveAbortException
 import os
 import threading
 import time
@@ -38,21 +40,26 @@ class Store:
 
     def runtime_init(self, transaction_id, metadata):
         self.transaction_id = transaction_id
-        self.redis_shadow_table.runtime_init(transaction_id)
+        self.term = int(metadata.get('term', 0))
+        self.redis_shadow_table.runtime_init(transaction_id, self.term)
         self.read_set = metadata['read_set']
         self.write_set = metadata['write_set']
         self.cache_enable = metadata.get('cache_enable', False)
         self.io_latency = 0
+        self.boki = None
+        if metadata.get('system_mode') == 'BOKI_SN':
+            self.cache_enable = False
+            self.boki = BokiClient(transaction_id, self.term, int(metadata['birth_seq']), self.function_name)
 
     # mode: 'RET', 'PUT'
     def param_wrapper(self, func, key, mode, txid=None):
         if self.cache_enable:
             if txid:
-                return f"{txid}:{mode}:{func}:{key}" 
+                return f"{txid}:{self.term}:{mode}:{func}:{key}"
             else:
-                return f"{self.transaction_id}:{mode}:{func}:{key}" 
+                return f"{self.transaction_id}:{self.term}:{mode}:{func}:{key}"
         else:
-            return f"{mode}:{func}:{key}"
+            return f"{mode}:{self.term}:{func}:{key}"
         
     def get_redis_ip(self, upstream):
         if upstream == "GLOBAL":
@@ -61,7 +68,7 @@ class Store:
             return self.function_pos[upstream]
         
     def abort_tx(self, message):
-        raise Exception(f"Transaction abort triggered by itself: {message}")
+        raise ActiveAbortException(str(message))
 
     def fetch_from_mem(self, k, param_key, upstream, param_type):
         ip = self.get_redis_ip(upstream)
@@ -107,6 +114,17 @@ class Store:
             self.put_to_mem(k, self.function_name, 'RET')
 
     def get(self, key):
+        if self.boki is not None:
+            self.boki.lock(key, 'S')
+            hit, value = self.boki.get(key)
+            if hit:
+                return value
+            start = time.time()
+            _, value = self.redis_cache.db_get(key)  # consistent main-table read; no shared cache
+            elapsed = time.time() - start
+            self.io_latency += elapsed
+            self.boki.metrics['db_io_latency'] += elapsed
+            return value
         value = None
         start = time.time()
         # first run, check RYW subjection.
@@ -123,6 +141,10 @@ class Store:
         return value
     
     def put(self, key, value):
+        if self.boki is not None:
+            self.boki.lock(key, 'X')
+            self.boki.put(key, value)
+            return
         start = time.time()
         self.put_to_mem(key, self.function_name, 'PUT', value)
         self.write_set[key] = self.function_name

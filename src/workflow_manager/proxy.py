@@ -3,7 +3,6 @@ import logging
 import os
 from pathlib import Path
 # 配置日志记录 - 输出到文件并每次运行时刷新
-log_file = '../../logging/proxy.log'
 script_dir = Path(__file__).parent
 def get_root_dir(script_dir: Path) -> Path:
     project_root = script_dir
@@ -14,8 +13,11 @@ def get_root_dir(script_dir: Path) -> Path:
     return project_root
 
 ROOT_DIR = get_root_dir(script_dir)
-sys.path.append(str(ROOT_DIR))
-sys.path.append('../../config')
+LOG_DIR = ROOT_DIR / 'logging'
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+log_file = LOG_DIR / 'proxy.log'
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 # 删除旧的日志文件（如果存在）
 if os.path.exists(log_file):
     os.remove(log_file)
@@ -100,8 +102,8 @@ class Dispatcher:
         #log_message(f"Dispatcher initialized with workflows: {list(self.managers.keys())}")
 
 
-    def get_state(self, workflow_name, transaction_id, read_set, write_set) -> TransactionState:
-        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set)
+    def get_state(self, workflow_name, transaction_id, read_set, write_set, term=0, birth_seq=None) -> TransactionState:
+        return self.managers[workflow_name].get_state(transaction_id, read_set, write_set, term, birth_seq)
 
     def trigger_function(self, workflow_name, state, function_name, no_parent_execution):
         self.managers[workflow_name].trigger_function(state, function_name, no_parent_execution)
@@ -112,8 +114,12 @@ class Dispatcher:
     def clear_db(self, workflow_name, transaction_id):
         self.managers[workflow_name].clear_db(transaction_id)
 
-    def del_state(self, workflow_name, transaction_id, fin):
-        self.managers[workflow_name].del_state(transaction_id, fin)
+    def del_state(self, workflow_name, transaction_id, fin, term=None):
+        manager = self.managers[workflow_name]
+        state = manager.states.get(transaction_id)
+        if term is not None and state is not None and state.term != int(term):
+            return
+        manager.del_state(transaction_id, fin)
 
     def clear_containers(self):
         for workflow_name in self.all_workflows:
@@ -139,11 +145,13 @@ def req():
     # collected repair metadata, transported between functions. 
     read_set = data.get('read_set', {})
     write_set = data.get('write_set', {})
+    term = int(data.get('term', 0))
+    birth_seq = data.get('birth_seq')
     # data for repair
     batch_id = data.get('batch_id', "")
     # if repair:
         ###log_message(f"Repair request received: transaction_id: {transaction_id}, workflow_name: {workflow_name}, function_name: {function_name}, no_parent_execution: {no_parent_execution}, retry_after_abort: {retry_after_abort}, container_port: {container_port}, read_set: {read_set}, write_set: {write_set}, RYW_subjection: {RYW_subjection}, batch_id: {batch_id}, repair: {repair}, repair_mode: {repair_mode}, repair_states: {repair_states}")
-    state = dispatcher.get_state(workflow_name, transaction_id, read_set, write_set)
+    state = dispatcher.get_state(workflow_name, transaction_id, read_set, write_set, term, birth_seq)
     # get the corresponding workflow state and trigger the function
     dispatcher.trigger_function(workflow_name, state, function_name, no_parent_execution)
     return json.dumps({'status': 'ok'})
@@ -154,7 +162,7 @@ def clear():
     workflow_name = data['workflow_name']
     transaction_id = data['transaction_id']
     fin = data['fin']
-    dispatcher.del_state(workflow_name, transaction_id, fin) # and remove state for every node
+    dispatcher.del_state(workflow_name, transaction_id, fin, data.get('term')) # and remove state for every node
     if CACHE_ENABLED and fin:
         dispatcher.clear_mem(workflow_name, transaction_id) # must clear memory after each run 
     return json.dumps({'status': 'ok'})
@@ -184,6 +192,7 @@ GET_NODE_INFO_INTERVAL = 0.1
 # python3 proxy.py  10.2.30.50 7500
 # python3 proxy.py  10.2.27.23 7500
 # python3 proxy.py  10.2.30.62 7500
+# python3 proxy.py  10.2.29.142 7500
 
 from gevent.pywsgi import WSGIServer
 import logging

@@ -11,6 +11,7 @@ from gevent.pywsgi import WSGIServer
 from Store import Store
 import container_config
 from redis_component import RedisShadowTable, RedisCache
+from transaction_errors import PassiveAbortException, ActiveAbortException
 
 # 配置日志记录
 logging.basicConfig(
@@ -66,18 +67,21 @@ class Runner:
             self.code = compile(f.read(), filename, mode='exec')
         store.init(self.function, self.shadow_table, self.cache, db_server, function_pos, self.input, self.output)
 
-    def save(self, transaction_id, write_set):  
+    def save(self, transaction_id, write_set):
         self.transaction_id = transaction_id
         self.write_set = write_set
 
-    def run(self, transaction_id):
+    def run(self, transaction_id, term=0, birth_seq=None):
         # in first run, collect read/write set, and RYW subjection
         # in repair, use the metadata from redis.
 
         TxMetaData_thisFunc = {
-                                "read_set": {}, 
-                                "write_set": self.write_set, 
-                                'cache_enable':self.cache_enable
+                                "read_set": {},
+                                "write_set": self.write_set,
+                                'cache_enable':self.cache_enable,
+                                'term': term,
+                                'birth_seq': birth_seq,
+                                'system_mode': container_config.SYSTEM_MODE,
                               }
         aborted = False
         msg = ''
@@ -90,14 +94,25 @@ class Runner:
         try:
             exec(self.code, self.ctx)
             out = eval('main()', self.ctx)               
+        except PassiveAbortException as e:
+            aborted = True
+            msg = json.dumps({'Abort': True, 'abort_type': 'PASSIVE', 'error': str(e),
+                              'io_latency': store.io_latency, 'metrics': store.boki.metrics if store.boki else {}})
+            logging.info(f"Function {self.function} passively aborted: {msg}")
+        except ActiveAbortException as e:
+            aborted = True
+            msg = json.dumps({'Abort': True, 'abort_type': 'ACTIVE', 'error': str(e),
+                              'io_latency': store.io_latency, 'metrics': store.boki.metrics if store.boki else {}})
+            logging.info(f"Function {self.function} actively aborted: {msg}")
         except Exception as e:
             aborted = True
-            msg = json.dumps({'Abort': True, 'error': str(e), 'io_latency':store.io_latency})
+            msg = json.dumps({'Abort': True, 'abort_type': 'ERROR', 'error': str(e),
+                              'io_latency':store.io_latency, 'metrics': store.boki.metrics if store.boki else {}})
             logging.error(f"Function {self.function} execution failed: {msg}")
         # the function finished repair, not abort, send data to waiting functions in fastpath..
         io_latency = store.io_latency
 
-        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"], io_latency
+        return aborted, msg, TxMetaData_thisFunc["read_set"], TxMetaData_thisFunc["write_set"], io_latency, (store.boki.metrics if store.boki else {})
 
 
 proxy = Flask(__name__)
@@ -142,14 +157,17 @@ def run():
         
     # record the execution time
     # only in remote lock mode, catch the runtime error(lock failed)
-    aborted, abort_msg, rs, ws, io_latency = runner.run(transaction_id)
+    term = int(inp.get('term', 0))
+    birth_seq = inp.get('birth_seq')
+    aborted, abort_msg, rs, ws, io_latency, metrics = runner.run(transaction_id, term, birth_seq)
     if aborted:
         return abort_msg
 
     res = {
         "read_set": rs,
         "write_set": ws,
-        "io_latency": io_latency
+        "io_latency": io_latency,
+        "metrics": metrics,
     }
 
     proxy.status = 'ok'

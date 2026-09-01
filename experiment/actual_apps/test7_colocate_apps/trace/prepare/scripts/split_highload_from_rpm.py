@@ -38,8 +38,8 @@ def split_trace_2019():
     csv_file = PREPARE_DIR / 'rpm' /  (trace_name + '.csv')
     exp_duration = 3600 # 1 hour
     
-    core_segment_duration = 5 * 60 # 2 minutes used for measurement
-    prefix_duration = 10 # 30 seconds warmup before each measured segment
+    core_segment_duration = int(2.5 * 60)  # 2.5 minutes measured per segment
+    prefix_duration = 10  # 10 seconds warmup before each measured segment
     
     output_dir = PREPARE_DIR / 'segments' / trace_name
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +112,7 @@ def split_trace_2019():
         }
         all_requests.append(req)
         
-    # Split into measured 2-minute segments with a 30-second warmup prefix.
+    # Split into measured 2.5-minute segments with a 10-second warmup prefix.
     num_segments = math.ceil(exp_duration / core_segment_duration)
     
     for i in range(num_segments):

@@ -47,6 +47,18 @@ GATEWAY_ADDR = f'{STORAGE_NODE_IP}:8000' # need to update as your private_ip
 # ... (后面的内容保持不变) ...
 
 VALIDATOR_ADDR = f'{STORAGE_NODE_IP}:9000'
+# Boki-style single-node services.  VALIDATOR_ADDR remains for the untouched
+# OCC path; port 9000 is the lock manager when SYSTEM_MODE is BOKI_SN.
+SYSTEM_MODE = os.environ.get('SYSTEM_MODE', 'BOKI_SN').upper()
+LOCK_MANAGER_ADDR = os.environ.get('LOCK_MANAGER_ADDR', VALIDATOR_ADDR)
+SHADOW_SERVICE_ADDR = os.environ.get('SHADOW_SERVICE_ADDR', f'{STORAGE_NODE_IP}:9100')
+LOCK_WAIT_DEADLINE_SECONDS = float(os.environ.get('LOCK_WAIT_DEADLINE_SECONDS', '30'))
+SHADOW_FLUSH_RETRY_SECONDS = float(os.environ.get('SHADOW_FLUSH_RETRY_SECONDS', '0.05'))
+# Keep retries from re-entering the same hot-key collision in lockstep.  The
+# gateway samples uniformly around this value, preserving it as the mean.
+BOKI_RETRY_BACKOFF_SECONDS = float(os.environ.get('BOKI_RETRY_BACKOFF_SECONDS', '0.2'))
+BOKI_RETRY_BACKOFF_JITTER_RATIO = float(os.environ.get('BOKI_RETRY_BACKOFF_JITTER_RATIO', '0.5'))
+BOKI_WORKFLOW_WAIT_SECONDS = float(os.environ.get('BOKI_WORKFLOW_WAIT_SECONDS', '120'))
 WORKERSP_PORT = '7500'
 
 
@@ -54,20 +66,22 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
-                     #'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                    # 'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
+                    #   'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
+                    # 'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
+                    # 'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
+                    #  'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
+                    #   'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
+                    #   'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
                      'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
-                     #  'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
-                    #'c16': f"{ROOT_DIR}/benchmark/micro_benchmark/c16",
-                     # 'w2': f"{ROOT_DIR}/benchmark/micro_benchmark/w2",
-                      #'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
-                      # 'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                      # 'w16': f"{ROOT_DIR}/benchmark/micro_benchmark/w16",
                      #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                      #'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     #'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
 # cache setting
-CACHE_ENABLED = True
+# Boki-SN never uses the shared application-data cache.  Redis/DynamoDB is
+# still used for workflow-private RET/input values.
+CACHE_ENABLED = False if SYSTEM_MODE == 'BOKI_SN' else True
 CLEAR_MEM = True
 COLLECT_FUNCTION_LATENCY = False
 FILLUP_CACHE = False
@@ -106,5 +120,3 @@ LOGIN_FAIL_PROB = 0
 # social network			
 SOCIAL_NETWORK_USERS = 75			
 STARTUP_POSTS = 2
-
-

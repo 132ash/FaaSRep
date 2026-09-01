@@ -15,8 +15,9 @@ class RedisShadowTable:
         self.shadow_table_db = db_server.Table("shadow_table")
         self.transaction_id = None
 
-    def runtime_init(self, transaction_id): 
+    def runtime_init(self, transaction_id, term=0):
         self.transaction_id = transaction_id
+        self.term = term
         
     def put(self, key, ip, value):
         if self.cache_enable:

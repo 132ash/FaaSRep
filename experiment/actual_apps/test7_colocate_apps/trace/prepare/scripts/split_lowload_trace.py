@@ -34,7 +34,7 @@ def split_trace():
     start_idx = 105674
     exp_duration = 3600 # 1 hour
     
-    core_segment_duration = 2 * 60 # 2 minutes used for measurement
+    core_segment_duration = 2.5 * 60 # 2 minutes used for measurement
     prefix_duration = 10 # 30 seconds warmup before each measured segment
     
     output_dir = PREPARE_DIR / 'segments' / 'lowload'

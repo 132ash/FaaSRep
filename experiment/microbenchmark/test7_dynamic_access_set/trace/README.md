@@ -31,7 +31,9 @@ bash experiment/microbenchmark/test7_dynamic_access_set/trace/run_segments.sh
 
 `SEGMENTS_ROOT` may point at another directory containing
 `<trace>/segment_<index>.json`. Set `REQUEST_TIMEOUT=0` only when an indefinite
-wait is desired.
+wait is desired. The highload splitter uses 2.5-minute core windows with a
+10-second warmup prefix; the default target is `segment_5` (core `[750, 900]`,
+actual replay interval `[740, 900]`).
 
 Compact outputs are written below `results/occ/`:
 
@@ -42,3 +44,25 @@ Compact outputs are written below `results/occ/`:
 
 A summary row is written only when every request returns successfully. Raw and
 progress files are retained when a timeout or request error occurs.
+
+## Boki-style-SN preparation
+
+The OCC runner above must not be used for Boki-SN results. Boki-SN has a
+separate deterministic manifest and runner:
+
+```bash
+TRACE=highload TARGET_SEGMENT_INDICES_OVERRIDE="5" \
+  bash prepare_boki_manifests.sh
+```
+
+This generates `manifests/<trace>/c4_zipf0.9_segment_<n>.jsonl` and a metadata
+sidecar without contacting the gateway. When ready to run a Boki-SN replay,
+start the SUT with `SYSTEM_MODE=BOKI_SN` and use:
+
+```bash
+SYSTEM_MODE=BOKI_SN TRACE=highload TARGET_SEGMENT_INDICES_OVERRIDE="5" \
+  bash run_boki_segments.sh
+```
+
+Results are isolated below `results/boki_style_single_node/`; the Boki schema
+includes term, retry/Wait-Die counters, lock, shadow and flush metrics.

@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 SUMMARY_FIELDS = [
-    'trace', 'segment_index', 'request_count', 'success_count',
-    'occ_retry_count', 'success_p50', 'success_p99', 'success_throughput',
+    'request_count', 'retry_count', 'p50_latency', 'p75_latency',
+    'p90_latency', 'p95_latency', 'p99_latency',
 ]
 
 
@@ -34,19 +34,15 @@ def summarize_raw_file(raw_path, summary_path):
             f'{len(failures)} core requests failed; summary not written')
 
     latencies = [float(row['e2e_latency']) for row in measured]
-    start = min(float(row['submit_timestamp']) for row in measured)
-    end = max(float(row['response_timestamp']) for row in measured)
-    duration = end - start
     summary_row = {
-        'trace': measured[0]['trace'],
-        'segment_index': measured[0]['segment_index'],
         'request_count': len(measured),
-        'success_count': len(measured),
-        'occ_retry_count': sum(
+        'retry_count': sum(
             int(row.get('occ_retries') or 0) for row in measured),
-        'success_p50': percentile(latencies, 0.50),
-        'success_p99': percentile(latencies, 0.99),
-        'success_throughput': len(measured) / duration if duration else 0,
+        'p50_latency': percentile(latencies, 0.50),
+        'p75_latency': percentile(latencies, 0.75),
+        'p90_latency': percentile(latencies, 0.90),
+        'p95_latency': percentile(latencies, 0.95),
+        'p99_latency': percentile(latencies, 0.99),
     }
 
     summary_path.parent.mkdir(parents=True, exist_ok=True)

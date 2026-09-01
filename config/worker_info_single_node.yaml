@@ -1,0 +1,4 @@
+# Copy this over worker_info.yaml before running initialize.py c4 for the
+# Boki-style single-node experiment.  Replace the address with the SUT host.
+nodes:
+- 10.2.29.142

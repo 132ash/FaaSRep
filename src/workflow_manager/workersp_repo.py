@@ -9,8 +9,11 @@ from typing import Dict, List, Any
 from datetime import datetime
 import sys
 import json
+from pathlib import Path
 
-sys.path.append('../../config')
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 import config
 
 couchdb_url = config.COUCHDB_URL

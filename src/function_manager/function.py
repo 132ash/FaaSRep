@@ -5,8 +5,11 @@ from src.function_manager.function_info import FunctionInfo
 from  src.function_manager.container import Container, ContainerPool
 import sys
 import logging
-import gevent   
-sys.path.append('../../config')
+import gevent
+from pathlib import Path
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 import config
 # data structure for request info
 class RequestInfo:
@@ -47,8 +50,9 @@ class Function:
             print(f"function: {self.info.function_name} container pool created, len {self.container_pool.len()}")
         
     # put the request into request queue
-    def send_request(self, transaction_id, write_set):
-        data = {'transaction_id': transaction_id,'write_set':write_set}
+    def send_request(self, transaction_id, write_set, term=0, birth_seq=None):
+        data = {'transaction_id': transaction_id, 'write_set': write_set,
+                'term': term, 'birth_seq': birth_seq}
         req = RequestInfo(transaction_id, data)
         self.rq.append(req)
         res = req.result.get()

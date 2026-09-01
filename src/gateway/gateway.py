@@ -6,8 +6,14 @@ import uuid
 import sys
 import os
 import logging
+from pathlib import Path
 # 配置日志记录
-log_file = '../../logging/gateway.log'
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+LOG_DIR = ROOT_DIR / 'logging'
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+log_file = LOG_DIR / 'gateway.log'
 
 # 删除旧的日志文件（如果存在）
 if os.path.exists(log_file):
@@ -47,8 +53,8 @@ from gateway_repo import Repository
 from transaction_info import RunningTXTable
 import requests
 import time
+import random
 
-sys.path.append('../../config')
 import config
 
 CLEAR_MEM = config.CLEAR_MEM
@@ -73,7 +79,7 @@ def get_workflow_metadata(workflow_name):
     metadata_lock.release()
     return workflow_metadata[workflow_name]
 
-def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
+def trigger_function(workflow_name, transaction_id, function_name, ip, retry, term=0, birth_seq=None):
     url = 'http://{}/request'.format(ip)
     data = {
         'transaction_id': transaction_id,
@@ -83,16 +89,18 @@ def trigger_function(workflow_name, transaction_id, function_name, ip, retry):
         'repair': False,
         'retry': retry
     }
+    if config.SYSTEM_MODE == 'BOKI_SN':
+        data.update({'term': term, 'birth_seq': birth_seq})
     ##log_message(f"Triggering function {function_name} for transaction {transaction_id} at {ip}")
     requests.post(url, json=data)
 
-def clear_mem(ip, transaction_id, workflow_name, fin):
+def clear_mem(ip, transaction_id, workflow_name, fin, term=0):
     if not ip.endswith(':7500'):
         ip += ':7500'
     clear_url = 'http://{}/clear'.format(ip)
-    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'fin': fin})
+    requests.post(clear_url, json={'transaction_id': transaction_id, 'workflow_name': workflow_name, 'fin': fin, 'term': term})
 
-def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry=False):
+def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, retry=False, term=0, birth_seq=None):
     if not retry:
         repo.create_request_doc(transaction_id)
     # allocate works
@@ -104,9 +112,9 @@ def run_workflow(workflow_name, workflow_metadata, transaction_id, parameters, r
     for n in start_functions:
         ip = workflow_metadata['function_ip'][n]
         func_param = parameters.get(n, {})
-        if not retry:
-            repo.store_input(transaction_id, ip, func_param)
-        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry))
+        if not retry or config.SYSTEM_MODE == 'BOKI_SN':
+            repo.store_input(transaction_id, ip, func_param, term)
+        jobs.append(gevent.spawn(trigger_function, workflow_name, transaction_id, n, ip, retry, term, birth_seq))
     gevent.joinall(jobs)
     end = time.time()
     return end - start
@@ -117,8 +125,19 @@ def run():
     workflow = data['workflow']
     parameters = data['parameters']
     transaction_id = data.get('transaction_id', str(uuid.uuid4()))
+    global_req_id = data.get('global_req_id')
+    if config.SYSTEM_MODE == 'BOKI_SN':
+        try:
+            global_req_id = int(global_req_id)
+            if global_req_id < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return json.dumps({'status': 'error', 'transaction_id': transaction_id,
+                               'error': 'BOKI_SN requires a non-negative integer global_req_id'}), 400
     txTable.registerTX(workflow, transaction_id, parameters)
     workflow_metadata = get_workflow_metadata(workflow)
+    if config.SYSTEM_MODE == 'BOKI_SN':
+        return run_boki(workflow, workflow_metadata, transaction_id, parameters, global_req_id)
     #log_message(f'processing request {transaction_id}')
     start = time.time()
     aborted = False
@@ -161,9 +180,129 @@ def run():
         repo.clear_db(transaction_id)
     return message
 
+
+def _boki_post(addr, path, payload, timeout=35):
+    response = requests.post(f'http://{addr}{path}', json=payload, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def _boki_emergency_abort(transaction_id, term, reason):
+    """Best-effort timeout/error cleanup without violating flush atomicity.
+
+    A FLUSHING attempt intentionally cannot be discarded; it keeps its locks so
+    a partial database write is never exposed.  ACTIVE attempts are discarded
+    before the corresponding lock release.
+    """
+    try:
+        discarded = _boki_post(config.SHADOW_SERVICE_ADDR, '/discard', {
+            'txid': transaction_id, 'term': term, 'reason': reason})
+        if discarded.get('status') == 'DISCARDED':
+            _boki_post(config.LOCK_MANAGER_ADDR, '/abort', {
+                'txid': transaction_id, 'term': term, 'abort_type': reason})
+    except Exception:
+        logging.exception('unable to clean up Boki attempt %s/%s', transaction_id, term)
+
+
+def _boki_retry_backoff_seconds():
+    """Return a jittered retry delay while preserving the configured mean.
+
+    With the default base of 0.2 and ratio 0.5 this is uniformly sampled from
+    0.1 to 0.3 seconds.  A positive base is required: zero-delay retries
+    synchronize contenders into a hot-key retry storm.
+    """
+    base = max(0.0, float(getattr(config, 'BOKI_RETRY_BACKOFF_SECONDS', 0.2)))
+    ratio = max(0.0, float(getattr(config, 'BOKI_RETRY_BACKOFF_JITTER_RATIO', 0.5)))
+    if base == 0:
+        return 0.0
+    return random.uniform(base * max(0.0, 1.0 - ratio), base * (1.0 + ratio))
+
+
+def run_boki(workflow, workflow_metadata, transaction_id, parameters, global_req_id):
+    """Gateway-owned retry loop: term advances, birth priority never does."""
+    start = time.time()
+    term = 0
+    birth_seq = None
+    retry_count = 0
+    wait_die_abort_count = 0
+    last_metrics = {}
+    final_status = 'error'
+    error = None
+    while True:
+        attempt_started = False
+        try:
+            begun = _boki_post(config.LOCK_MANAGER_ADDR, '/begin', {
+                'txid': transaction_id, 'term': term, 'global_req_id': global_req_id})
+            if begun.get('status') != 'ACTIVE':
+                raise RuntimeError(f'lock begin: {begun}')
+            birth_seq = begun['birth_seq']
+            shadow = _boki_post(config.SHADOW_SERVICE_ADDR, '/begin', {
+                'txid': transaction_id, 'term': term, 'birth_seq': birth_seq})
+            if shadow.get('status') != 'ACTIVE':
+                _boki_post(config.LOCK_MANAGER_ADDR, '/abort', {'txid': transaction_id, 'term': term, 'abort_type': 'BEGIN_ERROR'})
+                raise RuntimeError(f'shadow begin: {shadow}')
+            attempt_started = True
+            txTable.set_boki_attempt(transaction_id, term, birth_seq)
+            running_start = time.time()
+            run_workflow(workflow, workflow_metadata, transaction_id, parameters, retry_count > 0, term, birth_seq)
+            outcome = txTable.waitBoki(transaction_id, getattr(config, 'BOKI_WORKFLOW_WAIT_SECONDS', 120))
+            last_metrics = outcome.get('metrics', {})
+            if outcome['status'] == 'committed':
+                final_status = 'ok'
+                last_metrics['workflow_exec_latency'] = outcome['finish_time'] - running_start
+                break
+            if outcome['status'] == 'aborted' and outcome.get('abort_type') in {'PASSIVE', 'WAIT_DIE', 'TIMEOUT'}:
+                wait_die_abort_count += 1
+                retry_count += 1
+                clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, False, term)
+                              for ip in workflow_metadata['all_addrs']]
+                gevent.joinall(clear_jobs)
+                term += 1
+                # gevent.sleep(_boki_retry_backoff_seconds())
+                continue
+            if outcome['status'] == 'aborted':
+                if outcome.get('abort_type') == 'ERROR':
+                    error = outcome.get('error') or 'application or container error'
+                else:
+                    final_status = 'aborted'
+            else:
+                error = outcome.get('error')
+                _boki_emergency_abort(transaction_id, term, 'TIMEOUT_OR_ERROR')
+            break
+        except Exception as exc:
+            error = str(exc)
+            if attempt_started:
+                _boki_emergency_abort(transaction_id, term, 'GATEWAY_ERROR')
+            break
+    end = time.time()
+    if final_status == 'ok':
+        res = repo.get_result(transaction_id, workflow, term)
+        message = {'status': 'ok', 'transaction_id': transaction_id, 'global_req_id': global_req_id, 'res': res,
+                   'e2e_latency': end - start, 'workflow_exec_latency': last_metrics.get('workflow_exec_latency', 0),
+                   'rounds': retry_count + 1, 'retry_count': retry_count,
+                   'wait_die_abort_count': wait_die_abort_count, 'term': term, **last_metrics}
+    elif final_status == 'aborted':
+        message = {'status': 'aborted', 'transaction_id': transaction_id, 'global_req_id': global_req_id, 'res': {},
+                   'rounds': retry_count + 1, 'term': term}
+    else:
+        message = {'status': 'error', 'transaction_id': transaction_id, 'global_req_id': global_req_id,
+                   'error': error or 'Boki attempt failed',
+                   'rounds': retry_count + 1, 'term': term}
+    if config.CLEAR_MEM:
+        clear_jobs = [gevent.spawn(clear_mem, ip, transaction_id, workflow, True, term)
+                      for ip in workflow_metadata['all_addrs']]
+        gevent.joinall(clear_jobs)
+        repo.clear_db(transaction_id)
+    txTable.finishTX(transaction_id)
+    return json.dumps(message)
+
 @app.route('/notify', methods = ['POST'])
 def notify():
     data = request.get_json(force=True, silent=True)
+    if config.SYSTEM_MODE == 'BOKI_SN':
+        accepted = txTable.notifyBoki(data['txid'], int(data['term']), data['status'],
+                                      data.get('abort_type'), data.get('metrics'), data.get('error'))
+        return json.dumps({'status': 'notified' if accepted else 'stale'})
     from_validator = data.get('from_validator', False)
     # abort or commited from validator
     if from_validator:

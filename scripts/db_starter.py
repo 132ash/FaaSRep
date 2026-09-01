@@ -20,6 +20,7 @@ ROOT_DIR = get_root_dir(script_dir)
 sys.path.append(str(ROOT_DIR))
 
 import config.config as config
+from src.storage_schema import ensure_shadow_table
 
 STORAGE_NODE_IP = config.STORAGE_NODE_IP
 
@@ -66,6 +67,11 @@ table = dynamo_db.create_table(
         'WriteCapacityUnits': 100
     }
 )
+
+# Both OCC (when cache is disabled) and Boki-SN use this table for
+# transaction-private workflow inputs and RET values.  Creating it here keeps
+# scripts/db_setup.sh and scripts/db_setup_bash.sh consistent.
+ensure_shadow_table(dynamo_db)
 
 
 

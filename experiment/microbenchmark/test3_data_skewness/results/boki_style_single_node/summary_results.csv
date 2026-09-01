@@ -1,0 +1,3 @@
+system,workflow,client_count,rounds_per_client,zipf,seed,request_count,success_count,failure_count,p50_latency,p99_latency,mean_latency,closed_loop_throughput,retry_count,wait_die_abort_count,timeout_abort_count,active_abort_count
+BOKI_SN,c4,32,100,0.9,20260901,3200,1231,1969,0.7733442783355713,58.09573838710825,5.644042095452377,4.924886739436644,16365,16365,0,0
+BOKI_SN,c4,32,100,0.9,20260901,3200,1280,1920,0.7733566761016846,45.44058171033859,4.269873530045151,7.058967947820869,18557,18557,0,0
