@@ -99,7 +99,8 @@ class SerializerProcess(Process):
             if op == VALIDATE:
                 self.batch_validator_assignment[batch_id] = handler_id
                 version = get_timestamp()
-                expired_set, subjection_set, pessi_sink_info, retry_txs = self.accessed_set_validate(
+                (expired_set, subjection_set, pessi_sink_info, retry_txs,
+                 occ_validated_txs) = self.accessed_set_validate(
                     batch_id, version, data['transaction_list'], data['read_set'],
                     data['write_set'], data.get('transaction_metadata', {}))
                 #self.#log_message(f"[VALIDATE] {batch_id}: expired_set={expired_set}, subjection_set={subjection_set}, pessi_sink_info={pessi_sink_info}")
@@ -108,7 +109,8 @@ class SerializerProcess(Process):
                 #     commit_list_for_current_handler, commit_keys_on_worker = self.commit_all_ready_batches(handler_id, batch_id)
                 self.result_pipes[handler_id].put(
                     (batch_id, (expired_set, subjection_set,
-                                pessi_sink_info, retry_txs)))
+                                pessi_sink_info, retry_txs,
+                                occ_validated_txs)))
                 
             elif op == COMMIT:
                 self.commit_keys_per_batch[batch_id] = data['commit_keys']
@@ -136,6 +138,7 @@ class SerializerProcess(Process):
         expired_set = {}
         subjection_set = {}
         retry_txs = []
+        occ_validated_txs = []
         transaction_metadata = transaction_metadata or {}
         pessi_sink_info = {'batch_sub':{}, 'tx_sub':{}, 'last_tx':{}, 'whole_tx_sub':{}} # {'batch_sub':{'batch_id':[successors]}, 'tx_sub':{'tx_id':[successors]}}
         self.batch_write_info[batch_id] = {'version':version, 'ready_write_cnt':0, 'all_write_cnt':0, 'writes':{}}
@@ -145,18 +148,23 @@ class SerializerProcess(Process):
             subjection_set[tx_id] = {}
             rs = read_set_per_batch[tx_id]
             self.get_expired_set_and_subjection(batch_id, tx_id, expired_set, subjection_set, rs, pessi_sink_info, tx_index_inside_batch)
-            if (is_occ_request(transaction_metadata.get(tx_id)) and
-                    not transaction_is_clean(subjection_set[tx_id])):
-                retry_txs.append(tx_id)
-                expired_set.pop(tx_id, None)
-                subjection_set.pop(tx_id, None)
-                remove_transaction_dependencies(tx_id, pessi_sink_info)
+            if is_occ_request(transaction_metadata.get(tx_id)):
+                if not transaction_is_clean(subjection_set[tx_id]):
+                    retry_txs.append(tx_id)
+                    expired_set.pop(tx_id, None)
+                    subjection_set.pop(tx_id, None)
+                    remove_transaction_dependencies(tx_id, pessi_sink_info)
+                    self.log_message(
+                        f"OCC_RETRY_SELECTED batch_id={batch_id} tx_id={tx_id}"
+                    )
+                    continue
+                occ_validated_txs.append(tx_id)
                 self.log_message(
-                    f"OCC_RETRY_SELECTED batch_id={batch_id} tx_id={tx_id}"
+                    f"OCC_VALIDATED_CLEAN batch_id={batch_id} tx_id={tx_id}"
                 )
-                continue
             self.update_key_writers(batch_id, tx_id, write_set_per_batch[tx_id])
-        return expired_set, subjection_set, pessi_sink_info, retry_txs
+        return (expired_set, subjection_set, pessi_sink_info, retry_txs,
+                occ_validated_txs)
 
     def get_expired_set_and_subjection(self,batch_id, tx_id, expired_set, subjection_set, read_set, pessi_sink_info, tx_index_inside_batch:dict):
         pessi_nearest_writer = {'batch':(None, None), 'tx':None, 'tx_cross':None} # nearest writer info for pessimistic repair.

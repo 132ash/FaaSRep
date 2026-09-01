@@ -9,17 +9,31 @@ sys.path.append('../../config')
 import config
 
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
+NO_RETRY_ABORT = 'NONE'
+OCC_ONLY_RETRY = 'OCC_ONLY'
 
 
 def prepare_occ_retry_parameters(parameters, start_functions):
+    """Disable reinjection while preserving OCC-only dynamic requests.
+
+    Requests whose marker is NONE are dependency-cascade retries and remain
+    ordinary optimistic transactions. A selected dynamic request changes from
+    its function target to OCC_ONLY and keeps that marker across later retries.
+    """
     if not isinstance(parameters, dict):
         parameters = json.loads(parameters)
     retry_parameters = copy.deepcopy(parameters)
     for function_name in start_functions:
         function_input = retry_parameters.get(function_name)
-        if (isinstance(function_input, dict) and
-                'retry_abort_func' in function_input):
-            function_input['retry_abort_func'] = 'NONE'
+        if not isinstance(function_input, dict):
+            continue
+        retry_abort_func = function_input.get('retry_abort_func')
+        if retry_abort_func not in (None, NO_RETRY_ABORT):
+            # Preserve the fact that this request was selected for dynamic
+            # access-set handling, while disabling any further injected abort.
+            # Subsequent validations therefore use OCC until the request is
+            # clean enough to commit without entering repair.
+            function_input['retry_abort_func'] = OCC_ONLY_RETRY
     return retry_parameters
 
 

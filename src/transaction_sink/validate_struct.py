@@ -29,6 +29,7 @@ WAITING = config.RUNNING
 ABORT_PROB = config.ABORT_PROB
 
 OPT_REPAIR = config.OPT_REPAIR
+OCC_VALIDATION = config.OCC_VALIDATION
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 NO_PESSI = config.NO_PESSI and config.OPTIMISTIC_REPAIR
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
@@ -292,7 +293,9 @@ class RepairingBatchState:
                     # Returning (False, []) here caused a Flask 500 while a
                     # normal optimistic/pessimistic race was being handled.
                     return {}, {}
-                if state != NO_PESSI_RETRY and random.random() < ABORT_PROB:
+                if (state != NO_PESSI_RETRY and
+                        repair_mode != OCC_VALIDATION and
+                        random.random() < ABORT_PROB):
                     state = ABORTED
                     optimistic_state.optimistic_repair_state = ABORTED
                 if state == ABORTED:

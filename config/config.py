@@ -67,7 +67,7 @@ WORKFLOW_YAML_ADDR = {
                     #     'w4': f"{ROOT_DIR}/benchmark/micro_benchmark/w4",
                     #     'w6': f"{ROOT_DIR}/benchmark/micro_benchmark/w6",
                     #     'w8': f"{ROOT_DIR}/benchmark/micro_benchmark/w8",
-                    #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
+                    # #'travel_reservation': f"{ROOT_DIR}/benchmark/travel_reservation",
                     #  'banking_system': f"{ROOT_DIR}/benchmark/banking_system",   
                     # 'social_network': f"{ROOT_DIR}/benchmark/social_network",  
                     }
@@ -93,7 +93,7 @@ BATCH_TIMEOUT = 0.015
 ABORT_PROB = 0
 
 # batch setting
-BATCH_SIZE = 2
+BATCH_SIZE = 4
 
 # mode setting
 FAST_PATH = True
@@ -110,6 +110,7 @@ RUNNING = '1'
 REPAIRED = '2'
 ABORTED = '3'
 
+OCC_VALIDATION = 0
 OPT_REPAIR = 1
 PESSI_REPAIR = 2
 

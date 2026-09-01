@@ -6,7 +6,7 @@
 
 论文 `atc26_FaaSRep.pdf` 的 §7.3 指出，FaaSRep 的 reconciliation 默认假设同一请求在首次执行和重试阶段具有稳定访问集。如果系统检测到访问集变化，则把该动态事务视为 application-level abort：丢弃该事务的 buffered writes，将其从提交历史中移除；如果该事务是其他事务的依赖前驱，则受影响事务可能需要由 optimistic repair 转为 pessimistic repair。
 
-本实验不真正改变访问集，而是用 `retry_abort_func` 抽样需要按 OCC 语义处理的请求。validation 时，若该请求的所有函数均为 clean，则保留在 reconciliation 流程中且不触发主动 abort；若任一函数为 dirty，则将请求从当前 batch 的依赖和 writer 集合中移除，待 batch 提交后由 gateway 清理旧上下文并从头重试。重试时清除 `retry_abort_func`，因此同一请求不会再次触发实验主动 abort，最终客户端只应收到成功结果。
+本实验不真正改变访问集，而是用 `retry_abort_func` 抽样需要按 OCC 语义处理的请求。validation 时，若该请求的所有函数均为 clean，则直接通过 OCC validation 并提交，不进入 optimistic 或 pessimistic repair；若任一函数为 dirty，则将请求从当前 batch 的依赖和 writer 集合中移除，待 batch 提交后由 gateway 清理旧上下文并从头重试。重试时把 `retry_abort_func` 从目标函数改为内部值 `OCC_ONLY`，因此不会再次触发实验主动 abort，但后续每次 validation 仍按 OCC 处理，直到 clean 后提交。最终客户端只应收到成功结果。
 
 实验还需要验证高并发下的 optimistic-to-pessimistic 转换是否存在并发缺陷。系统一旦卡住，实验程序不得因 timeout 自动退出、重试或清理现场，而应保留阻塞状态，并通过 workersp、container、transaction sink、commit manager、serializer 和 gateway 的日志定位最后一次有效状态转移。
 
@@ -37,7 +37,7 @@ experiment/microbenchmark/test7_dynamic_access_set/
 
 `config/config.py` 中的 `NO_PESSI` 控制无悲观修复变种：
 
-- `NO_PESSI = True`：optimistic repair 的依赖前继 abort 后，所有受影响的后继事务丢弃当前 attempt，并通过现有 OCC retry 通道从头重试；该规则沿事务依赖图向后传播。重试请求再次 validation 时仍使用 optimistic repair，不会进入 pessimistic repair。
+- `NO_PESSI = True`：optimistic repair 的依赖前继 abort 后，所有受影响的后继事务丢弃当前 attempt，并通过现有 retry 通道从头重试；该规则沿事务依赖图向后传播。仅因前继 abort 而重试的普通请求再次 validation 时仍使用 optimistic repair；被动态访问集实验选中的原请求则保持 `OCC_ONLY`，不会进入 repair。
 - `NO_PESSI = False`：恢复原始 dynamic 行为，受影响后继从 optimistic repair 转为 pessimistic repair。
 
 该开关只在 `OPTIMISTIC_REPAIR = True` 时生效。修改后需要重启 transaction sink、commit manager、gateway 等长驻服务，并重新创建 workflow containers。
@@ -128,10 +128,10 @@ microbenchmark function / Store
 
 serializer 完成正常 stale-read/dependency 检查后再处理被选中的请求：
 
-- 所有函数 clean：保留请求，不强制目标函数 dirty；fast path 复用 clean 结果，因此不会运行主动 abort 代码。
+- 所有函数 clean：标记为 OCC validation 成功，保留其 writer，并直接参与提交；不发送 optimistic/pessimistic repair 请求。
 - 存在 dirty 函数：在该请求写入 `key_writers` 之前将其标记为 OCC retry，并删除以该请求为后继的 batch/transaction dependency。
 
-validator、sink 和 repair engine 只接收过滤后的 transaction list。原请求的 buffered writes 不提交；batch 提交后 gateway 收到独立的 `retry_txs` 通知，清理 WorkerSP/container/shadow state，用同一 txid 重新执行，并把输入中的 `retry_abort_func` 改为 `NONE`。
+validator 和 sink 只注册过滤后的 transaction list；repair engine 将其中 OCC-clean 请求与需要 repair 的请求分流。dirty 原请求的 buffered writes 不提交；batch 提交后 gateway 收到独立的 `retry_txs` 通知，清理 WorkerSP/container/shadow state，用同一 txid 重新执行，并把输入中的 `retry_abort_func` 从目标函数改为 `OCC_ONLY`。
 
 作为防御性兜底，gateway 若仍收到带 `INJECTED_DYNAMIC_ACCESS_ABORT` 标识的终态 abort，也必须将其转换为同样的内部 OCC retry，而不能返回失败请求。
 
@@ -145,8 +145,9 @@ serializer detects dirty OCC request
   -> retained requests reconcile and commit normally
   -> validator notifies gateway through retry_txs
   -> gateway clears the old attempt
-  -> retry_abort_func becomes NONE
+  -> retry_abort_func becomes OCC_ONLY
   -> same txid executes and validates again
+  -> dirty: repeat OCC retry; clean: commit without repair
   -> final successful result returns to the client
 ```
 
@@ -474,9 +475,9 @@ error
 正式运行前按以下顺序验证：
 
 1. `p=0`：没有 injected abort，结果应接近原 c4 基线。
-2. 被选中且全 clean：留在 repair 流程，不执行主动 abort。
+2. 被选中且全 clean：通过 OCC validation 后直接提交，不执行主动 abort，也不发送 repair 请求。
 3. 被选中且存在 dirty 函数：从当前 batch 移除，writer/dependency 中均不再出现该 txid。
-4. gateway 收到 `retry_txs`：清理旧上下文、保留同一 txid、将 `retry_abort_func` 改为 `NONE` 后重试。
+4. gateway 收到动态访问集请求的 `retry_txs`：清理旧上下文、保留同一 txid、将 `retry_abort_func` 改为 `OCC_ONLY` 后重试；后续 dirty 时继续 retry，clean 时直接提交且不进入 optimistic/pessimistic repair。仅因 NO_PESSI 前继 abort 而重试的普通请求保持 `NONE`，重试后仍走 optimistic repair。
 5. batch 中全部请求均需 OCC retry：空 batch 正常提交和释放，不残留 sink/serializer 状态。
 6. 32 clients、`p=1`：全部请求最终返回 `ok`，summary 的 `actual_abort_count` 等于内部 OCC retry 总次数。
 7. 执行完整的五个概率点。

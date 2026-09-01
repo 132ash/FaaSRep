@@ -24,6 +24,7 @@ NO_PESSI = config.NO_PESSI and OPTIMISTIC_REPAIR
 
 OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
+OCC_VALIDATION = config.OCC_VALIDATION
 
 SCALABILITY_TEST = config.SCALABILITY_TEST
 FAKE_SINK_URL = config.FAKE_SINK_URL    
@@ -45,7 +46,7 @@ class RepairEngine:
         self.start_functions = self.repo.get_start_functions(self.workflow_name + '_workflow_metadata')
         self.PessimisticRepairer = PessimisticRepairer(logger, workflow_name, self.repair_info, self.function_pos)
 
-    def repair_batch_after_validate(self,batch_id,container_port, read_set, write_set,tx_list, expired_keys, pessi_sink_info):
+    def repair_batch_after_validate(self,batch_id,container_port, read_set, write_set,tx_list, expired_keys, pessi_sink_info, occ_validated_txs=None):
         # allocate works
         start = time.time()
         self.pessi_register_lock.acquire()
@@ -59,25 +60,37 @@ class RepairEngine:
         ready_txs, opt_txs_become_pessi = self.register_on_sink(
             batch_id, pessi_sink_info, tx_list)
         self.pessi_register_lock.release()    
+        occ_validated_txs = list(occ_validated_txs or [])
+        occ_validated_set = set(occ_validated_txs)
         txs_for_optimistic_repair = []
         txs_for_pessimistic_repair = []
         if OPTIMISTIC_REPAIR:
             for tx_id in tx_list:
-                if opt_txs_become_pessi.get(tx_id, False):
+                if tx_id in occ_validated_set:
+                    continue
+                elif opt_txs_become_pessi.get(tx_id, False):
                     if not NO_PESSI and ready_txs.get(tx_id, False):
                         txs_for_pessimistic_repair.append(tx_id)
                 else:
                     txs_for_optimistic_repair.append(tx_id)
         else:
-            txs_for_pessimistic_repair = ready_txs
+            txs_for_pessimistic_repair = [
+                tx_id for tx_id in ready_txs
+                if tx_id not in occ_validated_set
+            ]
         log_message(self.logger, (
             f"REPAIR_PLAN workflow={self.workflow_name} batch_id={batch_id} "
             f"optimistic={txs_for_optimistic_repair} "
             f"pessimistic={txs_for_pessimistic_repair} "
-            f"waiting={[tx for tx in tx_list if tx not in txs_for_optimistic_repair and tx not in txs_for_pessimistic_repair]}"
+            f"occ_validated={occ_validated_txs} "
+            f"waiting={[tx for tx in tx_list if tx not in occ_validated_set and tx not in txs_for_optimistic_repair and tx not in txs_for_pessimistic_repair]}"
         ))
         #log_message(self.logger, f"[REPAIR AFTER VALIDATE] Batch {batch_id} PESSI ready transactions: {ready_txs},opt_txs_become_pessi:{opt_txs_become_pessi} optimistic repair transactions: {txs_for_optimistic_repair}, pessimistic repair transactions: {txs_for_pessimistic_repair}")
         repair_jobs = []
+        if occ_validated_txs:
+            repair_jobs.append(gevent.spawn(
+                self.finish_occ_validated_transactions,
+                batch_id, occ_validated_txs))
         if txs_for_pessimistic_repair:
             expired_keys_pessi = {}
             for tx_id in txs_for_pessimistic_repair:
@@ -88,6 +101,22 @@ class RepairEngine:
             repair_jobs.append(gevent.spawn(self.repair_transactions, batch_id, txs_for_optimistic_repair, expired_keys, container_port, OPT_REPAIR))
         gevent.joinall(repair_jobs)
         return time.time() - start
+
+    def finish_occ_validated_transactions(self, batch_id, transaction_ids):
+        """Finish clean OCC requests without dispatching a repair attempt."""
+        url = f'http://{self.tx_sink_addr}:6000/fin_repair'
+        jobs = []
+        for transaction_id in transaction_ids:
+            data = {
+                'batch_id': batch_id,
+                'workflow_name': self.workflow_name,
+                'transaction_id': transaction_id,
+                'repair_mode': OCC_VALIDATION,
+                'repair_epoch': 0,
+                'attempt_id': f'{batch_id}:{transaction_id}:occ-validated',
+            }
+            jobs.append(gevent.spawn(requests.post, url, json=data))
+        gevent.joinall(jobs)
                 
     def send_pessimistic_repair_req(self, batch_id, container_port_per_batch, cascaded_ready_txs):
         expired_keys = {}

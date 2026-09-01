@@ -174,8 +174,8 @@ class ValidatorProcess(Process):
             self.write_set_per_batch[batch_id] = batch['write_set']
             self.transaction_metadata_per_batch[batch_id] = batch.get('transaction_metadata', {})
             self.container_port_per_batch[batch_id] = batch['container_port']
-            expired_keys_per_ip, pessi_sink_info, retry_txs = self.validate(
-                batch_id, batch)
+            (expired_keys_per_ip, pessi_sink_info, retry_txs,
+             occ_validated_txs) = self.validate(batch_id, batch)
             self.retry_tx_list_per_batch[batch_id] = retry_txs
             retained_txs = [
                 tx_id for tx_id in batch['transaction_list']
@@ -200,7 +200,8 @@ class ValidatorProcess(Process):
                 batch_id, self.container_port_per_batch[batch_id],
                 self.read_set_per_batch[batch_id],
                 self.write_set_per_batch[batch_id], retained_txs,
-                expired_keys_per_ip, pessi_sink_info)
+                expired_keys_per_ip, pessi_sink_info,
+                occ_validated_txs)
             # repair_batch_after_validate can yield while waiting for repair
             # greenlets. A terminal REPAIR_FINISH may commit and clean this
             # batch before control returns here, so do not read the shared
@@ -291,7 +292,8 @@ class ValidatorProcess(Process):
             'write_set': batch['write_set'],
             'transaction_metadata': batch.get('transaction_metadata', {}),
         }
-        expired_keys, subjection_set, pessi_sink_info, retry_txs = \
+        (expired_keys, subjection_set, pessi_sink_info, retry_txs,
+         occ_validated_txs) = \
             self.serializer_request(batch_id, VALIDATE, serializer_input)
         retained_txs = [
             tx_id for tx_id in batch['transaction_list']
@@ -302,7 +304,8 @@ class ValidatorProcess(Process):
             self.worker_ip_set, retained_txs, batch['container_port'],
             batch.get('transaction_metadata', {}))
         #log_message(self.logger, f"[VALIDATE] Batch {batch_id} validation result: expired_keys={expired_keys}, subjection_set={subjection_set},pessi_sink_info={pessi_sink_info}")
-        return expired_keys_per_ip, pessi_sink_info, retry_txs
+        return (expired_keys_per_ip, pessi_sink_info, retry_txs,
+                occ_validated_txs)
 
     def clean_batch_info(self, batch_id_list):
         #log_message(self.logger, f"[CLEAN] Cleaning batch info for batches: {batch_id_list}")

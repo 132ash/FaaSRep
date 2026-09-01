@@ -22,6 +22,7 @@ from Store import Store
 import validate_struct
 import validator as validator_module
 import repair_engine as repair_engine_module
+import serializer as serializer_module
 from occ_retry import (
     is_occ_request,
     remove_transaction_dependencies,
@@ -37,14 +38,15 @@ from transaction_info import (
 
 
 class FakeStore:
-    def __init__(self, is_optimistic_repair):
+    def __init__(self, is_optimistic_repair, retry_abort_func='f2'):
         self.is_optimistic_repair = is_optimistic_repair
+        self.retry_abort_func = retry_abort_func
         self.metadata = {}
         self.aborted = False
 
     def fetch_input(self):
         return {
-            'retry_abort_func': 'f2',
+            'retry_abort_func': self.retry_abort_func,
             'keys': '{"f2": {}}',
             'payload_size': 1,
         }
@@ -79,8 +81,8 @@ class RepairAbortSemanticsTest(unittest.TestCase):
         validate_struct.logger.handlers = [logging.NullHandler()]
         validate_struct.logger.propagate = False
 
-    def run_function(self, is_optimistic_repair):
-        store = FakeStore(is_optimistic_repair)
+    def run_function(self, is_optimistic_repair, retry_abort_func='f2'):
+        store = FakeStore(is_optimistic_repair, retry_abort_func)
         namespace = {'function_name': 'f2', 'store': store}
         exec(self.function_source, namespace)
         namespace['main']()
@@ -95,6 +97,9 @@ class RepairAbortSemanticsTest(unittest.TestCase):
         with self.assertRaisesRegex(
                 RuntimeError, 'INJECTED_DYNAMIC_ACCESS_ABORT target=f2'):
             self.run_function(True)
+
+        occ_store = self.run_function(True, 'OCC_ONLY')
+        self.assertFalse(occ_store.aborted)
 
     def test_store_exposes_the_exact_repair_mode(self):
         metadata = {
@@ -230,8 +235,11 @@ class RepairAbortSemanticsTest(unittest.TestCase):
             engine.worker_ip_set = []
             engine.workflow_name = 'c4'
             engine.repair_calls = []
+            engine.occ_finish_calls = []
             engine.repair_transactions = lambda *args: \
                 engine.repair_calls.append((args[1], args[-1]))
+            engine.finish_occ_validated_transactions = lambda *args: \
+                engine.occ_finish_calls.append((args[0], sorted(args[1])))
             return engine
 
         # The old attempt selected because of an aborted predecessor is not
@@ -250,6 +258,14 @@ class RepairAbortSemanticsTest(unittest.TestCase):
             {'last_tx': {}})
         self.assertEqual(
             retry_engine.repair_calls, [(['tx'], config.OPT_REPAIR)])
+
+        occ_engine = make_engine({})
+        occ_engine.repair_batch_after_validate(
+            'occ-batch', {'tx': {}}, {'tx': {}}, {'tx': {}}, ['tx'], {},
+            {'last_tx': {}}, occ_validated_txs=['tx'])
+        self.assertEqual(occ_engine.repair_calls, [])
+        self.assertEqual(
+            occ_engine.occ_finish_calls, [('occ-batch', ['tx'])])
 
     def test_no_pessi_drops_late_abort_error_from_old_attempt(self):
         state = validate_struct.RepairingBatchState('c4')
@@ -274,6 +290,7 @@ class RepairAbortSemanticsTest(unittest.TestCase):
 
     def test_occ_request_is_retried_only_when_dirty(self):
         self.assertTrue(is_occ_request({'retry_abort_func': 'f2'}))
+        self.assertTrue(is_occ_request({'retry_abort_func': 'OCC_ONLY'}))
         self.assertFalse(is_occ_request({'retry_abort_func': 'NONE'}))
         self.assertTrue(transaction_is_clean({
             'f1': {'dirty': False}, 'f2': {'dirty': False},
@@ -362,7 +379,7 @@ class RepairAbortSemanticsTest(unittest.TestCase):
         validator.aborted_error_per_batch = {}
         validator.retry_tx_list_per_batch = {}
         validator.time_tuple_per_batch = {}
-        validator.validate = lambda _batch_id, _batch: ({}, {}, [])
+        validator.validate = lambda _batch_id, _batch: ({}, {}, [], [])
 
         batch_id = 'batch-cleaned-during-repair'
 
@@ -386,7 +403,7 @@ class RepairAbortSemanticsTest(unittest.TestCase):
             batch_id, validator_module.VALIDATE, {'batch': batch})
         self.assertNotIn(batch_id, validator.tx_list_per_batch)
 
-    def test_gateway_retry_signal_disables_future_injection(self):
+    def test_gateway_retry_preserves_occ_without_future_injection(self):
         table = RunningTXTable()
         table.registerTX('c4', 'tx', {})
         table.notifyRetry(['tx'])
@@ -398,11 +415,61 @@ class RepairAbortSemanticsTest(unittest.TestCase):
 
         original = {'f1': {'retry_abort_func': 'f2', 'payload_size': 1}}
         retry_parameters = prepare_occ_retry_parameters(original, ['f1'])
-        self.assertEqual(retry_parameters['f1']['retry_abort_func'], 'NONE')
+        self.assertEqual(
+            retry_parameters['f1']['retry_abort_func'], 'OCC_ONLY')
         self.assertEqual(original['f1']['retry_abort_func'], 'f2')
+        ordinary = {'f1': {'retry_abort_func': 'NONE', 'payload_size': 1}}
+        self.assertEqual(
+            prepare_occ_retry_parameters(ordinary, ['f1'])['f1']
+            ['retry_abort_func'], 'NONE')
         self.assertTrue(is_injected_retry_abort(
             True, 'INJECTED_DYNAMIC_ACCESS_ABORT target=f2'))
         self.assertFalse(is_injected_retry_abort(True, 'real application abort'))
+
+    def test_clean_occ_request_skips_repair_after_validation(self):
+        serializer = serializer_module.SerializerProcess.__new__(
+            serializer_module.SerializerProcess)
+        serializer.key_version_table = {}
+        serializer.key_writers = {}
+        serializer.batch_write_info = {}
+        serializer.log_message = lambda _message: None
+
+        result = serializer.accessed_set_validate(
+            'batch', 'version', ['tx'], {'tx': {'f1': {}}},
+            {'tx': {'key': 'f1'}},
+            {'tx': {'retry_abort_func': 'OCC_ONLY'}})
+        _, _, _, retry_txs, occ_validated_txs = result
+
+        self.assertEqual(retry_txs, [])
+        self.assertEqual(occ_validated_txs, ['tx'])
+        self.assertEqual(
+            serializer.key_writers['key'], [('batch', 'tx', 'f1')])
+
+    def test_dirty_occ_only_request_retries_until_clean(self):
+        serializer = serializer_module.SerializerProcess.__new__(
+            serializer_module.SerializerProcess)
+        serializer.key_version_table = {}
+        serializer.key_writers = {
+            'key': [('previous-batch', 'previous-tx', 'f1')],
+        }
+        serializer.batch_write_info = {
+            'previous-batch': {'version': 'previous-version'},
+        }
+        serializer.log_message = lambda _message: None
+
+        result = serializer.accessed_set_validate(
+            'batch', 'version', ['tx'],
+            {'tx': {'f1': {'key': 'read-version'}}},
+            {'tx': {'key': 'f1'}},
+            {'tx': {'retry_abort_func': 'OCC_ONLY'}})
+        _, _, pessi_sink_info, retry_txs, occ_validated_txs = result
+
+        self.assertEqual(retry_txs, ['tx'])
+        self.assertEqual(occ_validated_txs, [])
+        self.assertEqual(
+            serializer.key_writers['key'],
+            [('previous-batch', 'previous-tx', 'f1')])
+        self.assertEqual(pessi_sink_info['whole_tx_sub'], {})
 
     def test_summary_contains_only_requested_success_metrics(self):
         with tempfile.TemporaryDirectory() as directory:

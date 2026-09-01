@@ -1,5 +1,6 @@
 RETRY_ABORT_METADATA_KEY = 'retry_abort_func'
 NO_RETRY_ABORT = 'NONE'
+OCC_ONLY_RETRY = 'OCC_ONLY'
 
 
 def is_occ_request(transaction_metadata):
