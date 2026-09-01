@@ -38,6 +38,21 @@ Results stay compact:
 - `logging/<run_id>/client_progress.json`: waiting transaction IDs while a
   segment is running.
 
+After all slices for an abort probability have completed, consolidate them
+into one row per probability (discarding each slice's warmup prefix and any
+overlapping request IDs). The summary includes P50, P75, P90, and P99
+latency.
+
+```bash
+python3 merge_results.py \
+  --raw-dir results/hybrid/raw_results/highload \
+  --output results/hybrid/summary_results_highload_merged.csv
+```
+
+The merged throughput is total retained requests divided by the sum of the
+individual slice measurement durations. This avoids counting elapsed wall time
+between separately replayed slices.
+
 There are no request or join timeouts. If the system stalls, leave the driver
 running and inspect `client_progress.json` together with the component logs.
 No summary row is written unless every request returns `status=ok`.
