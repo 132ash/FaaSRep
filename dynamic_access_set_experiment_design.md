@@ -33,6 +33,15 @@ experiment/microbenchmark/test7_dynamic_access_set/
 | Sink 现有 `ABORT_PROB` | 0，避免二次随机 abort |
 | Retry abort probability | 0%、25%、50%、75%、100% |
 
+### 2.1 NO_PESSI 变种
+
+`config/config.py` 中的 `NO_PESSI` 控制无悲观修复变种：
+
+- `NO_PESSI = True`：optimistic repair 的依赖前继 abort 后，所有受影响的后继事务丢弃当前 attempt，并通过现有 OCC retry 通道从头重试；该规则沿事务依赖图向后传播。重试请求再次 validation 时仍使用 optimistic repair，不会进入 pessimistic repair。
+- `NO_PESSI = False`：恢复原始 dynamic 行为，受影响后继从 optimistic repair 转为 pessimistic repair。
+
+该开关只在 `OPTIMISTIC_REPAIR = True` 时生效。修改后需要重启 transaction sink、commit manager、gateway 等长驻服务，并重新创建 workflow containers。
+
 Zipf factor 固定为 0.9，以延续当前 `experiment/microbenchmark/test3_data_skewness/run.sh` 使用的高竞争 c4、32-client 设置。该值应作为 `run.sh` 中的显式常量，方便后续调整。
 
 实验采用 closed-loop client：每个 client 在前一个事务返回后才发送下一个事务。如果某个事务卡住，对应 client 应一直阻塞；其他未被阻塞的 client 可以继续运行，直到它们也完成或阻塞。不能使用请求 timeout、client join timeout、serializer timeout 退出或 watchdog 自动终止进程。

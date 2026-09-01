@@ -10,7 +10,11 @@ import sys
 import time
 import json
 from pathlib import Path
-from batch_state_struct import PessimisticBatchState, OptimisticTransactionState
+from batch_state_struct import (
+    NO_PESSI_RETRY,
+    OptimisticTransactionState,
+    PessimisticBatchState,
+)
 import gevent.lock
 import gevent.queue  # 添加 gevent 队列导入
 sys.path.append('../../config')
@@ -24,7 +28,9 @@ WAITING = config.RUNNING
 
 ABORT_PROB = config.ABORT_PROB
 
+OPT_REPAIR = config.OPT_REPAIR
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
+NO_PESSI = config.NO_PESSI and config.OPTIMISTIC_REPAIR
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
 VALIDATE_INTERVAL = config.VALIDATE_INTERVAL
 BATCH_TIMEOUT = config.BATCH_TIMEOUT # 50ms
@@ -104,7 +110,11 @@ class RepairingBatchState:
                 if prev_repair_state == ABORTED:
                     for next_tx in next_txs:
                         opt_txs_become_pessi[next_tx] = True
-                        self.optimistic_state_per_transaction[next_tx].need_pessimistic_repair = True
+                        next_state = self.optimistic_state_per_transaction[next_tx]
+                        if NO_PESSI:
+                            next_state.require_retry()
+                        else:
+                            next_state.need_pessimistic_repair = True
         #log_message(f"[CHECK BATCH PESSI SUB] In batch_id {batch_id}, {opt_txs_become_pessi} needs pessi repair, {list(ready_txs.keys())} is pessi ready.")     
         return ready_txs, opt_txs_become_pessi
 
@@ -207,14 +217,63 @@ class RepairingBatchState:
 
     def _after_transaction_finish_locked(self, origin_batch_id, repair_mode, tx_id, state, skip_repair):
         finished_txs_and_state = []
-        tasks_tx_finish_repair = {} # {batch_id: {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}}
+        # Task payloads also carry retry_txs in the NO_PESSI variant. Those
+        # transactions are removed from the old batch like aborts, but the
+        # gateway reruns them instead of returning an application abort.
+        tasks_tx_finish_repair = {}
         tasks_cascaded_repair = {}
+
+        def new_task():
+            return {
+                'batch_finished': False,
+                'pessi_repair_txs': [],
+                'aborted_txs': [],
+                'retry_txs': [],
+            }
+
+        def queue_retry_if_ready(retry_tx_id):
+            retry_state = self.optimistic_state_per_transaction[retry_tx_id]
+            retry_batch_id = retry_state.batch_id
+            if (self.pessimistic_state_per_batch[retry_batch_id]
+                    .pessimistic_repair_ready[retry_tx_id] and
+                    retry_state.finalize_retry()):
+                finished_txs_and_state.append(
+                    (retry_batch_id, retry_tx_id, NO_PESSI_RETRY))
+
+        def select_successors_for_retry(predecessor_tx_id):
+            predecessor_state = self.optimistic_state_per_transaction[
+                predecessor_tx_id]
+            for successor_tx_id in predecessor_state.transaction_subjection:
+                successor_state = self.optimistic_state_per_transaction.get(
+                    successor_tx_id)
+                if successor_state is None:
+                    continue
+                if successor_state.require_retry():
+                    log_message(json.dumps({
+                        'event': 'NO_PESSI_RETRY_SELECTED',
+                        'workflow': self.workflow_name,
+                        'batch_id': successor_state.batch_id,
+                        'tx_id': successor_tx_id, 'function': '',
+                        'repair_mode': OPT_REPAIR, 'repair_epoch': 0,
+                        'attempt_id': '', 'state_before':
+                        successor_state.optimistic_repair_state,
+                        'state_after': NO_PESSI_RETRY,
+                        'predecessor_tx_id': predecessor_tx_id,
+                        'timestamp': time.time(),
+                    }, sort_keys=True))
+                queue_retry_if_ready(successor_tx_id)
+
         if skip_repair:
             finished_txs_and_state = [(origin_batch_id, self.transaction_list_per_batch[origin_batch_id][-1], state)]
             self.tx_finished_table_per_batch[origin_batch_id]["finished"] = self.tx_finished_table_per_batch[origin_batch_id]["total"] - 1
         else:
             if not PESSIMISTIC_REPAIR:
-                rejected, successors_to_be_pessimistic = self.optimistic_state_per_transaction[tx_id].optimistic_state_change_after_repair(repair_mode, state)
+                optimistic_state = self.optimistic_state_per_transaction[tx_id]
+                if state == NO_PESSI_RETRY:
+                    optimistic_state.require_retry()
+                    rejected, successors_to_be_pessimistic = False, []
+                else:
+                    rejected, successors_to_be_pessimistic = optimistic_state.optimistic_state_change_after_repair(repair_mode, state)
                 if rejected:
                     log_message(json.dumps({
                         'event': 'OPTIMISTIC_RESULT_REJECTED',
@@ -223,17 +282,24 @@ class RepairingBatchState:
                         'function': '', 'repair_mode': repair_mode,
                         'repair_epoch': 0, 'attempt_id': '',
                         'state_before': WAITING, 'state_after': state,
-                        'reason': 'pessimistic_repair_required',
+                        'reason': (
+                            'retry_required' if optimistic_state.need_retry
+                            else 'pessimistic_repair_required'
+                        ),
                         'timestamp': time.time(),
                     }, sort_keys=True))
                     # The caller iterates over both return values as task maps.
                     # Returning (False, []) here caused a Flask 500 while a
                     # normal optimistic/pessimistic race was being handled.
                     return {}, {}
-                if random.random() < ABORT_PROB:
+                if state != NO_PESSI_RETRY and random.random() < ABORT_PROB:
                     state = ABORTED
+                    optimistic_state.optimistic_repair_state = ABORTED
                 if state == ABORTED:
-                    for next_tx_id in successors_to_be_pessimistic:
+                    if NO_PESSI:
+                        select_successors_for_retry(tx_id)
+                    for next_tx_id in (
+                            [] if NO_PESSI else successors_to_be_pessimistic):
                         #log_message(f"[OPTIMISTIC REPAIR CASCADED] {tx_id} IN {origin_batch_id} aborted, Transaction {next_tx_id} should be repaired pessimistically.")
                         next_state = self.optimistic_state_per_transaction[next_tx_id]
                         # A successor may have independently aborted its own
@@ -246,14 +312,24 @@ class RepairingBatchState:
                             next_state.need_pessimistic_repair = True
                             next_batch_id = next_state.batch_id
                             if self.pessimistic_state_per_batch[next_batch_id].pessimistic_repair_ready[next_tx_id]:
-                                tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].append(next_tx_id)
-                if self.pessimistic_state_per_batch[origin_batch_id].pessimistic_repair_ready[tx_id]:
+                                tasks_cascaded_repair.setdefault(next_batch_id, new_task())['pessi_repair_txs'].append(next_tx_id)
+                if (state == NO_PESSI_RETRY and
+                        self.pessimistic_state_per_batch[origin_batch_id]
+                        .pessimistic_repair_ready[tx_id]):
+                    if optimistic_state.finalize_retry():
+                        finished_txs_and_state = [(
+                            origin_batch_id, tx_id, NO_PESSI_RETRY)]
+                elif self.pessimistic_state_per_batch[origin_batch_id].pessimistic_repair_ready[tx_id]:
                     finished_txs_and_state = [(origin_batch_id, tx_id, state)]
             else:
                 finished_txs_and_state = [(origin_batch_id, tx_id, state)]
    
         while finished_txs_and_state:
             batch_id, tx_id, state = finished_txs_and_state.pop(0)
+            if NO_PESSI and state == NO_PESSI_RETRY:
+                # A retried transaction's buffered writes also disappear, so
+                # every optimistic dependent must follow it to a fresh attempt.
+                select_successors_for_retry(tx_id)
             #log_message(f"[TX FINISH] batch_id: {batch_id}, tx_id: {tx_id}, state: {state}, batch_finished: {self.tx_finished_table_per_batch[batch_id]['finished']}/{self.tx_finished_table_per_batch[batch_id]['total']}")
             self.tx_finished_table_per_batch[batch_id]["finished"] += 1
             log_message(json.dumps({
@@ -268,7 +344,9 @@ class RepairingBatchState:
             batch_finished = (self.tx_finished_table_per_batch[batch_id]["total"] == self.tx_finished_table_per_batch[batch_id]["finished"])
             ready_successor_tx_pessi = self.reminder_successor_tx_pessi(batch_id, tx_id, batch_finished)
             if state == ABORTED:
-                tasks_cascaded_repair.setdefault(batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['aborted_txs'].append(tx_id)
+                tasks_cascaded_repair.setdefault(batch_id, new_task())['aborted_txs'].append(tx_id)
+            elif state == NO_PESSI_RETRY:
+                tasks_cascaded_repair.setdefault(batch_id, new_task())['retry_txs'].append(tx_id)
             if not PESSIMISTIC_REPAIR:
                 for next_batch_id, tx_ids in ready_successor_tx_pessi.items():
                     for pessi_ready_tx in tx_ids:      
@@ -280,19 +358,31 @@ class RepairingBatchState:
                         if optimistic_state.optimistic_repair_state == ABORTED:
                             finished_txs_and_state.append(
                                 (next_batch_id, pessi_ready_tx, ABORTED))
+                        elif NO_PESSI and optimistic_state.need_retry:
+                            if optimistic_state.finalize_retry():
+                                finished_txs_and_state.append(
+                                    (next_batch_id, pessi_ready_tx,
+                                     NO_PESSI_RETRY))
                         elif optimistic_state.need_pessimistic_repair:
-                            #log_message(f"[PESSIMISTIC REPAIR] {pessi_ready_tx} in {next_batch_id} SEND TO pessi repair")
-                            tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].append(pessi_ready_tx)
+                            if NO_PESSI:
+                                optimistic_state.require_retry()
+                                if optimistic_state.finalize_retry():
+                                    finished_txs_and_state.append(
+                                        (next_batch_id, pessi_ready_tx,
+                                         NO_PESSI_RETRY))
+                            else:
+                                #log_message(f"[PESSIMISTIC REPAIR] {pessi_ready_tx} in {next_batch_id} SEND TO pessi repair")
+                                tasks_cascaded_repair.setdefault(next_batch_id, new_task())['pessi_repair_txs'].append(pessi_ready_tx)
                         elif optimistic_state.optimistic_repair_state != WAITING:
                             #log_message(f"[OPTIMISTIC REPAIR FINISH] {pessi_ready_tx} in {next_batch_id} is repaired AND don't need pessi, its state: {optimistic_state.optimistic_repair_state}")
                             finished_txs_and_state.append((next_batch_id, pessi_ready_tx, optimistic_state.optimistic_repair_state))
             else:
                 for next_batch_id, tx_ids in ready_successor_tx_pessi.items():
                     #log_message(f"[PESSIMISTIC REPAIR] {tx_ids} in {next_batch_id} SEND TO pessi repair")
-                    tasks_cascaded_repair.setdefault(next_batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['pessi_repair_txs'].extend(tx_ids)
+                    tasks_cascaded_repair.setdefault(next_batch_id, new_task())['pessi_repair_txs'].extend(tx_ids)
 
             if batch_finished:
-                tasks_cascaded_repair.setdefault(batch_id, {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]})['batch_finished'] = True
+                tasks_cascaded_repair.setdefault(batch_id, new_task())['batch_finished'] = True
                 tasks_tx_finish_repair[batch_id] = tasks_cascaded_repair.pop(batch_id)
                 self.tx_finished_table_per_batch.pop(batch_id, None)
                 self.pessimistic_state_per_batch.pop(batch_id, None)
@@ -462,6 +552,13 @@ class TransactionSink:
         tasks_tx_finish_repair, tasks_cascaded_repair = self.repairing_batch_state.after_transaction_finish(
             batch_id, repair_mode, transaction_id, state, skip_repair,
             repair_epoch, attempt_id)
+        if state == ABORTED and NO_PESSI:
+            current_state = self.repairing_batch_state \
+                .optimistic_state_per_transaction.get(transaction_id)
+            if current_state is None or current_state.need_retry:
+                # The abort belongs to an optimistic attempt that was already
+                # superseded by a predecessor-triggered retry.
+                self.abort_errors.pop(transaction_id, None)
         for task_table in (tasks_tx_finish_repair, tasks_cascaded_repair):
             for task in task_table.values():
                 task['aborted_errors'] = {
@@ -485,7 +582,29 @@ class TransactionSink:
         self.repairing_batch_state.retain_batch_transactions(
             batch_id, transaction_list)
         ready_txs, opt_txs_become_pessi = self.repairing_batch_state.update_subjection_info(batch_id, batch_sub, tx_sub, sub_per_tx)
+        if NO_PESSI:
+            retry_ready = [
+                tx_id for tx_id in opt_txs_become_pessi
+                if ready_txs.get(tx_id, False)
+            ]
+            if retry_ready:
+                # Let the repair registration response reach the validator
+                # before reporting synthetic terminal states for this batch.
+                gevent.spawn_later(
+                    0, self.retry_no_pessi_transactions,
+                    batch_id, retry_ready)
         return {'ready_txs': ready_txs, 'opt_txs_become_pessi':opt_txs_become_pessi}
+
+    def retry_no_pessi_transactions(self, batch_id, transaction_ids):
+        for transaction_id in transaction_ids:
+            tasks_finished, tasks_cascaded = \
+                self.repairing_batch_state.after_transaction_finish(
+                    batch_id, config.OPT_REPAIR, transaction_id,
+                    NO_PESSI_RETRY, False, repair_epoch=0,
+                    attempt_id=f'{batch_id}:{transaction_id}:no-pessi')
+            for tasks in (tasks_finished, tasks_cascaded):
+                if tasks:
+                    self.repair_finish_on_validator(tasks)
     
     def repair_finish_on_validator(self, data):
         remote_url = 'http://{}/fin_repair'.format(VALIDATOR_ADDR)

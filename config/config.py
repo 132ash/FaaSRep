@@ -98,6 +98,11 @@ BATCH_SIZE = 2
 # mode setting
 FAST_PATH = True
 OPTIMISTIC_REPAIR = True
+# NO_PESSI variant: when an optimistic transaction's dependency predecessor
+# aborts, retry the dependent transaction from scratch instead of promoting it
+# to pessimistic repair. Set to False to restore the original dynamic behavior.
+# This option only takes effect when OPTIMISTIC_REPAIR is enabled.
+NO_PESSI = True
 
 
 # repair setting

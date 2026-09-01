@@ -21,6 +21,7 @@ import experiment_logging
 from Store import Store
 import validate_struct
 import validator as validator_module
+import repair_engine as repair_engine_module
 from occ_retry import (
     is_occ_request,
     remove_transaction_dependencies,
@@ -143,6 +144,133 @@ class RepairAbortSemanticsTest(unittest.TestCase):
         self.assertEqual(
             finished[batch_id]['aborted_txs'], [aborted_successor])
         self.assertEqual(finished[batch_id]['pessi_repair_txs'], [])
+
+    def test_no_pessi_retries_dependency_successors_transitively(self):
+        self.assertTrue(config.NO_PESSI)
+        state = validate_struct.RepairingBatchState('c4')
+        batch_id = 'batch'
+        transactions = ['predecessor', 'successor', 'descendant']
+        state.register_batch(batch_id, transactions, batch_size=3)
+        state.update_subjection_info(
+            batch_id, {},
+            {
+                'predecessor': ['successor'],
+                'successor': ['descendant'],
+            },
+            {
+                'predecessor': {'successor': True},
+                'successor': {'descendant': True},
+            })
+
+        # Both successors may finish their old optimistic attempts before the
+        # predecessor's abort is observed. Their results must still be replaced
+        # with fresh gateway retries, not pessimistic repair attempts.
+        for transaction_id in ('successor', 'descendant'):
+            finished, cascaded = state.after_transaction_finish(
+                batch_id, config.OPT_REPAIR, transaction_id,
+                config.REPAIRED, False, repair_epoch=1,
+                attempt_id=f'optimistic-{transaction_id}')
+            self.assertEqual((finished, cascaded), ({}, {}))
+
+        finished, cascaded = state.after_transaction_finish(
+            batch_id, config.OPT_REPAIR, 'predecessor', config.ABORTED,
+            False, repair_epoch=1, attempt_id='optimistic-predecessor')
+
+        self.assertEqual(cascaded, {})
+        self.assertTrue(finished[batch_id]['batch_finished'])
+        self.assertEqual(finished[batch_id]['aborted_txs'], ['predecessor'])
+        self.assertEqual(
+            finished[batch_id]['retry_txs'], ['successor', 'descendant'])
+        self.assertEqual(finished[batch_id]['pessi_repair_txs'], [])
+
+    def test_no_pessi_switch_off_restores_pessimistic_promotion(self):
+        original = validate_struct.NO_PESSI
+        validate_struct.NO_PESSI = False
+        try:
+            state = validate_struct.RepairingBatchState('c4')
+            batch_id = 'batch'
+            state.register_batch(batch_id, ['predecessor', 'successor'], 2)
+            state.update_subjection_info(
+                batch_id, {}, {'predecessor': ['successor']},
+                {'predecessor': {'successor': True}})
+
+            state.after_transaction_finish(
+                batch_id, config.OPT_REPAIR, 'successor', config.REPAIRED,
+                False, repair_epoch=1, attempt_id='optimistic-successor')
+            finished, cascaded = state.after_transaction_finish(
+                batch_id, config.OPT_REPAIR, 'predecessor', config.ABORTED,
+                False, repair_epoch=1, attempt_id='optimistic-predecessor')
+
+            self.assertEqual(finished, {})
+            self.assertEqual(cascaded[batch_id]['aborted_txs'], ['predecessor'])
+            self.assertEqual(cascaded[batch_id]['retry_txs'], [])
+            self.assertEqual(
+                cascaded[batch_id]['pessi_repair_txs'], ['successor'])
+        finally:
+            validate_struct.NO_PESSI = original
+
+    def test_no_pessi_repair_plan_never_dispatches_mode_two(self):
+        self.assertTrue(repair_engine_module.NO_PESSI)
+
+        class FakePessimisticRepairer:
+            @staticmethod
+            def register_repair_info(*_args):
+                return None
+
+        def make_engine(promoted):
+            engine = repair_engine_module.RepairEngine.__new__(
+                repair_engine_module.RepairEngine)
+            engine.logger = logging.getLogger('no-pessi-repair-plan-test')
+            engine.pessi_register_lock = \
+                repair_engine_module.gevent.lock.BoundedSemaphore()
+            engine.pessimistic_repair_txs_per_batch = {}
+            engine.repair_attempts_per_batch = {}
+            engine.PessimisticRepairer = FakePessimisticRepairer()
+            engine.register_on_sink = lambda *_args: ({'tx': True}, promoted)
+            engine.worker_ip_set = []
+            engine.workflow_name = 'c4'
+            engine.repair_calls = []
+            engine.repair_transactions = lambda *args: \
+                engine.repair_calls.append((args[1], args[-1]))
+            return engine
+
+        # The old attempt selected because of an aborted predecessor is not
+        # repaired at all; it is completed by the sink's retry notification.
+        selected_engine = make_engine({'tx': True})
+        selected_engine.repair_batch_after_validate(
+            'batch', {'tx': {}}, {'tx': {}}, {'tx': {}}, ['tx'], {},
+            {'last_tx': {}})
+        self.assertEqual(selected_engine.repair_calls, [])
+
+        # Its clean gateway retry enters validation as an ordinary transaction
+        # and is dispatched in optimistic mode again.
+        retry_engine = make_engine({})
+        retry_engine.repair_batch_after_validate(
+            'retry-batch', {'tx': {}}, {'tx': {}}, {'tx': {}}, ['tx'], {},
+            {'last_tx': {}})
+        self.assertEqual(
+            retry_engine.repair_calls, [(['tx'], config.OPT_REPAIR)])
+
+    def test_no_pessi_drops_late_abort_error_from_old_attempt(self):
+        state = validate_struct.RepairingBatchState('c4')
+        state.register_batch('batch', ['predecessor', 'successor'], 2)
+        state.update_subjection_info(
+            'batch', {}, {'predecessor': ['successor']},
+            {'predecessor': {'successor': True}})
+        state.after_transaction_finish(
+            'batch', config.OPT_REPAIR, 'predecessor', config.ABORTED,
+            False, repair_epoch=1, attempt_id='predecessor-abort')
+
+        sink = validate_struct.TransactionSink.__new__(
+            validate_struct.TransactionSink)
+        sink.repairing_batch_state = state
+        sink.abort_errors = {}
+        sink.fin_repair_or_abort(
+            'batch', 'successor', config.OPT_REPAIR, config.ABORTED,
+            False, repair_epoch=1, attempt_id='late-successor-abort',
+            error='stale application error')
+
+        self.assertEqual(sink.abort_errors, {})
 
     def test_occ_request_is_retried_only_when_dirty(self):
         self.assertTrue(is_occ_request({'retry_abort_func': 'f2'}))

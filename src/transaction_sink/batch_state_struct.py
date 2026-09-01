@@ -17,6 +17,10 @@ PESSI_REPAIR = config.PESSI_REPAIR
 PESSIMISTIC_REPAIR = not config.OPTIMISTIC_REPAIR
 VALIDATOR_ADDR = config.VALIDATOR_ADDR
 
+# Internal sink-only state. It is never sent by a container as a terminal
+# application result; the validator converts it into an OCC-style retry.
+NO_PESSI_RETRY = 'NO_PESSI_RETRY'
+
 class PessimisticBatchState:
     def __init__(self, batch_id, tx_list, batch_size):
         self.batch_size = batch_size
@@ -89,6 +93,8 @@ class PessimisticBatchState:
 class OptimisticTransactionState:
     def __init__(self, batch_id, tx_id):
         self.need_pessimistic_repair = False
+        self.need_retry = False
+        self.retry_finalized = False
         self.optimistic_repair_state = WAITING
         self.batch_id = batch_id
         self.transaction_id = tx_id
@@ -109,6 +115,10 @@ class OptimisticTransactionState:
         """
         Update the optimistic repair state after repair. return the repair is rejected or not.
         """
+        # Once a predecessor abort has selected this transaction for retry, a
+        # late result from its old optimistic attempt must not become terminal.
+        if self.need_retry and optimistic_repair_mode == OPT_REPAIR:
+            return True, []
         # An application-requested abort is terminal.  It may race with the
         # validator marking this transaction for pessimistic repair; accepting
         # the promotion first would otherwise discard the abort after the
@@ -121,3 +131,20 @@ class OptimisticTransactionState:
             return True, []
         self.optimistic_repair_state = repair_state
         return False, []
+
+    def require_retry(self):
+        """Select this transaction for one retry after a predecessor abort."""
+        if self.optimistic_repair_state == ABORTED:
+            return False
+        newly_selected = not self.need_retry
+        self.need_retry = True
+        self.need_pessimistic_repair = False
+        return newly_selected
+
+    def finalize_retry(self):
+        """Return True exactly once when the selected retry becomes ready."""
+        if (not self.need_retry or self.retry_finalized or
+                self.optimistic_repair_state == ABORTED):
+            return False
+        self.retry_finalized = True
+        return True

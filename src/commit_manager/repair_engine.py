@@ -20,6 +20,7 @@ ABORTED = 2
 
 FAST_PATH_ENABLED = config.FAST_PATH
 OPTIMISTIC_REPAIR = config.OPTIMISTIC_REPAIR
+NO_PESSI = config.NO_PESSI and OPTIMISTIC_REPAIR
 
 OPT_REPAIR = config.OPT_REPAIR
 PESSI_REPAIR = config.PESSI_REPAIR
@@ -63,7 +64,7 @@ class RepairEngine:
         if OPTIMISTIC_REPAIR:
             for tx_id in tx_list:
                 if opt_txs_become_pessi.get(tx_id, False):
-                    if ready_txs.get(tx_id, False):
+                    if not NO_PESSI and ready_txs.get(tx_id, False):
                         txs_for_pessimistic_repair.append(tx_id)
                 else:
                     txs_for_optimistic_repair.append(tx_id)

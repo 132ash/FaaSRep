@@ -217,11 +217,14 @@ class ValidatorProcess(Process):
             batch_finished = data['batch_finished']
             pessi_repair_txs = data['pessi_repair_txs']
             aborted_txs = data['aborted_txs']
+            retry_txs = data.get('retry_txs', [])
             aborted_errors = data.get('aborted_errors', {})
             # {'batch_finished':False, 'pessi_repair_txs':[], 'aborted_txs':[]}
             self.aborted_tx_list_per_batch[batch_id].extend(aborted_txs)
+            self.retry_tx_list_per_batch[batch_id].extend(retry_txs)
             self.aborted_error_per_batch[batch_id].update(aborted_errors)
-            self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, aborted_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
+            removed_txs = aborted_txs + retry_txs
+            self.repair_engine.PessimisticRepairer.modify_batch_write_table_for_abort(batch_id, removed_txs, self.write_set_per_batch[batch_id], self.successed_tx_list_per_batch[batch_id])
             if batch_finished:
                 #log_message(self.logger, f"[COMMIT] Batch {batch_id} repair finish, txlist:{self.tx_list_per_batch[batch_id]}")
                 commit_keys_all = self.repair_engine.PessimisticRepairer.pessimistic_get_commit_keys(batch_id)
