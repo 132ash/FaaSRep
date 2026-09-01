@@ -42,3 +42,15 @@ Compact outputs are written below `results/occ/`:
 
 A summary row is written only when every request returns successfully. Raw and
 progress files are retained when a timeout or request error occurs.
+
+To consolidate several completed slices, discard their warmup prefixes and
+de-duplicate core requests by `global_req_id`:
+
+```bash
+python3 experiment/microbenchmark/test7_dynamic_access_set/trace/merge_results.py
+```
+
+The resulting `summary_results_highload_merged.csv` reports P50, P75, P90,
+and P99 latency. Its throughput is retained requests divided by the sum of
+the individual slice measurement durations, since slices may run at different
+times.
