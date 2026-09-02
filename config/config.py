@@ -54,6 +54,7 @@ WORKERSP_PORT = '7500'
 # workflow setting
 WORKFLOW_YAML_ADDR = {
                    # 'textseq': f"{ROOT_DIR}/benchmark/textseq",
+                     'c1': f"{ROOT_DIR}/benchmark/micro_benchmark/c1",
                      'c2': f"{ROOT_DIR}/benchmark/micro_benchmark/c2",
                       'c4': f"{ROOT_DIR}/benchmark/micro_benchmark/c4",
                        'c8': f"{ROOT_DIR}/benchmark/micro_benchmark/c8",
@@ -173,5 +174,4 @@ STARTUP_POSTS = 2
 # # social network			
 # SOCIAL_NETWORK_USERS = 200			
 # STARTUP_POSTS = 3
-
 

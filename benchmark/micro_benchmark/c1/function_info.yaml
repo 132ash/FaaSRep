@@ -1,0 +1,5 @@
+functions:
+- image: micro_func
+  name: f1
+max_containers: 64
+workflow: c1

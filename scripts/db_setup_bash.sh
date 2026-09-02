@@ -68,8 +68,8 @@ workflow_exists() {
     [ -n "$workflow_script" ]
 }
 
-# List of microbenchmark workflows from c2 to w16
-MICROBENCHMARK_WORKFLOWS="c2 c4 c8 c16 w2 w4 w8 w16"
+# List of microbenchmark workflows, including the single-function c1 baseline.
+MICROBENCHMARK_WORKFLOWS="c1 c2 c4 c8 c16 w2 w4 w6 w8"
 
 # 所有支持的工作流列表
 ALL_SUPPORTED_WORKFLOWS="microbenchmark travel_reservation banking_system social_network"
