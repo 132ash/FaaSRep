@@ -71,8 +71,8 @@ WORKFLOWS_INIT=(
     ['social_network']="$CURRENT_SH_DIR/init/social_network/init.sh"
 )
 
-# List of microbenchmark workflows from c2 to w16
-MICROBENCHMARK_WORKFLOWS=(c2 c4 c8 c16 w2 w4 w6 w8)
+# List of microbenchmark workflows, including the single-function c1 baseline.
+MICROBENCHMARK_WORKFLOWS=(c1 c2 c4 c8 c16 w2 w4 w6 w8)
 
 # Read workflow name from argument
 WORKFLOW_NAME="$1"

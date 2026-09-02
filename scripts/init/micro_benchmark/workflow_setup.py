@@ -257,18 +257,19 @@ def main():
     print(f"项目根目录: {project_root}")
     print(f"基础路径: {base_path}")
 
-    # 为n=[2,4,6,8,16]生成配置
-    n_values = [2, 4, 6, 8, 16]
+    # c1 is the single-function baseline. Parallel workflows start at w2.
+    chain_n_values = [1, 2, 4, 6, 8, 16]
+    parallel_n_values = [2, 4, 6, 8, 16]
 
     # 生成链式结构的Cn文件夹
     print("\n=== 生成链式结构配置 (cn) ===")
-    for n in n_values:
+    for n in chain_n_values:
         print(f"\n正在生成 c{n} 配置...")
         create_config_folder_chain(n, base_path)
     
     # 生成并行分支结构的Wn文件夹
     print("\n=== 生成并行分支结构配置 (wn) ===")
-    for n in n_values:
+    for n in parallel_n_values:
         print(f"\n正在生成 w{n} 配置...")
         create_config_folder_parallel(n, base_path)
     
@@ -276,7 +277,7 @@ def main():
     
     # 显示生成的目录结构
     print("\n生成的目录结构:")
-    for n in n_values:
+    for n in chain_n_values:
         # 链式结构
         chain_folder_path = base_path / f'c{n}'
         if chain_folder_path.exists():
@@ -285,6 +286,7 @@ def main():
                 if file.is_file():
                     print(f"  📄 {file.name}")
         
+    for n in parallel_n_values:
         # 并行分支结构
         parallel_folder_path = base_path / f'w{n}'
         if parallel_folder_path.exists():

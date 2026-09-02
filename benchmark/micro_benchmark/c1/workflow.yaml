@@ -1,0 +1,17 @@
+functions:
+- input:
+    keys:
+      from: GLOBAL
+      type: str
+    payload_size:
+      from: GLOBAL
+      type: int
+  name: f1
+  next:
+    type: FINISH
+  output:
+    keys:
+      type: str
+    payload_size:
+      type: int
+  source: f1
